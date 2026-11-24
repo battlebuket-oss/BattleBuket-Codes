@@ -661,7 +661,18 @@ export default function App() {
               path={selectedFile.path}
               language={editorLanguageForPath(selectedFile.path)}
               theme="vs-dark"
-              onMount={editor => { editorRef.current = editor; }}
+              onMount={editor => {
+                editorRef.current = editor;
+                const pending = pendingEditorJump;
+                if (pending?.path === selectedFile.path) {
+                  requestAnimationFrame(() => {
+                    editor.revealLineInCenter(pending.lineNumber);
+                    editor.setPosition({ lineNumber: pending.lineNumber, column: 1 });
+                    editor.focus();
+                    setPendingEditorJump(current => current?.path === pending.path ? null : current);
+                  });
+                }
+              }}
               value={draft}
               onChange={value => { const nextDraft = value ?? ""; setDraft(nextDraft); setEditorTabs(current => current.map(tab => tab.path === selectedFile.path ? { ...tab, draft: nextDraft } : tab)); setSaveMessage(""); }}
               onValidate={markers => setEditorDiagnostics(markers.map(marker => ({
