@@ -490,16 +490,22 @@ export default function App() {
   const filteredCommands = quickCommands.filter(command =>
     (command.label + " " + command.description).toLowerCase().includes(paletteQuery.toLowerCase())
   );
-  const paletteCount = paletteMode === "files" ? quickOpenResults.length : filteredCommands.length;
+  const paletteCount = paletteMode === "files" ? quickOpenResults.length : paletteMode === "content" ? contentSearchResults.length : filteredCommands.length;
   const activatePaletteSelection = () => {
     if (paletteMode === "commands") {
       const command = filteredCommands[paletteIndex];
       if (command) runPaletteCommand(command.id);
-    } else {
+    } else if (paletteMode === "files") {
       const file = quickOpenResults[paletteIndex];
       if (file) {
         setPaletteOpen(false);
         void openFile(file.path);
+      }
+    } else {
+      const match = contentSearchResults[paletteIndex];
+      if (match) {
+        setPaletteOpen(false);
+        void openFile(match.path);
       }
     }
   };
@@ -511,7 +517,7 @@ export default function App() {
       <div className="top-right">v{version}<Settings2 size={16}/></div>
     </header>
     <div className="layout">
-      <nav className="rail"><LayoutDashboard/><FolderOpen/><button className="rail-action" title="Quick Open · Ctrl/Cmd+P" onClick={() => openPalette("files")}><Search/></button><button className="rail-action" title="Command Palette · Ctrl/Cmd+Shift+P" onClick={() => openPalette("commands")}><Command/></button><GitBranch/><span/><ShieldCheck/></nav>
+      <nav className="rail"><LayoutDashboard/><FolderOpen/><button className="rail-action" title="Find in Files" onClick={() => openPalette("content")}><Search/></button><button className="rail-action" title="Command Palette · Ctrl/Cmd+Shift+P" onClick={() => openPalette("commands")}><Command/></button><GitBranch/><span/><ShieldCheck/></nav>
       <aside className="projects">
         <label>PROJECT EXPLORER</label>
         <button onClick={openWorkspace} disabled={running}><FolderOpen size={15}/> {workspace ? "Change project" : "Open project"} <Plus size={13}/></button>
@@ -536,7 +542,7 @@ export default function App() {
         {paletteOpen && <div className="palette-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setPaletteOpen(false); }}>
           <section className="palette-dialog" role="dialog" aria-modal="true" aria-label={paletteMode === "files" ? "Quick Open" : "Command Palette"}>
             <div className="palette-input-row">
-              {paletteMode === "files" ? <Search size={16}/> : <Command size={16}/>}
+              {paletteMode === "commands" ? <Command size={16}/> : <Search size={16}/>}
               <input
                 autoFocus
                 value={paletteQuery}
@@ -547,21 +553,25 @@ export default function App() {
                   else if (event.key === "ArrowUp") { event.preventDefault(); setPaletteIndex(index => paletteCount ? (index - 1 + paletteCount) % paletteCount : 0); }
                   else if (event.key === "Enter") { event.preventDefault(); activatePaletteSelection(); }
                 }}
-                placeholder={paletteMode === "files" ? "Search files by name…" : "Type a command…"}
+                placeholder={paletteMode === "files" ? "Search files by name…" : paletteMode === "content" ? "Find text in project files…" : "Type a command…"}
               />
               <kbd>ESC</kbd>
             </div>
-            <div className="palette-caption">{paletteMode === "files" ? "QUICK OPEN · PROJECT FILES" : "COMMAND PALETTE · ACTIONS"}</div>
+            <div className="palette-caption">{paletteMode === "files" ? "QUICK OPEN · FILE NAMES" : paletteMode === "content" ? "FIND IN FILES · CONTENT SEARCH" : "COMMAND PALETTE · ACTIONS"}</div>
             <div className="palette-results">
               {paletteMode === "files"
                 ? quickOpenResults.map((file, index) => <button key={file.path} className={index === paletteIndex ? "selected" : ""} onMouseEnter={() => setPaletteIndex(index)} onClick={() => { setPaletteOpen(false); void openFile(file.path); }}>
                     <FileCode2 size={13}/><span>{file.path}</span><small>{Math.ceil(file.size / 1024)} KB</small>
                   </button>)
-                : filteredCommands.map((command, index) => <button key={command.id} className={index === paletteIndex ? "selected" : ""} onMouseEnter={() => setPaletteIndex(index)} onClick={() => runPaletteCommand(command.id)}>
-                    <Command size={13}/><span>{command.label}</span><small>{command.description}</small>
-                  </button>)}
+                : paletteMode === "content"
+                  ? contentSearchResults.map((match, index) => <button key={match.path + ":" + match.lineNumber} className={index === paletteIndex ? "selected" : ""} onMouseEnter={() => setPaletteIndex(index)} onClick={() => { setPaletteOpen(false); void openFile(match.path); }}>
+                      <FileCode2 size={13}/><span>{match.path}:{match.lineNumber} · {match.preview}</span>
+                    </button>)
+                  : filteredCommands.map((command, index) => <button key={command.id} className={index === paletteIndex ? "selected" : ""} onMouseEnter={() => setPaletteIndex(index)} onClick={() => runPaletteCommand(command.id)}>
+                      <Command size={13}/><span>{command.label}</span><small>{command.description}</small>
+                    </button>)}
               {paletteLoading && <p>Searching workspace…</p>}
-              {!paletteLoading && paletteCount === 0 && <p>{paletteMode === "files" ? (!workspace ? "Open a project folder before searching files." : paletteQuery.trim() ? "No matching files found." : "Type part of a file name to search the workspace.") : "No commands match your search."}</p>}
+              {!paletteLoading && paletteCount === 0 && <p>{paletteMode === "files" ? (!workspace ? "Open a project folder before searching files." : paletteQuery.trim() ? "No matching file names found." : "Type part of a file name to search the workspace.") : paletteMode === "content" ? (!workspace ? "Open a project folder before searching content." : paletteQuery.trim().length < 2 ? "Type at least two characters to search file contents." : "No matching text found in searchable files.") : "No commands match your search."}</p>}
             </div>
             <div className="palette-footer">{paletteMode === "files" ? "Ctrl/Cmd + P" : "Ctrl/Cmd + Shift + P"} · ↑ ↓ Navigate · Enter Open · Esc Close</div>
           </section>
