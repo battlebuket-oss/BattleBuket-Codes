@@ -25,7 +25,7 @@ The repository currently includes:
 - Native **PTY-based** interactive workspace terminal using node-pty and xterm.js, including input/output streaming, session lifecycle, terminal resize and bounded IO.
 - Consent-gated project test/lint/typecheck/build script checks and supported npm/pnpm high-severity dependency audits, with bounded output and per-command timeouts.
 - CI workflows for audit, lint, typecheck, unit tests, build, CodeQL, secret scanning and Windows/macOS/Linux desktop bundles.
-- A tag-triggered signed-release workflow with platform signing checks, app launch smoke mode, clean-install/uninstall steps and draft-release assembly.
+- A tag-triggered signed-release workflow with platform signing checks, packaged Monaco-worker launch smoke mode, clean-install/uninstall steps and draft-release assembly; plus a manual two-tag upgrade/rollback smoke workflow.
 - Opt-in live Codex/Claude adapter conformance tests and a manual self-hosted runner workflow.
 
 ## Important limitations — not a production release
