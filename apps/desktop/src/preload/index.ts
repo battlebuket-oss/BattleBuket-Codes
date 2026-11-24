@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 
 type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
 type WorkspaceContentMatch = { path: string; lineNumber: number; preview: string };
+type RecentWorkspace = { path: string; lastOpenedAt: string };
 type AgentProvider = "codex" | "claude";
 type TaskRisk = "low" | "medium" | "high";
 type AgentEvent = {
@@ -40,6 +41,8 @@ type AgentResult = {
 contextBridge.exposeInMainWorld("battleBuket", {
   getVersion: (): Promise<string> => ipcRenderer.invoke("platform:version"),
   selectWorkspace: (): Promise<string | null> => ipcRenderer.invoke("workspace:select"),
+  getRecentWorkspaces: (): Promise<RecentWorkspace[]> => ipcRenderer.invoke("workspace:recent"),
+  openRecentWorkspace: (path: string): Promise<string> => ipcRenderer.invoke("workspace:open-recent", { path }),
   listWorkspace: (path = ""): Promise<WorkspaceEntry[]> => ipcRenderer.invoke("workspace:list", path),
   searchWorkspaceFiles: (query: string): Promise<WorkspaceEntry[]> => ipcRenderer.invoke("workspace:search", query),
   searchWorkspaceContent: (query: string): Promise<WorkspaceContentMatch[]> => ipcRenderer.invoke("workspace:search-content", query),
