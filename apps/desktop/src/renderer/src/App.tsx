@@ -402,6 +402,9 @@ export default function App() {
               height="100%"
               language={editorLanguageForPath(selectedFile.path)}
               theme="vs-dark"
+              onMount={(editor, monaco) => {
+                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => { void saveFile(); });
+              }}
               value={draft}
               onChange={value => { const nextDraft = value ?? ""; setDraft(nextDraft); setEditorTabs(current => current.map(tab => tab.path === selectedFile.path ? { ...tab, draft: nextDraft } : tab)); setSaveMessage(""); }}
               options={{
