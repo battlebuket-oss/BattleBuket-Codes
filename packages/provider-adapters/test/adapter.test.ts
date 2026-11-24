@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { claudeAllowedTools, codexArguments } from "../src/index";
+import { claudeAllowedTools, codexArguments, supportsCodexCli } from "../src/index";
 
 const request = (approvalMode: "read-only" | "workspace-write" | "full-access") => ({
   provider: "codex" as const,
@@ -31,4 +31,11 @@ test("Claude read-only and edit modes expose only their approved workspace tools
   assert.deepEqual(claudeAllowedTools("read-only"), ["Read", "Glob", "Grep"]);
   assert.deepEqual(claudeAllowedTools("workspace-write"), ["Read", "Edit", "Write", "Glob", "Grep"]);
   assert.throws(() => claudeAllowedTools("full-access"), /Full-access/);
+});
+
+test("Codex preflight rejects versions that predate the supported permission flags", () => {
+  assert.equal(supportsCodexCli("codex-cli 0.171.0"), true);
+  assert.equal(supportsCodexCli("codex-cli 0.172.0"), true);
+  assert.equal(supportsCodexCli("codex-cli 0.170.9"), false);
+  assert.equal(supportsCodexCli("codex-cli unknown"), false);
 });
