@@ -148,6 +148,9 @@ jobs:
       BASELINE_TAG: ${{ inputs.baseline_tag }}
       CANDIDATE_TAG: ${{ inputs.candidate_tag }}
     steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux packaged-app smoke prerequisites
+        run: sudo apt-get update && sudo apt-get install -y dbus-daemon xvfb
       - name: Download baseline and candidate AppImages
         run: |
           set -euo pipefail
@@ -169,16 +172,16 @@ jobs:
           cp "$baseline" "$installed"
           chmod +x "$installed"
           baseline_version="$(printf '%s' "$BASELINE_TAG" | cut -c 2-)"
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-seed-state "--smoke-expect-version=$baseline_version"
+          bash apps/desktop/scripts/run-appimage-smoke.sh "$installed" --smoke-test --smoke-seed-state "--smoke-expect-version=$baseline_version"
 
           cp "$candidate" "$installed"
           chmod +x "$installed"
           candidate_version="$(printf '%s' "$CANDIDATE_TAG" | cut -c 2-)"
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-verify-state "--smoke-expect-version=$candidate_version"
+          bash apps/desktop/scripts/run-appimage-smoke.sh "$installed" --smoke-test --smoke-verify-state "--smoke-expect-version=$candidate_version"
 
           cp "$baseline" "$installed"
           chmod +x "$installed"
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-verify-state --smoke-clear-state "--smoke-expect-version=$baseline_version"
+          bash apps/desktop/scripts/run-appimage-smoke.sh "$installed" --smoke-test --smoke-verify-state --smoke-clear-state "--smoke-expect-version=$baseline_version"
 
           rm -f "$installed"
           test ! -e "$installed"
