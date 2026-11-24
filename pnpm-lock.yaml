@@ -72,6 +72,31 @@ importers:
       vite:
         specifier: 8.3.8
         version: 8.3.8(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
+    optionalDependencies:
+      '@anthropic-ai/claude-agent-sdk-darwin-arm64':
+        specifier: 0.3.331
+        version: 0.3.331
+      '@anthropic-ai/claude-agent-sdk-darwin-x64':
+        specifier: 0.3.331
+        version: 0.3.331
+      '@anthropic-ai/claude-agent-sdk-linux-arm64':
+        specifier: 0.3.331
+        version: 0.3.331
+      '@anthropic-ai/claude-agent-sdk-linux-arm64-musl':
+        specifier: 0.3.331
+        version: 0.3.331
+      '@anthropic-ai/claude-agent-sdk-linux-x64':
+        specifier: 0.3.331
+        version: 0.3.331
+      '@anthropic-ai/claude-agent-sdk-linux-x64-musl':
+        specifier: 0.3.331
+        version: 0.3.331
+      '@anthropic-ai/claude-agent-sdk-win32-arm64':
+        specifier: 0.3.331
+        version: 0.3.331
+      '@anthropic-ai/claude-agent-sdk-win32-x64':
+        specifier: 0.3.331
+        version: 0.3.331
 
   packages/agent-contracts: {}
 
