@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { claudeAllowedTools, codexArguments, supportsCodexCli } from "../src/index";
+import { claudeAllowedTools, codexArguments, linkAbortSignal, supportsCodexCli } from "../src/index";
 
 const request = (approvalMode: "read-only" | "workspace-write" | "full-access") => ({
   provider: "codex" as const,
@@ -38,4 +38,20 @@ test("Codex preflight rejects versions that predate the supported permission fla
   assert.equal(supportsCodexCli("codex-cli 0.172.0"), true);
   assert.equal(supportsCodexCli("codex-cli 0.170.9"), false);
   assert.equal(supportsCodexCli("codex-cli unknown"), false);
+});
+
+test("provider adapters inherit caller abort signals and detach listeners", () => {
+  const parent = new AbortController();
+  const child = new AbortController();
+  const unlink = linkAbortSignal(parent.signal, child);
+  assert.equal(child.signal.aborted, false);
+  parent.abort(new Error("cancelled"));
+  assert.equal(child.signal.aborted, true);
+  unlink();
+
+  const alreadyAborted = new AbortController();
+  alreadyAborted.abort();
+  const nextChild = new AbortController();
+  linkAbortSignal(alreadyAborted.signal, nextChild);
+  assert.equal(nextChild.signal.aborted, true);
 });
