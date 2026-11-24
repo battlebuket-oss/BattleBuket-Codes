@@ -23,10 +23,12 @@ export function qualityCommand(manager: PackageManager, script: string): Quality
     const commands: Record<string, string[]> = {
       test: ["test", "./..."],
       lint: ["vet", "./..."],
-      build: ["build", "./..."]
+      build: ["build", "./..."],
+      security: ["./..."]
     };
     const args = commands[script];
     if (!args) throw new Error("Unsupported Go quality check: " + script);
+    if (script === "security") return { executable: "govulncheck", args, display: "govulncheck ./..." };
     return { executable: "go", args, display: "go " + args.join(" ") };
   }
   if (manager === "cargo") {
@@ -34,7 +36,8 @@ export function qualityCommand(manager: PackageManager, script: string): Quality
       test: ["test"],
       lint: ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"],
       typecheck: ["check", "--all-targets"],
-      build: ["build", "--all-targets"]
+      build: ["build", "--all-targets"],
+      security: ["audit"]
     };
     const args = commands[script];
     if (!args) throw new Error("Unsupported Rust quality check: " + script);
@@ -45,7 +48,8 @@ export function qualityCommand(manager: PackageManager, script: string): Quality
       test: ["-m", "pytest", "-q"],
       lint: ["-m", "ruff", "check", "."],
       typecheck: ["-m", "mypy", "."],
-      build: ["-m", "build"]
+      build: ["-m", "build"],
+      security: ["-m", "pip_audit", "-r", "requirements.txt"]
     };
     const args = commands[script];
     if (!args) throw new Error("Unsupported Python quality check: " + script);
@@ -56,7 +60,8 @@ export function qualityCommand(manager: PackageManager, script: string): Quality
     const commands: Record<string, string[]> = {
       test: ["test"],
       lint: ["format", "--verify-no-changes"],
-      build: ["build"]
+      build: ["build"],
+      security: ["list", "package", "--vulnerable", "--include-transitive"]
     };
     const args = commands[script];
     if (!args) throw new Error("Unsupported .NET quality check: " + script);
@@ -105,10 +110,10 @@ async function hasDirectory(path: string): Promise<boolean> {
 async function discoverAlternativeProject(root: string, entries: string[]): Promise<{ manager: PackageManager; scripts: string[] } | null> {
   const entrySet = new Set(entries);
   if (entrySet.has("go.mod") && await isRegularFile(join(root, "go.mod"))) {
-    return { manager: "go", scripts: ["test", "lint", "build"] };
+    return { manager: "go", scripts: ["test", "lint", "build", "security"] };
   }
   if (entrySet.has("Cargo.toml") && await isRegularFile(join(root, "Cargo.toml"))) {
-    return { manager: "cargo", scripts: ["test", "lint", "typecheck", "build"] };
+    return { manager: "cargo", scripts: ["test", "lint", "typecheck", "build", "security"] };
   }
   if (entrySet.has("pyproject.toml") && await isRegularFile(join(root, "pyproject.toml"))) {
     const path = join(root, "pyproject.toml");
@@ -120,10 +125,11 @@ async function discoverAlternativeProject(root: string, entries: string[]): Prom
     if (config.includes("[tool.ruff]")) scripts.push("lint");
     if (config.includes("[tool.mypy]")) scripts.push("typecheck");
     if (config.includes("[build-system]")) scripts.push("build");
+    if (entrySet.has("requirements.txt") && await isRegularFile(join(root, "requirements.txt"))) scripts.push("security");
     return { manager: "python", scripts };
   }
   if (entries.some(name => name.endsWith(".sln") || name.endsWith(".slnx") || name.endsWith(".csproj"))) {
-    return { manager: "dotnet", scripts: ["test", "lint", "build"] };
+    return { manager: "dotnet", scripts: ["test", "lint", "build", "security"] };
   }
   return null;
 }
@@ -167,7 +173,7 @@ function safeEnvironment(): NodeJS.ProcessEnv {
 async function runScript(manager: PackageManager, script: string, cwd: string, signal?: AbortSignal): Promise<VerificationResult> {
   const started = Date.now();
   const spec = qualityCommand(manager, script);
-  const label = script === "audit" ? "Dependency audit" : "Project " + script;
+  const label = script === "audit" || script === "security" ? "Project dependency/security audit" : "Project " + script;
   const executable = process.platform === "win32" && spec.shellCommand ? "cmd.exe" : spec.executable;
   const args = process.platform === "win32" && spec.shellCommand
     ? ["/d", "/s", "/c", spec.display]
@@ -184,6 +190,11 @@ async function runScript(manager: PackageManager, script: string, cwd: string, s
       ...(signal ? { signal } : {})
     });
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n").slice(-12000);
+    if (manager === "dotnet" && script === "security" &&
+        /has the following vulnerable packages|vulnerable package(?:s)? found/i.test(output) &&
+        !/no vulnerable packages found/i.test(output)) {
+      return { name: label, passed: false, output: "Vulnerable packages were reported by dotnet.\n" + output };
+    }
     return { name: label, passed: true, output: spec.display + " passed in " + (Date.now() - started) + " ms" + (output ? "\n" + output : "") };
   } catch (error) {
     const failure = error as NodeJS.ErrnoException & { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };
