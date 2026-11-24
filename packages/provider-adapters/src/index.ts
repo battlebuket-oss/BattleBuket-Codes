@@ -100,7 +100,14 @@ export class ClaudeAgentSdkAdapter implements AgentAdapter {
           cwd: request.workingDirectory,
           abortController: controller,
           permissionMode: request.approvalMode === "read-only" ? "plan" : "acceptEdits",
-          disallowedTools: ["Bash"],
+          tools: request.approvalMode === "read-only"
+            ? ["Read", "Glob", "Grep"]
+            : ["Read", "Edit", "Write", "Glob", "Grep"],
+          settingSources: [],
+          strictMcpConfig: true,
+          permissionPrompts: "none",
+          maxTurns: 40,
+          env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: "battlebuket-codes" },
           persistSession: false
         }
       });
