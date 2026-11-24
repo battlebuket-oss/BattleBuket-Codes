@@ -65,3 +65,23 @@ test("ignores a symlinked recent-workspace file", async () => {
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+test("serializes concurrent recent-project updates without losing the final selections", async () => {
+  const userData = await mkdtemp(join(tmpdir(), "bb-recent-concurrent-"));
+  const projects = await mkdtemp(join(tmpdir(), "bb-projects-concurrent-"));
+  try {
+    const paths: string[] = [];
+    for (let index = 0; index < 8; index++) {
+      const path = join(projects, "parallel-" + index);
+      await mkdir(path);
+      paths.push(path);
+    }
+    await Promise.all(paths.map(path => recordRecentWorkspace(userData, path)));
+    const recent = await readRecentWorkspaces(userData);
+    assert.equal(recent.length, paths.length);
+    assert.deepEqual(new Set(recent.map(item => item.path)), new Set(paths));
+  } finally {
+    await rm(userData, { recursive: true, force: true });
+    await rm(projects, { recursive: true, force: true });
+  }
+});
