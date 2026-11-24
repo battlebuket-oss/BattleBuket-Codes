@@ -126,13 +126,27 @@ export class WorkspaceTerminalSessions {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
     this.sessions.delete(sessionId);
-    session.terminal.kill();
-    await Promise.race([session.exited, delay(2500)]);
-    return true;
+
+    try { session.terminal.kill(); } catch { /* The shell may have exited concurrently. */ }
+    const gracefulExit = await Promise.race([
+      session.exited.then(() => true),
+      delay(1500).then(() => false)
+    ]);
+    if (!gracefulExit) {
+      try { session.terminal.kill("SIGKILL"); } catch { /* The process may already be gone. */ }
+    }
+    const exited = await Promise.race([
+      session.exited.then(() => true),
+      delay(1500).then(() => false)
+    ]);
+    return exited;
   }
 
   async closeAll(): Promise<void> {
-    await Promise.all([...this.sessions.keys()].map(id => this.close(id)));
+    const results = await Promise.all([...this.sessions.keys()].map(id => this.close(id)));
+    if (results.some(result => !result)) {
+      throw new Error("One or more terminal processes did not confirm exit after termination.");
+    }
   }
 
   hasActiveSession(): boolean {
