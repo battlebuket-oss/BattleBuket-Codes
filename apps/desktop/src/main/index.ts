@@ -1,21 +1,18 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { promises as fs } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { join, relative, resolve } from "node:path";
+import { isPathInside } from "./workspace-path";
 
 type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
 let activeWorkspace: string | null = null;
 const MAX_FILE_BYTES = 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "out", ".next"]);
 
-function isInside(root: string, target: string): boolean {
-  const rel = relative(root, target);
-  return rel === "" || (rel !== ".." && !rel.startsWith(".." + sep) && !isAbsolute(rel));
-}
 async function resolveWorkspacePath(relativePath = ""): Promise<string> {
   if (!activeWorkspace) throw new Error("Open a project folder first");
   const root = await fs.realpath(activeWorkspace);
   const candidate = await fs.realpath(resolve(root, relativePath));
-  if (!isInside(root, candidate)) throw new Error("Access outside the selected workspace is blocked");
+  if (!isPathInside(root, candidate)) throw new Error("Access outside the selected workspace is blocked");
   return candidate;
 }
 
