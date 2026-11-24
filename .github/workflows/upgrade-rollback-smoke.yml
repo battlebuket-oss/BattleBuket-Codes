@@ -1,0 +1,165 @@
+name: Installed-app upgrade and rollback smoke tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_tag:
+        description: Older signed release tag to install first
+        type: string
+        required: true
+      candidate_tag:
+        description: Newer signed release tag to upgrade to and then roll back from
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upgrade-rollback-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  validate-inputs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate release tags
+        env:
+          BASELINE_TAG: ${{ inputs.baseline_tag }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+        run: |
+          test -n "$BASELINE_TAG"
+          test -n "$CANDIDATE_TAG"
+          test "$BASELINE_TAG" != "$CANDIDATE_TAG"
+          case "$BASELINE_TAG" in v*) ;; *) echo "baseline_tag must be a version tag beginning with v"; exit 1;; esac
+          case "$CANDIDATE_TAG" in v*) ;; *) echo "candidate_tag must be a version tag beginning with v"; exit 1;; esac
+
+  windows-upgrade-rollback:
+    needs: validate-inputs
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASELINE_TAG: ${{ inputs.baseline_tag }}
+      CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+    steps:
+      - name: Download signed baseline and candidate installers
+        shell: pwsh
+        run: |
+          $baselineDir = Join-Path $env:RUNNER_TEMP "baseline"
+          $candidateDir = Join-Path $env:RUNNER_TEMP "candidate"
+          New-Item -ItemType Directory -Force -Path $baselineDir, $candidateDir | Out-Null
+          gh release download $env:BASELINE_TAG --repo $env:GITHUB_REPOSITORY --pattern "*.exe" --dir $baselineDir
+          gh release download $env:CANDIDATE_TAG --repo $env:GITHUB_REPOSITORY --pattern "*.exe" --dir $candidateDir
+      - name: Install baseline, upgrade, verify state, roll back and uninstall
+        shell: pwsh
+        run: |
+          $baselineInstaller = Get-ChildItem (Join-Path $env:RUNNER_TEMP "baseline") -Filter "*.exe" | Select-Object -First 1
+          $candidateInstaller = Get-ChildItem (Join-Path $env:RUNNER_TEMP "candidate") -Filter "*.exe" | Select-Object -First 1
+          if (-not $baselineInstaller -or -not $candidateInstaller) { throw "Both signed Windows installers are required." }
+
+          $installDir = Join-Path $env:RUNNER_TEMP "BattleBuketUpgradeSmoke"
+          Start-Process -FilePath $baselineInstaller.FullName -ArgumentList @("/S", "/D=$installDir") -Wait
+          $application = Join-Path $installDir "battlebuket-codes.exe"
+          if (-not (Test-Path $application)) { throw "Baseline application was not installed." }
+          & $application --smoke-test --smoke-seed-state
+          if ($LASTEXITCODE -ne 0) { throw "Baseline launch or state seeding failed." }
+
+          Start-Process -FilePath $candidateInstaller.FullName -ArgumentList @("/S", "/D=$installDir") -Wait
+          if (-not (Test-Path $application)) { throw "Candidate application is missing after upgrade." }
+          & $application --smoke-test --smoke-verify-state
+          if ($LASTEXITCODE -ne 0) { throw "Upgrade failed to preserve app user data or launch the candidate." }
+
+          Start-Process -FilePath $baselineInstaller.FullName -ArgumentList @("/S", "/D=$installDir") -Wait
+          & $application --smoke-test --smoke-verify-state --smoke-clear-state
+          if ($LASTEXITCODE -ne 0) { throw "Rollback failed to preserve app user data or launch the baseline." }
+
+          $uninstaller = Join-Path $installDir "Uninstall BattleBuket Codes.exe"
+          if (-not (Test-Path $uninstaller)) { throw "NSIS uninstaller was not found." }
+          Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait
+          if (Test-Path $application) { throw "Application executable remains after uninstall." }
+
+  macos-upgrade-rollback:
+    needs: validate-inputs
+    runs-on: macos-latest
+    timeout-minutes: 35
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASELINE_TAG: ${{ inputs.baseline_tag }}
+      CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+    steps:
+      - name: Download signed baseline and candidate DMGs
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/baseline" "$RUNNER_TEMP/candidate"
+          gh release download "$BASELINE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.dmg" --dir "$RUNNER_TEMP/baseline"
+          gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.dmg" --dir "$RUNNER_TEMP/candidate"
+      - name: Install baseline, upgrade, verify state, roll back and uninstall
+        run: |
+          set -euo pipefail
+          baseline_dmg="$(find "$RUNNER_TEMP/baseline" -maxdepth 1 -name '*.dmg' -print -quit)"
+          candidate_dmg="$(find "$RUNNER_TEMP/candidate" -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$baseline_dmg" && test -n "$candidate_dmg"
+
+          mount_and_copy() {
+            dmg="$1"
+            mount="$2"
+            mkdir -p "$mount"
+            hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount"
+            source_app="$(find "$mount" -maxdepth 2 -name '*.app' -print -quit)"
+            test -n "$source_app"
+            rm -rf "$RUNNER_TEMP/BattleBuket Codes.app"
+            ditto "$source_app" "$RUNNER_TEMP/BattleBuket Codes.app"
+            hdiutil detach "$mount"
+          }
+
+          app="$RUNNER_TEMP/BattleBuket Codes.app"
+          mount_and_copy "$baseline_dmg" "$RUNNER_TEMP/baseline-mount"
+          open -n -W "$app" --args --smoke-test --smoke-seed-state
+
+          mount_and_copy "$candidate_dmg" "$RUNNER_TEMP/candidate-mount"
+          open -n -W "$app" --args --smoke-test --smoke-verify-state
+
+          mount_and_copy "$baseline_dmg" "$RUNNER_TEMP/rollback-mount"
+          open -n -W "$app" --args --smoke-test --smoke-verify-state --smoke-clear-state
+
+          rm -rf "$app"
+          test ! -e "$app"
+
+  linux-upgrade-rollback:
+    needs: validate-inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BASELINE_TAG: ${{ inputs.baseline_tag }}
+      CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+    steps:
+      - name: Download baseline and candidate AppImages
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/baseline" "$RUNNER_TEMP/candidate"
+          gh release download "$BASELINE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.AppImage" --dir "$RUNNER_TEMP/baseline"
+          gh release download "$CANDIDATE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "*.AppImage" --dir "$RUNNER_TEMP/candidate"
+      - name: Install baseline, upgrade, verify state, roll back and remove artifact
+        run: |
+          set -euo pipefail
+          baseline="$(find "$RUNNER_TEMP/baseline" -maxdepth 1 -name '*.AppImage' -print -quit)"
+          candidate="$(find "$RUNNER_TEMP/candidate" -maxdepth 1 -name '*.AppImage' -print -quit)"
+          test -n "$baseline" && test -n "$candidate"
+
+          installed="$RUNNER_TEMP/BattleBuket-Codes-upgrade-smoke.AppImage"
+          cp "$baseline" "$installed"
+          chmod +x "$installed"
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-seed-state
+
+          cp "$candidate" "$installed"
+          chmod +x "$installed"
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-verify-state
+
+          cp "$baseline" "$installed"
+          chmod +x "$installed"
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-verify-state --smoke-clear-state
+
+          rm -f "$installed"
+          test ! -e "$installed"
