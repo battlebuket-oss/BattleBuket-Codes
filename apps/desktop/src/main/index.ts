@@ -93,6 +93,20 @@ function createWindow(): void {
   window.on("closed", () => { if (mainWindow === window) mainWindow = null; void terminalSessions.closeAll(); activeTerminalSessionId = null; });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
+  if (process.argv.includes("--smoke-test")) {
+    const timeout = setTimeout(() => app.exit(1), 30_000);
+    const finish = (success: boolean) => {
+      clearTimeout(timeout);
+      app.exit(success ? 0 : 1);
+    };
+    window.webContents.once("did-fail-load", () => finish(false));
+    window.webContents.once("did-finish-load", () => {
+      void window.webContents.executeJavaScript(
+        "window.battleBuket && window.battleBuket.getVersion()"
+      ).then((version: unknown) => finish(typeof version === "string" && version.length > 0))
+        .catch(() => finish(false));
+    });
+  }
   if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
   else void window.loadFile(join(__dirname, "../renderer/index.html"));
 }
