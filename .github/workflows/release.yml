@@ -135,8 +135,14 @@ jobs:
           Start-Process -FilePath $installer.FullName -ArgumentList @("/S", "/D=$installDir") -Wait
           $application = Join-Path $installDir "battlebuket-codes.exe"
           if (-not (Test-Path $application)) { throw "Installed application executable was not found." }
-          $smoke = Start-Process -FilePath $application -ArgumentList "--smoke-test" -Wait -PassThru
-          if ($smoke.ExitCode -ne 0) { throw "Installed application smoke test failed with exit code $($smoke.ExitCode)." }
+          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-installed-smoke.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-installed-smoke.stderr.log"
+          $smoke = Start-Process -FilePath $application -ArgumentList @("--smoke-test", "--enable-logging=stderr") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if ($smoke.ExitCode -ne 0) {
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 250 }
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 500 }
+            throw "Installed application smoke test failed with exit code $($smoke.ExitCode)."
+          }
           $uninstaller = Join-Path $installDir "Uninstall BattleBuket Codes.exe"
           if (-not (Test-Path $uninstaller)) { throw "NSIS uninstaller was not found." }
           Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait
@@ -154,7 +160,17 @@ jobs:
           installed_app="$RUNNER_TEMP/BattleBuket Codes.app"
           ditto "$source_app" "$installed_app"
           hdiutil detach /tmp/battlebuket-install-smoke
-          "$installed_app/Contents/MacOS/battlebuket-codes" --smoke-test
+          stdout="$RUNNER_TEMP/battlebuket-macos-smoke.stdout.log"
+          stderr="$RUNNER_TEMP/battlebuket-macos-smoke.stderr.log"
+          set +e
+          "$installed_app/Contents/MacOS/battlebuket-codes" --smoke-test >"$stdout" 2>"$stderr"
+          smoke_status=$?
+          set -e
+          if [[ "$smoke_status" -ne 0 ]]; then
+            cat "$stdout"
+            cat "$stderr"
+            exit "$smoke_status"
+          fi
           rm -rf "$installed_app"
           test ! -e "$installed_app"
       - name: Launch Linux AppImage with Chromium sandbox enabled
