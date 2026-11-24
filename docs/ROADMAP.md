@@ -12,9 +12,11 @@ This roadmap distinguishes committed foundation from work that is not yet implem
 - [ ] Decide and pin the VS Code OSS upstream revision and required notices.
 - [ ] Establish the branded dark workbench theme and BattleBuket navigation.
 - [x] Build secure Electron main/preload/renderer boundaries (context isolation, sandbox, restricted preload, navigation blocking, CSP).
-- [ ] Add recent projects, command palette, terminal, and diagnostics.
-- [x] Add native project-folder selection, workspace-bounded directory listing, and 1 MB read-only text previews (initial explorer only).
+- [ ] Add recent projects, command palette, integrated terminal, and diagnostics.
+- [x] Add native project-folder selection, workspace-bounded directory listing, 1 MB text previews, and bounded saves with stale-version protection.
+- [x] Add tests for workspace path containment, symlink filtering, reads, writes, and stale-save rejection.
 - [ ] Produce repeatable development builds for Windows, macOS, and Linux.
+- [x] Configure a manual Windows NSIS installer-preview workflow (execution and signing still pending).
 
 ## Phase 2 — Platform contracts and persistence
 - [ ] Define task, plan, agent, tool-call, event, approval, and verification contracts.
@@ -45,7 +47,7 @@ This roadmap distinguishes committed foundation from work that is not yet implem
 
 ## Phase 6 — Production readiness
 - [ ] Add telemetry with privacy controls, crash reporting, and diagnostics export.
-- [ ] Add signed installers, code signing/notarization, auto-update, and rollback.
+- [ ] Add trusted code-signing certificate and signed installers/notarization, auto-update, and rollback.
 - [ ] Add backup/restore, data migration, and offline/reconnect behavior.
 - [ ] Add end-to-end tests on supported operating systems.
 - [ ] Publish support policy, privacy disclosures, third-party notices, and release checklist.
