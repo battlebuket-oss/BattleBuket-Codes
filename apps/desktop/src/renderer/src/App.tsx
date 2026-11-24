@@ -592,9 +592,9 @@ export default function App() {
           {entries.length === 0 && !loading && <small>No visible files in this folder.</small>}
         </div>}
         {!workspace && <div className="empty"><FileCode2 size={26}/><b>Your workspace starts here</b><p>Open a project folder to browse files and preview source code.</p><button className="open" onClick={openWorkspace} disabled={running}><Plus size={14}/> Open project</button></div>}
-        {!workspace && recentWorkspaces.length > 0 && <div className="recent-projects">
+        {recentWorkspaces.filter(project => project.path !== workspace).length > 0 && <div className="recent-projects">
           <label>RECENT PROJECTS</label>
-          {recentWorkspaces.map(project => <button key={project.path} title={project.path} onClick={() => void openRecentProject(project.path)}>
+          {recentWorkspaces.filter(project => project.path !== workspace).map(project => <button key={project.path} title={project.path} onClick={() => void openRecentProject(project.path)}>
             <Folder size={13}/><span>{project.path.split(/[\\/]/).filter(Boolean).pop() || project.path}</span>
             <small>{new Date(project.lastOpenedAt).toLocaleDateString()}</small>
           </button>)}
