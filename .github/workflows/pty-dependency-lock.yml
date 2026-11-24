@@ -122,4 +122,9 @@ jobs:
           set -euo pipefail
           executable="$(find apps/desktop/release-smoke -type f -name 'battlebuket-codes' -perm -u+x -print -quit)"
           test -n "$executable"
+          sandbox_helper="$(dirname "$executable")/chrome-sandbox"
+          test -f "$sandbox_helper"
+          sudo chown root:root "$sandbox_helper"
+          sudo chmod 4755 "$sandbox_helper"
+          test "$(stat -c '%U:%a' "$sandbox_helper")" = "root:4755"
           xvfb-run -a "$executable" --smoke-test
