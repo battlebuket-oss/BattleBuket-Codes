@@ -13,7 +13,7 @@ test("OS command sandbox allows workspace writes but blocks host-home writes and
   timeout: 20_000
 }, async () => {
   const workspace = await fs.mkdtemp(join(tmpdir(), "bb-sandbox-workspace-"));
-  const outside = join(homedir(), ".battlebuket-sandbox-sentinel-" + randomUUID());
+  const outside = join("/var/tmp", "battlebuket-sandbox-sentinel-" + randomUUID());
   const workspaceResult = join(workspace, "sandbox-result.json");
   const server = createServer(socket => socket.end("host-network-reached"));
   await new Promise<void>((resolve, reject) => {
