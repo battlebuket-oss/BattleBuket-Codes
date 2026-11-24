@@ -44,7 +44,16 @@ export async function appendTaskHistory(userDataPath: string, event: TaskHistory
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  await fs.appendFile(file, JSON.stringify(event) + "\n", { encoding: "utf8", mode: 0o600, flag: "a" });
+  const safeEvent: TaskHistoryEvent = {
+    taskId: event.taskId,
+    provider: event.provider,
+    risk: event.risk,
+    status: event.status,
+    at: event.at,
+    ...(event.changedFileCount === undefined ? {} : { changedFileCount: event.changedFileCount }),
+    ...(event.verificationPassed === undefined ? {} : { verificationPassed: event.verificationPassed })
+  };
+  await fs.appendFile(file, JSON.stringify(safeEvent) + "\n", { encoding: "utf8", mode: 0o600, flag: "a" });
 }
 
 export async function readTaskHistory(userDataPath: string, now = new Date()): Promise<TaskHistoryItem[]> {
@@ -91,7 +100,7 @@ export async function readTaskHistory(userDataPath: string, now = new Date()): P
     } catch { /* Ignore an incomplete or malformed trailing record. */ }
   }
   return [...tasks.values()]
-    .map(item => item.status === "running" && now.getTime() - Date.parse(item.startedAt) > 60_000
+    .map(item => item.status === "running"
       ? { ...item, status: "interrupted" as const }
       : item)
     .sort((a,b) => b.startedAt.localeCompare(a.startedAt))
