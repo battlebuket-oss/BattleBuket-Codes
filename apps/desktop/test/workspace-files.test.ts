@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listWorkspace, readWorkspaceFile, searchWorkspaceFiles, writeWorkspaceFile } from "../src/main/workspace-files";
+import { listWorkspace, readWorkspaceFile, searchWorkspaceContent, searchWorkspaceFiles, writeWorkspaceFile } from "../src/main/workspace-files";
 
 test("lists folders and regular files but skips symlinks and generated directories", async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-workspace-"));
@@ -77,4 +77,32 @@ test("quick-open search finds nested files and excludes generated folders and sy
     assert.deepEqual(await searchWorkspaceFiles(root, ""), []);
     assert.deepEqual(await searchWorkspaceFiles(root, "x".repeat(201)), []);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("project content search returns line previews and ignores generated, binary, symlink and oversized files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-workspace-content-search-"));
+  try {
+    await mkdir(join(root, "src"), { recursive: true });
+    await mkdir(join(root, "node_modules", "fixture"), { recursive: true });
+    await writeFile(join(root, "src", "feature.ts"), [
+      "export const first = 1;",
+      "const marker = 'BATTLEBUKET_CONTENT_MATCH';",
+      "export { marker };"
+    ].join("\n"));
+    await writeFile(join(root, "node_modules", "fixture", "ignored.ts"), "BATTLEBUKET_CONTENT_MATCH");
+    await writeFile(join(root, "src", "binary.bin"), Buffer.from([0, 1, 2, 3]));
+    await writeFile(join(root, "src", "oversized.txt"), "BATTLEBUKET_CONTENT_MATCH" + "x".repeat(1024 * 1024));
+    await symlink(join(root, "src", "feature.ts"), join(root, "linked-feature.ts"));
+
+    const matches = await searchWorkspaceContent(root, "BATTLEBUKET_CONTENT_MATCH");
+    assert.deepEqual(matches, [{
+      path: "src/feature.ts",
+      lineNumber: 2,
+      preview: "const marker = 'BATTLEBUKET_CONTENT_MATCH';"
+    }]);
+    assert.deepEqual(await searchWorkspaceContent(root, "x"), []);
+    assert.deepEqual(await searchWorkspaceContent(root, "x".repeat(201)), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
