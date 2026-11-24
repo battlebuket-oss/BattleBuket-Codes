@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - feature/pty-terminal
+    paths-ignore:
+      - pnpm-lock.yaml
   workflow_dispatch:
 
 concurrency:
