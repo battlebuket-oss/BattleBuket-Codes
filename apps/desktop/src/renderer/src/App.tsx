@@ -377,7 +377,11 @@ export default function App() {
         if (selectedFile && !saving) void saveFile();
         return;
       }
-      if (event.shiftKey && event.key.toLowerCase() === "p") {
+      if (event.shiftKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        event.stopPropagation();
+        openPalette("content");
+      } else if (event.shiftKey && event.key.toLowerCase() === "p") {
         event.preventDefault();
         event.stopPropagation();
         openPalette("commands");
@@ -517,7 +521,7 @@ export default function App() {
       <div className="top-right">v{version}<Settings2 size={16}/></div>
     </header>
     <div className="layout">
-      <nav className="rail"><LayoutDashboard/><FolderOpen/><button className="rail-action" title="Find in Files" onClick={() => openPalette("content")}><Search/></button><button className="rail-action" title="Command Palette · Ctrl/Cmd+Shift+P" onClick={() => openPalette("commands")}><Command/></button><GitBranch/><span/><ShieldCheck/></nav>
+      <nav className="rail"><LayoutDashboard/><FolderOpen/><button className="rail-action" title="Find in Files · Ctrl/Cmd+Shift+F" onClick={() => openPalette("content")}><Search/></button><button className="rail-action" title="Command Palette · Ctrl/Cmd+Shift+P" onClick={() => openPalette("commands")}><Command/></button><GitBranch/><span/><ShieldCheck/></nav>
       <aside className="projects">
         <label>PROJECT EXPLORER</label>
         <button onClick={openWorkspace} disabled={running}><FolderOpen size={15}/> {workspace ? "Change project" : "Open project"} <Plus size={13}/></button>
@@ -540,7 +544,7 @@ export default function App() {
       <section className="center">
         <div className="tab"><FileCode2 size={14}/> {selectedFile ? selectedFile.path : "Engineering command center"}<button className="terminal-toggle" onClick={() => { if (terminalOpen) setTerminalOpen(false); else void openTerminal(); }}>{terminalOpen ? "Hide terminal" : "Terminal"}</button></div>
         {paletteOpen && <div className="palette-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setPaletteOpen(false); }}>
-          <section className="palette-dialog" role="dialog" aria-modal="true" aria-label={paletteMode === "files" ? "Quick Open" : "Command Palette"}>
+          <section className="palette-dialog" role="dialog" aria-modal="true" aria-label={paletteMode === "files" ? "Quick Open" : paletteMode === "content" ? "Find in Files" : "Command Palette"}>
             <div className="palette-input-row">
               {paletteMode === "commands" ? <Command size={16}/> : <Search size={16}/>}
               <input
@@ -573,7 +577,7 @@ export default function App() {
               {paletteLoading && <p>Searching workspace…</p>}
               {!paletteLoading && paletteCount === 0 && <p>{paletteMode === "files" ? (!workspace ? "Open a project folder before searching files." : paletteQuery.trim() ? "No matching file names found." : "Type part of a file name to search the workspace.") : paletteMode === "content" ? (!workspace ? "Open a project folder before searching content." : paletteQuery.trim().length < 2 ? "Type at least two characters to search file contents." : "No matching text found in searchable files.") : "No commands match your search."}</p>}
             </div>
-            <div className="palette-footer">{paletteMode === "files" ? "Ctrl/Cmd + P" : "Ctrl/Cmd + Shift + P"} · ↑ ↓ Navigate · Enter Open · Esc Close</div>
+            <div className="palette-footer">{paletteMode === "files" ? "Ctrl/Cmd + P" : paletteMode === "content" ? "Ctrl/Cmd + Shift + F" : "Ctrl/Cmd + Shift + P"} · ↑ ↓ Navigate · Enter Open · Esc Close</div>
           </section>
         </div>}
         {editorTabs.length > 0 && <div className="editor-tabs" role="tablist" aria-label="Open files">
