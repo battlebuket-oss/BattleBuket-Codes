@@ -80,9 +80,10 @@ export async function prepareSandboxedCommand(
   const scratchTmp = join(scratch, "tmp");
   const scratchCache = join(scratch, "cache");
   const scratchCorepack = join(scratch, "corepack");
+  const scratchWorkspace = join(scratch, "workspace");
   const dispose = async () => fs.rm(scratch, { recursive: true, force: true });
   try {
-    await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack].map(path => fs.mkdir(path, { recursive: true })));
+    await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack, scratchWorkspace].map(path => fs.mkdir(path, { recursive: true })));
     const corepackHome = process.env.COREPACK_HOME || join(homedir(), ".cache", "node", "corepack");
     const hasCorepackHome = await isDirectory(corepackHome);
     if (hasCorepackHome) {
@@ -119,11 +120,10 @@ export async function prepareSandboxedCommand(
         "--tmpfs", "/var/tmp",
         "--proc", "/proc",
         "--dev", "/dev",
-        "--dir", "/workspace",
-        "--bind", workspace, "/workspace",
         "--dir", "/tmp/battlebuket-sandbox",
         "--bind", scratch, "/tmp/battlebuket-sandbox",
-        "--chdir", "/workspace"
+        "--bind", workspace, "/tmp/battlebuket-sandbox/workspace",
+        "--chdir", "/tmp/battlebuket-sandbox/workspace"
       ];
   
       const mounted = new Set<string>(["/home", "/root", "/tmp", "/run", "/mnt", "/media", "/var/tmp"]);
