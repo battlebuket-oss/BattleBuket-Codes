@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { discoverQualityScripts, qualityCommand, runProjectQualityChecks } from "../src/main/project-verification";
@@ -88,7 +88,7 @@ test("discovers Go, Rust, Python and .NET project verification commands", async 
 test("maps non-Node project checks to explicit toolchain commands", () => {
   assert.equal(qualityCommand("go", "test").display, "go test ./...");
   assert.equal(qualityCommand("cargo", "lint").display, "cargo clippy --all-targets --all-features -- -D warnings");
-  assert.equal(qualityCommand("python", "test").display, "python3 -m pytest -q");
+  assert.equal(qualityCommand("python", "test").display, (process.platform === "win32" ? "python" : "python3") + " -m pytest -q");
   assert.equal(qualityCommand("dotnet", "build").display, "dotnet build");
 });
 
