@@ -53,10 +53,10 @@ function handleTrustedIpc(
   });
 }
 
-async function verifyWorkspaceDiff(workspacePath: string): Promise<VerificationResult[]> {
+async function verifyWorkspaceDiff(workspacePath: string, signal?: AbortSignal): Promise<VerificationResult[]> {
   try {
     const git = await execFile("git", ["rev-parse", "--is-inside-work-tree"], {
-      cwd: workspacePath, timeout: 5000, windowsHide: true, maxBuffer: 64 * 1024
+      cwd: workspacePath, timeout: 5000, windowsHide: true, maxBuffer: 64 * 1024, ...(signal ? { signal } : {})
     });
     if (git.stdout.trim() !== "true") {
       return [{ name: "Git diff whitespace check", passed: true, output: "Skipped: this workspace is not a Git working tree." }];
@@ -70,7 +70,7 @@ async function verifyWorkspaceDiff(workspacePath: string): Promise<VerificationR
   }
   try {
     await execFile("git", ["diff", "--check"], {
-      cwd: workspacePath, timeout: 15000, windowsHide: true, maxBuffer: 256 * 1024
+      cwd: workspacePath, timeout: 15000, windowsHide: true, maxBuffer: 256 * 1024, ...(signal ? { signal } : {})
     });
     await execFile("git", ["diff", "--cached", "--check"], {
       cwd: workspacePath, timeout: 15000, windowsHide: true, maxBuffer: 256 * 1024
@@ -288,7 +288,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
         };
       }
     },
-    verify: async () => {
+    verify: async (_verifiedTask, _implementation, signal) => {
       const projectChecks = await runProjectQualityChecks(task.workspacePath, async (scripts, manager) => {
         const detail = [
           `Package manager: ${manager}`,
@@ -310,8 +310,8 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
           ? await dialog.showMessageBox(mainWindow, options)
           : await dialog.showMessageBox(options);
         return answer.response === 1;
-      });
-      const diffChecks = await verifyWorkspaceDiff(task.workspacePath);
+      }, signal);
+      const diffChecks = await verifyWorkspaceDiff(task.workspacePath, signal);
       return [...projectChecks, ...diffChecks];
     },
     emit: (event: AgentEvent) => {

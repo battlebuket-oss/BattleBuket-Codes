@@ -51,7 +51,7 @@ function safeEnvironment(): NodeJS.ProcessEnv {
   return env;
 }
 
-async function runScript(manager: PackageManager, script: string, cwd: string): Promise<VerificationResult> {
+async function runScript(manager: PackageManager, script: string, cwd: string, signal?: AbortSignal): Promise<VerificationResult> {
   const started = Date.now();
   const commandArgs = script === "audit"
     ? manager === "pnpm" ? ["audit", "--audit-level", "high"] : ["audit", "--audit-level=high"]
@@ -61,12 +61,13 @@ async function runScript(manager: PackageManager, script: string, cwd: string): 
   const executable = process.platform === "win32" ? "cmd.exe" : manager;
   const args = process.platform === "win32" ? ["/d", "/s", "/c", command] : commandArgs;
   try {
-    const result = await execFile(executable, args, { cwd, env: safeEnvironment(), timeout: QUALITY_TIMEOUT_MS, killSignal: "SIGTERM", maxBuffer: QUALITY_MAX_OUTPUT_BYTES, windowsHide: true, encoding: "utf8" });
+    const result = await execFile(executable, args, { cwd, env: safeEnvironment(), timeout: QUALITY_TIMEOUT_MS, killSignal: "SIGTERM", maxBuffer: QUALITY_MAX_OUTPUT_BYTES, windowsHide: true, encoding: "utf8", ...(signal ? { signal } : {}) });
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n").slice(-12000);
     return { name: label, passed: true, output: `${command} passed in ${Date.now() - started} ms${output ? `\n${output}` : ""}` };
   } catch (error) {
     const failure = error as NodeJS.ErrnoException & { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };
     const timedOut = failure.killed === true || failure.code === "ETIMEDOUT";
+    if (signal?.aborted) return { name: label, passed: false, output: "Cancelled by the user." };
     const output = [failure.stdout, failure.stderr, failure.message].filter(Boolean).join("\n").slice(-12000);
     return { name: label, passed: false, output: `${timedOut ? "Timed out" : "Failed"} after ${Date.now() - started} ms (exit ${String(failure.code ?? "unknown")})\n${output}` };
   }
@@ -74,15 +75,21 @@ async function runScript(manager: PackageManager, script: string, cwd: string): 
 
 export async function runProjectQualityChecks(
   workspacePath: string,
-  approve: (scripts: string[], manager: string) => Promise<boolean>
+  approve: (scripts: string[], manager: string) => Promise<boolean>,
+  signal?: AbortSignal
 ): Promise<VerificationResult[]> {
+  if (signal?.aborted) return [{ name: "Project quality checks", passed: false, output: "Cancelled by the user." }];
   const project = await discoverQualityScripts(workspacePath);
   if (!project) return [{ name: "Project quality scripts", passed: true, output: "Skipped: no root package.json was found." }];
   if (project.scripts.length === 0) return [{ name: "Project quality scripts", passed: true, output: "Skipped: package.json defines none of test, lint, typecheck, or build." }];
   const approved = await approve(project.scripts, project.manager);
+  if (signal?.aborted) return [{ name: "Project quality checks", passed: false, output: "Cancelled by the user." }];
   if (!approved) return project.scripts.map(script => ({ name: script === "audit" ? "Dependency audit" : `Project ${script}`, passed: false, output: "Not run: the user did not approve execution of repository-defined scripts." }));
   const root = await fs.realpath(workspacePath);
   const results: VerificationResult[] = [];
-  for (const script of project.scripts) results.push(await runScript(project.manager, script, root));
+  for (const script of project.scripts) {
+    if (signal?.aborted) break;
+    results.push(await runScript(project.manager, script, root, signal));
+  }
   return results;
 }
