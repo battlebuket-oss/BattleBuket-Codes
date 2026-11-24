@@ -12,6 +12,7 @@ export type DirectorState =
 export interface DirectorHooks {
   decide(task: AgentTask): Promise<DirectorDecision>;
   verify(task: AgentTask, result: AgentResult): Promise<VerificationResult[]>;
+  review?(task: AgentTask, result: AgentResult, decision: DirectorDecision): Promise<VerificationResult>;
   emit(event: AgentEvent): void;
   approve?(task: AgentTask, decision: DirectorDecision): Promise<boolean>;
 }
@@ -43,8 +44,20 @@ export class EngineeringDirector {
         return result;
       }
       this.current = { status: "reviewing", task, result };
+      const reviewChecks: VerificationResult[] = [];
+      if (decision.reviewer) {
+        if (!this.hooks.review) {
+          reviewChecks.push({
+            name: "Read-only provider review",
+            passed: false,
+            output: "A reviewer provider was selected but no review hook is configured."
+          });
+        } else {
+          reviewChecks.push(await this.hooks.review(task, result, decision));
+        }
+      }
       const checks = await this.hooks.verify(task, result);
-      const reviewed = { ...result, verification: [...result.verification, ...checks] };
+      const reviewed = { ...result, verification: [...result.verification, ...reviewChecks, ...checks] };
       if (checks.some(check => !check.passed)) {
         this.current = { status: "failed", task, reason: "One or more verification checks failed" };
         return { ...reviewed, status: "failed", summary: "Agent changes require fixes: verification failed" };
