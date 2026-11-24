@@ -3,7 +3,8 @@ import { promises as fs } from "node:fs";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { listWorkspace, readWorkspaceFile, writeWorkspaceFile } from "./workspace-files";
 import { appendTaskHistory, readTaskHistory } from "./task-history";
 import { runWorkspaceCommand } from "./terminal";
@@ -30,9 +31,13 @@ function handleTrustedIpc(
     }
     try {
       const frameUrl = new URL(frame.url);
-      const isPackagedRenderer = frameUrl.protocol === "file:";
+      const expectedRendererPath = resolve(join(__dirname, "../renderer/index.html"));
+      const isPackagedRenderer = frameUrl.protocol === "file:" && resolve(fileURLToPath(frameUrl)) === expectedRendererPath;
       const devUrl = process.env.ELECTRON_RENDERER_URL;
-      const isTrustedDevRenderer = Boolean(devUrl) && frameUrl.origin === new URL(devUrl!).origin;
+      const configuredDevUrl = devUrl ? new URL(devUrl) : null;
+      const isTrustedDevRenderer = Boolean(configuredDevUrl) &&
+        frameUrl.origin === configuredDevUrl!.origin &&
+        frameUrl.pathname === configuredDevUrl!.pathname;
       if (!isPackagedRenderer && !isTrustedDevRenderer) {
         throw new Error("Untrusted renderer origin.");
       }
