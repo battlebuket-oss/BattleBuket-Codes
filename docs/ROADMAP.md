@@ -16,8 +16,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add bounded text-file preview, atomic saves, stale-write detection, and path/symlink safety tests.
 - [x] Add the task composer, provider selection, risk/permission selection, streamed task status, and cancellation controls.
 - [ ] Embed a tested Code - OSS workbench and complete the full editor experience: tabs, diagnostics, command palette, project search, and recent projects. The current editor remains a lightweight textarea preview.
-- [x] Add a persistent pipe-based workspace shell session with session lifecycle, streamed output, bounds, and explicit OS-permission disclosure.
-- [ ] Replace the pipe-based shell with a native PTY, xterm terminal UI, interactive TTY support, resize handling, and a permission broker.
+- [ ] Verify the native `node-pty` / xterm.js terminal implementation in draft PR #11: Electron ABI rebuild, interactive input/output, resize and process cleanup tests on Windows/macOS/Linux. The source implementation exists; the required cross-platform test evidence is not yet green.
 - [x] Add a tag-triggered signed installer build and draft-release workflow with required Windows/macOS signing secrets.
 - [ ] Configure real signing secrets and verify signed installers on Windows, macOS, and Linux; no production release has been published.
 
@@ -32,6 +31,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Accept one task, select a provider explicitly, enforce risk-based permissions, stream events, and support cancellation.
 - [x] Gate a successful result on the current Git whitespace check.
 - [ ] Implement prompt enhancement, acceptance-criteria generation, planning, dependency graphs, delegation, and scheduling.
+- [x] Add a second read-only review pass after implementation using the same selected provider runtime; reviewer rejection prevents task completion. This is not an independent second model and can consume additional provider usage.
 - [ ] Implement real specialist-agent delegation rather than role descriptions or simulated teams.
 - [ ] Implement observation, review loops, replanning, retries, timeouts, checkpoints, and resumable tasks.
 - [ ] Add multi-task isolation, worktree ownership, merge/conflict resolution, and human review of final diffs.
