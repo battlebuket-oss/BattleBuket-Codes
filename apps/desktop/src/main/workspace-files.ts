@@ -176,7 +176,7 @@ export async function writeWorkspaceFileSystemFile(
 
   const parent = dirname(target);
   const temporary = join(parent, "." + basename(target) + "." + randomUUID() + ".tmp");
-  const handle = await fs.open(temporary, "wx", original ? original.mode & 0o777 : 0o600);
+  const handle = await fs.open(temporary, "wx", original ? Number(original.mode) & 0o777 : 0o600);
   try {
     await handle.writeFile(bytes);
     await handle.sync();
