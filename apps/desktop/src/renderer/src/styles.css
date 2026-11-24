@@ -112,3 +112,7 @@ h1 em{color:#9b8aff;font-style:normal}
 .history-status.cancelled{color:#d6ad6e}
 .history-status.running{color:#a99aff}
 .history-empty{font-size:9px;color:#78869c;line-height:1.6}
+
+.data-consent{display:flex;align-items:flex-start;gap:9px;margin-top:11px;padding:10px 9px;border:1px solid #30314c;border-radius:6px;background:#121625;color:#9aa8bd;font-size:9px;line-height:1.6;cursor:pointer}
+.data-consent input{margin:2px 0 0;accent-color:#9b8aff;flex:none}
+.data-consent span{flex:1}
