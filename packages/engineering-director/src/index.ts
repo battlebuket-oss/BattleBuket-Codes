@@ -49,8 +49,7 @@ export class EngineeringDirector {
         return { ...result, status: "cancelled", summary: result.summary || "Task was cancelled." };
       }
       if (result.status !== "succeeded") {
-        if (result.status === "cancelled") this.current = { status: "cancelled", task };
-        else this.current = { status: "failed", task, reason: result.summary };
+        this.current = { status: "failed", task, reason: result.summary };
         return result;
       }
       this.current = { status: "reviewing", task, result };
@@ -75,7 +74,8 @@ export class EngineeringDirector {
       const checks = await this.hooks.verify(task, result, cancellation.signal);
       const allChecks = [...reviewChecks, ...checks];
       const reviewed = { ...result, verification: [...result.verification, ...allChecks] };
-      if (cancellation.signal.aborted || this.current.status === "cancelled") {
+      if (cancellation.signal.aborted) {
+        this.current = { status: "cancelled", task };
         return { ...reviewed, status: "cancelled", summary: "Task was cancelled during review or verification." };
       }
       if (allChecks.some(check => !check.passed)) {
@@ -85,7 +85,7 @@ export class EngineeringDirector {
       this.current = { status: "completed", task, result: reviewed };
       return reviewed;
     } catch (error) {
-      if (this.cancellation?.signal.aborted || this.current.status === "cancelled") {
+      if (cancellation.signal.aborted) {
         this.current = { status: "cancelled", task };
         return cancelledResult();
       }
@@ -94,9 +94,10 @@ export class EngineeringDirector {
     } finally { this.activeAdapter = undefined; this.activeTaskId = undefined; this.cancellation = undefined; }
   }
   async cancel(): Promise<void> {
-    if (this.current.status === "idle") return;
+    const current = this.current;
+    if (current.status !== "planning" && current.status !== "running" && current.status !== "reviewing") return;
     this.cancellation?.abort();
+    this.current = { status: "cancelled", task: current.task };
     if (this.activeAdapter && this.activeTaskId) await this.activeAdapter.cancel(this.activeTaskId);
-    if (this.current.status !== "idle") this.current = { status: "cancelled", task: this.current.task };
   }
 }
