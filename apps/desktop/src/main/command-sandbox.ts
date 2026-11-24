@@ -84,6 +84,9 @@ export async function prepareSandboxedCommand(
   const dispose = async () => fs.rm(scratch, { recursive: true, force: true });
   const corepackHome = process.env.COREPACK_HOME || join(homedir(), ".cache", "node", "corepack");
   const hasCorepackHome = await isDirectory(corepackHome);
+  if (hasCorepackHome) {
+    await fs.cp(corepackHome, scratchCorepack, { recursive: true, dereference: false, force: true });
+  }
   const pathDirectories = await existingPathDirectories();
 
   if (process.platform === "linux") {
@@ -101,6 +104,7 @@ export async function prepareSandboxedCommand(
       "--unshare-net",
       "--unshare-ipc",
       "--unshare-uts",
+      "--cap-drop", "ALL",
       "--ro-bind", "/", "/",
       "--tmpfs", "/home",
       "--tmpfs", "/root",
@@ -126,8 +130,6 @@ export async function prepareSandboxedCommand(
     for (const directory of pathDirectories) {
       if (isInside(home, directory)) appendReadOnlyHomeMount(args, home, directory, mounted);
     }
-    if (hasCorepackHome) appendReadOnlyHomeMount(args, home, corepackHome, mounted);
-
     args.push(
       "--setenv", "HOME", "/tmp/battlebuket-sandbox/home",
       "--setenv", "TMPDIR", "/tmp/battlebuket-sandbox/tmp",
@@ -139,8 +141,7 @@ export async function prepareSandboxedCommand(
       "--setenv", "LC_ALL", baseEnvironment.LC_ALL ?? "C.UTF-8",
       "--setenv", "CI", baseEnvironment.CI ?? "1"
     );
-    if (hasCorepackHome) args.push("--setenv", "COREPACK_HOME", corepackHome);
-    else args.push("--setenv", "COREPACK_HOME", "/tmp/battlebuket-sandbox/corepack");
+    args.push("--setenv", "COREPACK_HOME", "/tmp/battlebuket-sandbox/corepack");
     args.push("--", executable, ...commandArgs);
 
     return {
@@ -154,7 +155,7 @@ export async function prepareSandboxedCommand(
         TMP: "/tmp/battlebuket-sandbox/tmp",
         TEMP: "/tmp/battlebuket-sandbox/tmp",
         XDG_CACHE_HOME: "/tmp/battlebuket-sandbox/cache",
-        COREPACK_HOME: hasCorepackHome ? corepackHome : "/tmp/battlebuket-sandbox/corepack",
+        COREPACK_HOME: "/tmp/battlebuket-sandbox/corepack",
         CI: baseEnvironment.CI ?? "1",
         LANG: baseEnvironment.LANG ?? "C.UTF-8",
         LC_ALL: baseEnvironment.LC_ALL ?? "C.UTF-8"
@@ -182,7 +183,7 @@ export async function prepareSandboxedCommand(
       "/dev"
     ]);
     for (const directory of pathDirectories) allowedReadPaths.add(directory);
-    if (hasCorepackHome) allowedReadPaths.add(resolve(corepackHome));
+
     const quote = (value: string) => JSON.stringify(value);
     const profile = [
       "(version 1)",
@@ -201,13 +202,12 @@ export async function prepareSandboxedCommand(
     ].join("\n");
     const profilePath = join(scratch, "project-verification.sb");
     await fs.writeFile(profilePath, profile, { encoding: "utf8", mode: 0o600 });
-    const corepackPath = hasCorepackHome ? resolve(corepackHome) : scratchCorepack;
+    const corepackPath = scratchCorepack;
     const args = [
       "-f", profilePath,
       "-D", "WORKSPACE=" + workspace,
       "-D", "SCRATCH=" + scratch
     ];
-    if (hasCorepackHome) args.push("-D", "COREPACK_HOME=" + corepackPath);
     args.push(executable, ...commandArgs);
 
     return {
