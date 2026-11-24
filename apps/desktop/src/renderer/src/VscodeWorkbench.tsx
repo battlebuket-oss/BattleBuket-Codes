@@ -246,6 +246,10 @@ export function VscodeWorkbench(props: { workspacePath: string | null; onError: 
       if (!vscode.workspace.updateWorkspaceFolders(0, existing, { uri, name: props.workspacePath!.split(/[\\/]/).filter(Boolean).pop() || "Workspace" })) {
         throw new Error("VS Code could not switch to the selected workspace folder.");
       }
+      setStatus("Starting built-in language services…");
+      const typeScriptExtension = vscode.extensions.getExtension("vscode.typescript-language-features");
+      if (!typeScriptExtension) throw new Error("The bundled TypeScript language extension was not registered with the workbench.");
+      await typeScriptExtension.activate();
       setStatus("");
       window.__battleBuketWorkbenchReady = true;
     }).catch(error => {
