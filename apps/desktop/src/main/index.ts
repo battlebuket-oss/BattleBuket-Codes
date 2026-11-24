@@ -15,6 +15,7 @@ const adapters = [new CodexCliAdapter(), new ClaudeAgentSdkAdapter()];
 let activeWorkspace: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 let activeDirector: EngineeringDirector | null = null;
+let taskStartPending = false;
 
 async function verifyWorkspaceDiff(workspacePath: string): Promise<VerificationResult[]> {
   try {
@@ -53,7 +54,7 @@ function createWindow(): void {
 
 ipcMain.handle("platform:version", () => app.getVersion());
 ipcMain.handle("workspace:select", async () => {
-  if (activeDirector) throw new Error("Finish or cancel the active engineering task before changing projects.");
+  if (activeDirector || taskStartPending) throw new Error("Finish or cancel the active engineering task before changing projects.");
   const result = await dialog.showOpenDialog({ title: "Open project folder", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || result.filePaths.length === 0) return null;
   activeWorkspace = await fs.realpath(result.filePaths[0]);
@@ -89,7 +90,7 @@ ipcMain.handle("agents:run", async (_event, payload: { prompt: string; provider:
   if (payload.provider !== "codex" && payload.provider !== "claude") throw new Error("Unsupported provider.");
   if (payload.risk !== "low" && payload.risk !== "medium" && payload.risk !== "high") throw new Error("Invalid task risk.");
   if (!activeWorkspace) throw new Error("Open a project folder before starting an engineering task.");
-  if (activeDirector) throw new Error("An engineering task is already active.");
+  if (activeDirector || taskStartPending) throw new Error("An engineering task is already active.");
 
   const task: AgentTask = {
     id: randomUUID(),
@@ -131,11 +132,13 @@ ipcMain.handle("agents:run", async (_event, payload: { prompt: string; provider:
   });
   const userDataPath = app.getPath("userData");
   const startedAt = new Date().toISOString();
-  await appendTaskHistory(userDataPath, {
-    taskId: task.id, provider: payload.provider, risk: payload.risk, status: "running", at: startedAt
-  });
-  activeDirector = director;
+  taskStartPending = true;
   try {
+    await appendTaskHistory(userDataPath, {
+      taskId: task.id, provider: payload.provider, risk: payload.risk, status: "running", at: startedAt
+    });
+    activeDirector = director;
+    taskStartPending = false;
     const result = await director.execute(task);
     try {
       await appendTaskHistory(userDataPath, {
@@ -166,6 +169,7 @@ ipcMain.handle("agents:run", async (_event, payload: { prompt: string; provider:
     } catch { /* Preserve the original provider or Director error. */ }
     throw error;
   } finally {
+    taskStartPending = false;
     if (activeDirector === director) activeDirector = null;
   }
 });
