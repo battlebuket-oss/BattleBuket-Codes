@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 const FILE_NAME = "recent-workspaces.json";
 const MAX_ITEMS = 10;
 const MAX_BYTES = 32 * 1024;
+let writeQueue: Promise<void> = Promise.resolve();
 
 export type RecentWorkspace = {
   path: string;
@@ -58,7 +59,7 @@ export async function readRecentWorkspaces(userDataPath: string): Promise<Recent
   return valid.sort((a, b) => Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt)).slice(0, MAX_ITEMS);
 }
 
-export async function recordRecentWorkspace(userDataPath: string, workspacePath: string): Promise<RecentWorkspace[]> {
+async function recordRecentWorkspaceSerial(userDataPath: string, workspacePath: string): Promise<RecentWorkspace[]> {
   const realPath = await fs.realpath(workspacePath);
   const stat = await fs.stat(realPath);
   if (!stat.isDirectory()) throw new Error("Recent workspace must be a directory.");
@@ -89,6 +90,12 @@ export async function recordRecentWorkspace(userDataPath: string, workspacePath:
   } finally {
     await fs.unlink(temporary).catch(() => {});
   }
+}
+
+export function recordRecentWorkspace(userDataPath: string, workspacePath: string): Promise<RecentWorkspace[]> {
+  const operation = writeQueue.then(() => recordRecentWorkspaceSerial(userDataPath, workspacePath));
+  writeQueue = operation.then(() => {}, () => {});
+  return operation;
 }
 
 export async function openRecentWorkspace(userDataPath: string, requestedPath: string): Promise<string> {
