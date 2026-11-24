@@ -108,7 +108,7 @@ export default function App() {
   const startTask = async () => {
     if (!window.battleBuket || !workspace) { setError("Open a project folder before starting a task."); return; }
     if (prompt.trim().length < 3) { setError("Describe the task you want the agent to complete."); return; }
-    if (!availability[provider]) { setError(provider === "codex" ? "Codex CLI 0.171.0 or newer is required. Install or update it and sign in on this computer." : "Claude Agent SDK runtime is unavailable. Configure its supported runtime and authentication."); return; }
+    if (!availability[provider]) { setError(provider === "codex" ? "Codex CLI 0.171.0 or newer is required. Install or update it and sign in on this computer." : "Claude Agent SDK is unavailable. Check sandbox support, runtime installation, and account authentication."); return; }
     try {
       setError(""); setRunning(true); setTaskResult(null); setAgentEvents([]);
       const result = await window.battleBuket.runAgent({ prompt: prompt.trim(), provider, risk });
