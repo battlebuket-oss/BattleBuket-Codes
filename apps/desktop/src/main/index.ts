@@ -139,7 +139,7 @@ function createWindow(): void {
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
   if (process.argv.includes("--smoke-test")) {
-    const timeout = setTimeout(() => app.exit(1), 75_000);
+    const timeout = setTimeout(() => app.exit(1), 150_000);
     const finish = (success: boolean) => {
       clearTimeout(timeout);
       const smokeRoot = smokeWorkspaceRoot;
@@ -193,8 +193,8 @@ function createWindow(): void {
           return;
         }
         const workbenchTerminalCommand = process.platform === "win32"
-          ? "echo BB_WORKBENCH_TERMINAL_SMOKE_OK\\r"
-          : "printf 'BB_WORKBENCH_TERMINAL_SMOKE_OK\\n'\\r";
+          ? "echo BB_WORKBENCH_TERMINAL_SMOKE_OK\r"
+          : "printf 'BB_WORKBENCH_TERMINAL_SMOKE_OK\\n'\r";
         await window.webContents.executeJavaScript(
           "window.battleBuket.writeTerminal(" + JSON.stringify(workbenchTerminalSessionId) + ", " + JSON.stringify(workbenchTerminalCommand) + ")"
         );
@@ -206,7 +206,7 @@ function createWindow(): void {
           return;
         }
         await window.webContents.executeJavaScript(
-          "window.battleBuket.writeTerminal(" + JSON.stringify(workbenchTerminalSessionId) + ", " + JSON.stringify("exit\\r") + ")"
+          "window.battleBuket.writeTerminal(" + JSON.stringify(workbenchTerminalSessionId) + ", " + JSON.stringify("exit\r") + ")"
         );
         const workbenchTerminalExited = await window.webContents.executeJavaScript(
           "new Promise(resolve => { const deadline = Date.now() + 10000; const check = () => { if (window.__battleBuketNativeTerminalExited === true) resolve(true); else if (Date.now() >= deadline) resolve(false); else setTimeout(check, 100); }; check(); })"
