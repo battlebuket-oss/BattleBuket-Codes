@@ -82,154 +82,157 @@ export async function prepareSandboxedCommand(
   await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack].map(path => fs.mkdir(path, { recursive: true })));
 
   const dispose = async () => fs.rm(scratch, { recursive: true, force: true });
-  const corepackHome = process.env.COREPACK_HOME || join(homedir(), ".cache", "node", "corepack");
-  const hasCorepackHome = await isDirectory(corepackHome);
-  if (hasCorepackHome) {
-    await fs.cp(corepackHome, scratchCorepack, { recursive: true, dereference: false, force: true });
-  }
-  const pathDirectories = await existingPathDirectories();
-
-  if (process.platform === "linux") {
-    const bwrap = await findExecutable("bwrap");
-    if (!bwrap) {
-      await dispose();
-      throw new Error("Linux project scripts are blocked because bubblewrap (bwrap) is not installed. Install bubblewrap to enable isolated verification.");
+  try {
+    const corepackHome = process.env.COREPACK_HOME || join(homedir(), ".cache", "node", "corepack");
+    const hasCorepackHome = await isDirectory(corepackHome);
+    if (hasCorepackHome) {
+      await fs.cp(corepackHome, scratchCorepack, { recursive: true, dereference: false, force: true });
     }
-
-    const args = [
-      "--die-with-parent",
-      "--new-session",
-      "--unshare-user",
-      "--unshare-pid",
-      "--unshare-net",
-      "--unshare-ipc",
-      "--unshare-uts",
-      "--cap-drop", "ALL",
-      "--ro-bind", "/", "/",
-      "--tmpfs", "/home",
-      "--tmpfs", "/root",
-      "--tmpfs", "/tmp",
-      "--tmpfs", "/run",
-      "--tmpfs", "/mnt",
-      "--tmpfs", "/media",
-      "--tmpfs", "/var/tmp",
-      "--proc", "/proc",
-      "--dev", "/dev",
-      "--dir", "/workspace",
-      "--bind", workspace, "/workspace",
-      "--bind", scratch, "/tmp/battlebuket-sandbox",
-      "--chdir", "/workspace",
-      "--dir", "/tmp/battlebuket-sandbox/home",
-      "--dir", "/tmp/battlebuket-sandbox/tmp",
-      "--dir", "/tmp/battlebuket-sandbox/cache",
-      "--dir", "/tmp/battlebuket-sandbox/corepack"
-    ];
-
-    const mounted = new Set<string>(["/home", "/root", "/tmp", "/run", "/mnt", "/media", "/var/tmp"]);
-    const home = resolve(homedir());
-    for (const directory of pathDirectories) {
-      if (isInside(home, directory)) appendReadOnlyHomeMount(args, home, directory, mounted);
+    const pathDirectories = await existingPathDirectories();
+  
+    if (process.platform === "linux") {
+      const bwrap = await findExecutable("bwrap");
+      if (!bwrap) {
+        await dispose();
+        throw new Error("Linux project scripts are blocked because bubblewrap (bwrap) is not installed. Install bubblewrap to enable isolated verification.");
+      }
+  
+      const args = [
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-user",
+        "--unshare-pid",
+        "--unshare-net",
+        "--unshare-ipc",
+        "--unshare-uts",
+        "--cap-drop", "ALL",
+        "--ro-bind", "/", "/",
+        "--tmpfs", "/home",
+        "--tmpfs", "/root",
+        "--tmpfs", "/tmp",
+        "--tmpfs", "/run",
+        "--tmpfs", "/mnt",
+        "--tmpfs", "/media",
+        "--tmpfs", "/var/tmp",
+        "--proc", "/proc",
+        "--dev", "/dev",
+        "--dir", "/workspace",
+        "--bind", workspace, "/workspace",
+        "--dir", "/tmp/battlebuket-sandbox",
+        "--bind", scratch, "/tmp/battlebuket-sandbox",
+        "--chdir", "/workspace"
+      ];
+  
+      const mounted = new Set<string>(["/home", "/root", "/tmp", "/run", "/mnt", "/media", "/var/tmp"]);
+      const home = resolve(homedir());
+      for (const directory of pathDirectories) {
+        if (isInside(home, directory)) appendReadOnlyHomeMount(args, home, directory, mounted);
+      }
+      args.push(
+        "--setenv", "HOME", "/tmp/battlebuket-sandbox/home",
+        "--setenv", "TMPDIR", "/tmp/battlebuket-sandbox/tmp",
+        "--setenv", "TMP", "/tmp/battlebuket-sandbox/tmp",
+        "--setenv", "TEMP", "/tmp/battlebuket-sandbox/tmp",
+        "--setenv", "XDG_CACHE_HOME", "/tmp/battlebuket-sandbox/cache",
+        "--setenv", "PATH", baseEnvironment.PATH ?? "",
+        "--setenv", "LANG", baseEnvironment.LANG ?? "C.UTF-8",
+        "--setenv", "LC_ALL", baseEnvironment.LC_ALL ?? "C.UTF-8",
+        "--setenv", "CI", baseEnvironment.CI ?? "1"
+      );
+      args.push("--setenv", "COREPACK_HOME", "/tmp/battlebuket-sandbox/corepack");
+      args.push("--", executable, ...commandArgs);
+  
+      return {
+        executable: bwrap,
+        args,
+        cwd: workspace,
+        env: {
+          PATH: baseEnvironment.PATH,
+          HOME: "/tmp/battlebuket-sandbox/home",
+          TMPDIR: "/tmp/battlebuket-sandbox/tmp",
+          TMP: "/tmp/battlebuket-sandbox/tmp",
+          TEMP: "/tmp/battlebuket-sandbox/tmp",
+          XDG_CACHE_HOME: "/tmp/battlebuket-sandbox/cache",
+          COREPACK_HOME: "/tmp/battlebuket-sandbox/corepack",
+          CI: baseEnvironment.CI ?? "1",
+          LANG: baseEnvironment.LANG ?? "C.UTF-8",
+          LC_ALL: baseEnvironment.LC_ALL ?? "C.UTF-8"
+        },
+        dispose
+      };
     }
-    args.push(
-      "--setenv", "HOME", "/tmp/battlebuket-sandbox/home",
-      "--setenv", "TMPDIR", "/tmp/battlebuket-sandbox/tmp",
-      "--setenv", "TMP", "/tmp/battlebuket-sandbox/tmp",
-      "--setenv", "TEMP", "/tmp/battlebuket-sandbox/tmp",
-      "--setenv", "XDG_CACHE_HOME", "/tmp/battlebuket-sandbox/cache",
-      "--setenv", "PATH", baseEnvironment.PATH ?? "",
-      "--setenv", "LANG", baseEnvironment.LANG ?? "C.UTF-8",
-      "--setenv", "LC_ALL", baseEnvironment.LC_ALL ?? "C.UTF-8",
-      "--setenv", "CI", baseEnvironment.CI ?? "1"
-    );
-    args.push("--setenv", "COREPACK_HOME", "/tmp/battlebuket-sandbox/corepack");
-    args.push("--", executable, ...commandArgs);
-
-    return {
-      executable: bwrap,
-      args,
-      cwd: workspace,
-      env: {
-        PATH: baseEnvironment.PATH,
-        HOME: "/tmp/battlebuket-sandbox/home",
-        TMPDIR: "/tmp/battlebuket-sandbox/tmp",
-        TMP: "/tmp/battlebuket-sandbox/tmp",
-        TEMP: "/tmp/battlebuket-sandbox/tmp",
-        XDG_CACHE_HOME: "/tmp/battlebuket-sandbox/cache",
-        COREPACK_HOME: "/tmp/battlebuket-sandbox/corepack",
-        CI: baseEnvironment.CI ?? "1",
-        LANG: baseEnvironment.LANG ?? "C.UTF-8",
-        LC_ALL: baseEnvironment.LC_ALL ?? "C.UTF-8"
-      },
-      dispose
-    };
-  }
-
-  if (process.platform === "darwin") {
-    const sandboxExec = await findExecutable("sandbox-exec");
-    if (!sandboxExec) {
-      await dispose();
-      throw new Error("macOS project scripts are blocked because the Seatbelt sandbox executable is unavailable.");
+  
+    if (process.platform === "darwin") {
+      const sandboxExec = await findExecutable("sandbox-exec");
+      if (!sandboxExec) {
+        await dispose();
+        throw new Error("macOS project scripts are blocked because the Seatbelt sandbox executable is unavailable.");
+      }
+      const allowedReadPaths = new Set([
+        "/System",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/Library/Apple/System/Library",
+        "/Library/Developer",
+        "/Applications",
+        "/opt/homebrew",
+        "/usr/local",
+        "/dev"
+      ]);
+      for (const directory of pathDirectories) allowedReadPaths.add(directory);
+  
+      const quote = (value: string) => JSON.stringify(value);
+      const profile = [
+        "(version 1)",
+        "(deny default)",
+        "(allow process*)",
+        "(allow sysctl-read)",
+        "(allow mach-lookup)",
+        "(allow file-read-metadata)",
+        ...[...allowedReadPaths].map(path => "(allow file-read* (subpath " + quote(path) + "))"),
+        "(allow file-read* (subpath (param \"WORKSPACE\")))",
+        "(allow file-read* (subpath (param \"SCRATCH\")))",
+        "(allow file-write* (subpath (param \"WORKSPACE\")))",
+        "(allow file-write* (subpath (param \"SCRATCH\")))",
+        "(deny network*)",
+        "(allow signal (target self))"
+      ].join("\n");
+      const profilePath = join(scratch, "project-verification.sb");
+      await fs.writeFile(profilePath, profile, { encoding: "utf8", mode: 0o600 });
+      const corepackPath = scratchCorepack;
+      const args = [
+        "-f", profilePath,
+        "-D", "WORKSPACE=" + workspace,
+        "-D", "SCRATCH=" + scratch
+      ];
+      args.push(executable, ...commandArgs);
+  
+      return {
+        executable: sandboxExec,
+        args,
+        cwd: workspace,
+        env: {
+          ...baseEnvironment,
+          HOME: scratchHome,
+          TMPDIR: scratchTmp,
+          TMP: scratchTmp,
+          TEMP: scratchTmp,
+          XDG_CACHE_HOME: scratchCache,
+          COREPACK_HOME: corepackPath
+        },
+        dispose
+      };
     }
-    const allowedReadPaths = new Set([
-      "/System",
-      "/usr",
-      "/bin",
-      "/sbin",
-      "/Library/Apple/System/Library",
-      "/Library/Developer",
-      "/Applications",
-      "/opt/homebrew",
-      "/usr/local",
-      "/dev"
-    ]);
-    for (const directory of pathDirectories) allowedReadPaths.add(directory);
-
-    const quote = (value: string) => JSON.stringify(value);
-    const profile = [
-      "(version 1)",
-      "(deny default)",
-      "(allow process*)",
-      "(allow sysctl-read)",
-      "(allow mach-lookup)",
-      "(allow file-read-metadata)",
-      ...[...allowedReadPaths].map(path => "(allow file-read* (subpath " + quote(path) + "))"),
-      "(allow file-read* (subpath (param \"WORKSPACE\")))",
-      "(allow file-read* (subpath (param \"SCRATCH\")))",
-      "(allow file-write* (subpath (param \"WORKSPACE\")))",
-      "(allow file-write* (subpath (param \"SCRATCH\")))",
-      "(deny network*)",
-      "(allow signal (target self))"
-    ].join("\n");
-    const profilePath = join(scratch, "project-verification.sb");
-    await fs.writeFile(profilePath, profile, { encoding: "utf8", mode: 0o600 });
-    const corepackPath = scratchCorepack;
-    const args = [
-      "-f", profilePath,
-      "-D", "WORKSPACE=" + workspace,
-      "-D", "SCRATCH=" + scratch
-    ];
-    args.push(executable, ...commandArgs);
-
-    return {
-      executable: sandboxExec,
-      args,
-      cwd: workspace,
-      env: {
-        ...baseEnvironment,
-        HOME: scratchHome,
-        TMPDIR: scratchTmp,
-        TMP: scratchTmp,
-        TEMP: scratchTmp,
-        XDG_CACHE_HOME: scratchCache,
-        COREPACK_HOME: corepackPath
-      },
-      dispose
-    };
+  
+    await dispose();
+    if (process.platform === "win32") {
+      throw new Error("Windows project scripts are blocked because an OS-enforced AppContainer execution broker is not yet configured. They will not be run with unrestricted user permissions.");
+    }
+  
+  } catch (error) {
+    await dispose().catch(() => {});
+    throw error;
   }
-
-  await dispose();
-  if (process.platform === "win32") {
-    throw new Error("Windows project scripts are blocked because an OS-enforced AppContainer execution broker is not yet configured. They will not be run with unrestricted user permissions.");
-  }
-  throw new Error("No supported OS-enforced command sandbox is available on this platform.");
 }
+
