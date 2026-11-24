@@ -22,7 +22,7 @@ function handleTrustedIpc(
   channel: string,
   handler: (event: IpcMainInvokeEvent, ...args: any[]) => any
 ): void {
-  handleTrustedIpc(channel, (event, ...args) => {
+  ipcMain.handle(channel, (event, ...args) => {
     const frame = event.senderFrame;
     if (!frame || frame !== event.sender.mainFrame) {
       throw new Error("IPC is only available to the trusted top-level window.");
