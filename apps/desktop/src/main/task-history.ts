@@ -22,6 +22,7 @@ export type TaskHistoryItem = Omit<TaskHistoryEvent, "at" | "status"> & {
 const FILE_NAME = "task-history.jsonl";
 const MAX_FILE_BYTES = 512 * 1024;
 const MAX_ITEMS = 50;
+let historyWriteQueue: Promise<void> = Promise.resolve();
 
 function isHistoryEvent(value: unknown): value is TaskHistoryEvent {
   if (!value || typeof value !== "object") return false;
@@ -64,7 +65,7 @@ async function compactHistoryFile(file: string): Promise<void> {
   }
 }
 
-export async function appendTaskHistory(userDataPath: string, event: TaskHistoryEvent): Promise<void> {
+async function appendTaskHistorySerial(userDataPath: string, event: TaskHistoryEvent): Promise<void> {
   if (!isHistoryEvent(event)) throw new Error("Invalid task history event");
   await fs.mkdir(userDataPath, { recursive: true, mode: 0o700 });
   const directory = await fs.realpath(userDataPath);
@@ -97,7 +98,14 @@ export async function appendTaskHistory(userDataPath: string, event: TaskHistory
   await fs.appendFile(file, line, { encoding: "utf8", mode: 0o600, flag: "a" });
 }
 
+export function appendTaskHistory(userDataPath: string, event: TaskHistoryEvent): Promise<void> {
+  const operation = historyWriteQueue.then(() => appendTaskHistorySerial(userDataPath, event));
+  historyWriteQueue = operation.catch(() => {});
+  return operation;
+}
+
 export async function readTaskHistory(userDataPath: string): Promise<TaskHistoryItem[]> {
+  await historyWriteQueue;
   const file = join(userDataPath, FILE_NAME);
   let contents: string;
   try {
