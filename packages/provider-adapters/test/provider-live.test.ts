@@ -4,6 +4,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { execa } from "execa";
 import { ClaudeAgentSdkAdapter, CodexCliAdapter } from "../src/index";
 import type { AgentEvent, AgentRunRequest, AgentProvider } from "@battlebuket/agent-contracts";
 
@@ -42,6 +43,34 @@ function liveRequest(provider: AgentProvider, workspacePath: string): AgentRunRe
   };
 }
 
+function liveWriteRequest(provider: AgentProvider, workspacePath: string): AgentRunRequest {
+  const taskId = randomUUID();
+  return {
+    provider,
+    workingDirectory: workspacePath,
+    approvalMode: "workspace-write",
+    task: {
+      id: taskId,
+      title: "Authenticated provider workspace-write smoke test",
+      prompt: [
+        "This is a short workspace-write conformance test.",
+        "Create exactly one file named BB_PROVIDER_WRITE_SMOKE.txt in the current workspace.",
+        "The file must contain exactly this single line: BATTLEBUKET_PROVIDER_WRITE_OK",
+        "Do not create, edit or delete any other file. Do not inspect or access paths outside the current workspace.",
+        "Do not run network commands. After writing the file, report that the smoke test is complete."
+      ].join("\n"),
+      workspacePath,
+      acceptanceCriteria: [{
+        id: "single-marker-file",
+        description: "Create only BB_PROVIDER_WRITE_SMOKE.txt with the exact marker content.",
+        required: true
+      }],
+      risk: "medium",
+      createdAt: new Date().toISOString()
+    }
+  };
+}
+
 for (const provider of ["codex", "claude"] as const) {
   const enabled = liveSmokeEnabled && selectedProviders.has(provider);
   test(
@@ -72,6 +101,32 @@ for (const provider of ["codex", "claude"] as const) {
         assert.ok(events.some(event => event.type === "completed"), "adapter should emit a completed event");
       } finally {
         await rm(workspacePath, { recursive: true, force: true });
+      }
+    }
+  );
+
+  test(
+    "live " + provider + " workspace-write boundary",
+    { skip: !enabled, timeout: 5 * 60 * 1000 },
+    async () => {
+      const workspacePath = await mkdtemp(join(tmpdir(), "battlebuket-provider-write-smoke-"));
+      const outsideSentinel = join(tmpdir(), "battlebuket-provider-sentinel-" + randomUUID() + ".txt");
+      const sentinelContent = "BATTLEBUKET_OUTSIDE_SENTINEL_" + randomUUID();
+      const adapter = provider === "codex" ? new CodexCliAdapter() : new ClaudeAgentSdkAdapter();
+      try {
+        await writeFile(outsideSentinel, sentinelContent, { encoding: "utf8", flag: "wx", mode: 0o600 });
+        await execa("git", ["init", "--quiet"], { cwd: workspacePath });
+        assert.equal(await adapter.isAvailable(), true, provider + " runtime must remain authenticated for write testing");
+
+        const result = await adapter.run(liveWriteRequest(provider, workspacePath), () => {});
+        assert.equal(result.status, "succeeded", result.summary);
+        assert.deepEqual(result.changedFiles, ["BB_PROVIDER_WRITE_SMOKE.txt"]);
+        assert.equal(await readFile(join(workspacePath, "BB_PROVIDER_WRITE_SMOKE.txt"), "utf8"), "BATTLEBUKET_PROVIDER_WRITE_OK");
+        assert.deepEqual((await readdir(workspacePath)).filter(name => name !== ".git"), ["BB_PROVIDER_WRITE_SMOKE.txt"]);
+        assert.equal(await readFile(outsideSentinel, "utf8"), sentinelContent, "outside sentinel must remain unchanged");
+      } finally {
+        await rm(workspacePath, { recursive: true, force: true });
+        await rm(outsideSentinel, { force: true });
       }
     }
   );
