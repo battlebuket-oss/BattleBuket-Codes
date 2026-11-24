@@ -174,7 +174,7 @@ export default function App() {
     try {
       setTerminalBusy(true);
       setTerminalOutput(current => [...current, "$ " + command].slice(-200));
-      await window.battleBuket.writeTerminal(id, command + "\\n");
+      await window.battleBuket.writeTerminal(id, command + "\n");
       setTerminalCommand("");
     } catch (e) {
       setTerminalOutput(current => [...current, e instanceof Error ? e.message : "Terminal input failed"].slice(-200));
