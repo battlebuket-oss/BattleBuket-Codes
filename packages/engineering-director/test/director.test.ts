@@ -106,7 +106,10 @@ describe("EngineeringDirector", () => {
         await director.cancel();
         return { name: "Read-only provider review", passed: false, output: "Cancelled" };
       },
-      verify: async () => [{ name: "typecheck", passed: true }],
+      verify: async (_task, _result, signal) => {
+        assert.equal(signal?.aborted, true);
+        return [{ name: "typecheck", passed: false, output: "Cancelled" }];
+      },
       emit: () => {}
     });
     const result = await director.execute(task);

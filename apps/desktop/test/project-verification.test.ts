@@ -45,3 +45,21 @@ test("enables high-severity dependency auditing when an npm lockfile exists", as
     assert.deepEqual(result, { manager: "npm", scripts: ["audit"] });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+
+test("aborts a running project script when the task is cancelled", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-quality-abort-"));
+  const controller = new AbortController();
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({
+      scripts: { test: "node -e \\"setTimeout(() => {}, 30000)\\"" }
+    }));
+    const running = runProjectQualityChecks(root, async () => true, controller.signal);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    controller.abort();
+    const results = await running;
+    assert.equal(results.length, 1);
+    assert.equal(results[0].passed, false);
+    assert.match(results[0].output ?? "", /Cancelled by the user/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
