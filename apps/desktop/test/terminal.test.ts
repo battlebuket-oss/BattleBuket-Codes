@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { runWorkspaceCommand, validateTerminalCommand } from "../src/terminal";
+import { runWorkspaceCommand, validateTerminalCommand } from "../src/main/terminal";
 
 test("terminal command validation rejects empty, non-string and oversized commands", () => {
   assert.throws(() => validateTerminalCommand("  "), /Enter a terminal command/);
