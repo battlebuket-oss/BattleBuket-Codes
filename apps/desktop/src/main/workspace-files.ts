@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { isPathInside } from "./workspace-path";
 
 export type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
@@ -41,15 +42,38 @@ export async function writeWorkspaceFile(rootPath: string, relativePath: string,
   if (typeof content !== "string" || Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MB save limit");
   if (!Number.isFinite(expectedMtimeMs)) throw new Error("Invalid file version");
   const { root, target } = await resolveInside(rootPath, relativePath);
-  const handle = await fs.open(target, "r+");
+  const original = await fs.stat(target);
+  if (!original.isFile()) throw new Error("Selected path is not a regular file");
+  if (original.mtimeMs !== expectedMtimeMs) throw new Error("File changed outside BattleBuket Codes. Reopen it before saving to avoid overwriting newer changes.");
+
+  const parent = dirname(target);
+  const temporary = join(parent, "." + basename(target) + "." + randomUUID() + ".tmp");
+  const temporaryHandle = await fs.open(temporary, "wx", original.mode & 0o777);
   try {
-    const stat = await handle.stat();
-    if (!stat.isFile()) throw new Error("Selected path is not a regular file");
-    if (stat.mtimeMs !== expectedMtimeMs) throw new Error("File changed outside BattleBuket Codes. Reopen it before saving to avoid overwriting newer changes.");
-    await handle.truncate(0);
-    await handle.writeFile(content, "utf8");
-    return { path: relative(root, target), mtimeMs: (await handle.stat()).mtimeMs };
+    await temporaryHandle.writeFile(content, "utf8");
+    await temporaryHandle.sync();
+  } catch (error) {
+    await temporaryHandle.close();
+    await fs.unlink(temporary).catch(() => {});
+    throw error;
+  }
+  await temporaryHandle.close();
+
+  try {
+    const latest = await fs.stat(target);
+    if (latest.dev !== original.dev || latest.ino !== original.ino || latest.size !== original.size || latest.mtimeMs !== expectedMtimeMs) {
+      throw new Error("File changed while the save was being prepared. Reopen it before trying again.");
+    }
+    await fs.rename(temporary, target);
+    try {
+      const directoryHandle = await fs.open(parent, "r");
+      await directoryHandle.sync();
+      await directoryHandle.close();
+    } catch {
+      // Directory fsync is not supported on every platform; the file itself was synced before rename.
+    }
+    return { path: relative(root, target), mtimeMs: (await fs.stat(target)).mtimeMs };
   } finally {
-    await handle.close();
+    await fs.unlink(temporary).catch(() => {});
   }
 }
