@@ -127,4 +127,8 @@ jobs:
           sudo chown root:root "$sandbox_helper"
           sudo chmod 4755 "$sandbox_helper"
           test "$(stat -c '%U:%a' "$sandbox_helper")" = "root:4755"
-          xvfb-run -a "$executable" --smoke-test
+          if ! command -v dbus-run-session >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y dbus-daemon
+          fi
+          env -u DBUS_SESSION_BUS_ADDRESS dbus-run-session -- xvfb-run -a "$executable" --smoke-test
