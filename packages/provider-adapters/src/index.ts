@@ -32,6 +32,7 @@ export function codexArguments(request: AgentRunRequest): string[] {
     "--sandbox", "workspace-write",
     "--ask-for-approval", "on-request",
     "--config", "approvals_reviewer=auto_review",
+    "--config", "sandbox_workspace_write.network_access=false",
     request.task.prompt
   ];
 }
