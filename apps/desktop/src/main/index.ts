@@ -201,6 +201,7 @@ handleTrustedIpc("agents:availability", async () => {
 
 handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provider: AgentProvider; risk: RiskLevel }) => {
   await runtimeCleanup;
+  if (shutdownInProgress || shutdownComplete || !mainWindow || mainWindow.isDestroyed()) throw new Error("The desktop window is closing. Reopen it before starting a task.");
   if (!payload || typeof payload.prompt !== "string" || payload.prompt.trim().length < 3 || payload.prompt.length > 12000) {
     throw new Error("Enter a task prompt between 3 and 12,000 characters.");
   }
