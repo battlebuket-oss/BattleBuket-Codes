@@ -60,7 +60,10 @@ export function validateTerminalSize(columns: unknown, rows: unknown): asserts c
 export class WorkspaceTerminalSessions {
   private readonly sessions = new Map<string, Session>();
   private readonly starting = new Set<string>();
+  private readonly startingDone = new Map<string, Promise<void>>();
   private readonly closing = new Map<string, Promise<boolean>>();
+  private closingAll = false;
+  private closeAllPromise: Promise<void> | null = null;
 
   async start(
     sessionId: string,
@@ -70,12 +73,16 @@ export class WorkspaceTerminalSessions {
     rows = 28
   ): Promise<void> {
     if (!/^[a-f0-9-]{36}$/i.test(sessionId)) throw new Error("Invalid terminal session identifier.");
+    if (this.closingAll) throw new Error("The terminal manager is shutting down and cannot start another session.");
     if (this.sessions.has(sessionId) || this.starting.has(sessionId)) throw new Error("Terminal session already exists.");
     if (this.hasActiveSession()) throw new Error("A workspace terminal session is already active, starting, or closing.");
     validateTerminalSize(columns, rows);
 
     // Reserve the single terminal slot before the first await so concurrent starts cannot both spawn a PTY.
     this.starting.add(sessionId);
+    let resolveStart!: () => void;
+    const startDone = new Promise<void>(resolve => { resolveStart = resolve; });
+    this.startingDone.set(sessionId, startDone);
     try {
       const cwd = await fs.realpath(workspacePath);
       const cwdStat = await fs.stat(cwd);
@@ -115,6 +122,8 @@ export class WorkspaceTerminalSessions {
       });
     } finally {
       this.starting.delete(sessionId);
+      this.startingDone.delete(sessionId);
+      resolveStart();
     }
   }
 
@@ -160,12 +169,30 @@ export class WorkspaceTerminalSessions {
     return closing;
   }
 
-  async closeAll(): Promise<void> {
-    const ids = new Set([...this.sessions.keys(), ...this.closing.keys()]);
-    const results = await Promise.all([...ids].map(id => this.close(id)));
-    if (results.some(result => !result)) {
-      throw new Error("One or more terminal processes did not confirm exit after termination.");
-    }
+  closeAll(): Promise<void> {
+    if (this.closeAllPromise) return this.closeAllPromise;
+    this.closingAll = true;
+    const closing = (async () => {
+      // A start may be between its workspace checks and PTY creation. Wait for every
+      // reserved start to settle, then close the sessions it may have created.
+      await Promise.all([...this.startingDone.values()]);
+      const ids = new Set([...this.sessions.keys(), ...this.closing.keys()]);
+      const results = await Promise.all([...ids].map(id => this.close(id)));
+      if (results.some(result => !result)) {
+        throw new Error("One or more terminal processes did not confirm exit after termination.");
+      }
+    })();
+    this.closeAllPromise = closing.then(
+      () => {
+        this.closingAll = false;
+        this.closeAllPromise = null;
+      },
+      error => {
+        // Fail closed: do not permit another PTY if process exit could not be confirmed.
+        throw error;
+      }
+    );
+    return this.closeAllPromise;
   }
 
   hasActiveSession(): boolean {
