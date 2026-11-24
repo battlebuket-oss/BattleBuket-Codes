@@ -77,7 +77,7 @@ jobs:
           dmg="$(find apps/desktop/release -maxdepth 1 -name '*.dmg' -print -quit)"
           test -n "$dmg"
           xcrun stapler validate "$dmg"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: battlebuket-codes-${{ matrix.label }}-signed-preview
           path: apps/desktop/release/
