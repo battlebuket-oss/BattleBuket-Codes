@@ -21,7 +21,10 @@
     "@battlebuket/agent-contracts": "workspace:*",
     "@battlebuket/engineering-director": "workspace:*",
     "@battlebuket/virtual-team": "workspace:*",
-    "@battlebuket/provider-adapters": "workspace:*"
+    "@battlebuket/provider-adapters": "workspace:*",
+    "@xterm/xterm": "6.0.0",
+    "@xterm/addon-fit": "0.11.0",
+    "node-pty": "1.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
@@ -88,7 +91,8 @@
       "syncDesktopName": true
     },
     "asarUnpack": [
-      "node_modules/@anthropic-ai/claude-agent-sdk*/**"
+      "node_modules/@anthropic-ai/claude-agent-sdk*/**",
+      "node_modules/node-pty/**/*"
     ],
     "executableName": "battlebuket-codes"
   },
