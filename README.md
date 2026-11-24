@@ -25,6 +25,21 @@ BattleBuket Codes brings a branded developer workspace together with multiple co
 | Shared services | Workspace isolation, Git/worktrees, permissions, project memory, event log |
 | Quality gate | Build/test/lint/security checks and human approval gates |
 
+## Local preview setup
+
+Requirements: Node.js 22.12 or newer, pnpm 10.0.0, and Git.
+
+```bash
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+For Codex tasks, install the Codex CLI, ensure `codex` is on `PATH`, use `codex login`, and update to version 0.171.0 or newer. The app checks the CLI version and login state before enabling it.
+
+The Claude Agent SDK runtime is packaged as a platform-specific optional dependency. It still requires valid Anthropic/Claude authentication and a supported local OS sandbox. The app fails closed when it cannot initialize the sandbox; the Claude tool allowlist excludes shell and web tools.
+
+The desktop installer workflow produces unsigned preview packages. It does not publish releases or sign/notarize applications.
+
 ## Data handling
 
 Engineering tasks run through the provider you select. Task prompts and project files the agent reads are sent to that provider for processing under the provider account and terms you configured. The desktop app does not include model credits and does not persist task prompts or provider output; it stores only minimal local task-status metadata. Do not submit credentials, secrets, regulated data, or third-party code unless you are authorized to share it. The in-app checkbox is an acknowledgement, not a substitute for a privacy policy or legal review.
