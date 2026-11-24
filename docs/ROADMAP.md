@@ -16,8 +16,8 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add bounded text-file preview, atomic saves, stale-write detection, and path/symlink safety tests.
 - [x] Add the task composer, provider selection, risk/permission selection, streamed task status, and cancellation controls.
 - [x] Add Monaco Editor with bundled offline runtime and language workers, syntax-aware languages, minimap, per-file models, multi-file tabs, unsaved-draft preservation and Ctrl/Cmd+S.
-- [x] Add bounded Quick Open filename/path search and a keyboard command palette for BattleBuket desktop actions (Ctrl/Cmd+P, Ctrl/Cmd+Shift+P); add Ctrl/Cmd+S active-file save and Ctrl/Cmd+J terminal toggle. This is not the VS Code command registry or content/symbol search.
-- [ ] Embed a tested Code - OSS workbench and complete workbench services, native extension host, diagnostics integration, command palette, project search, recent projects and upstream notices. Monaco is only the editor component.
+- [x] Add bounded Quick Open filename/path search, project-wide bounded text search (Ctrl/Cmd+Shift+F), Monaco language diagnostics in a Problems panel, and a keyboard command palette for BattleBuket desktop actions (Ctrl/Cmd+Shift+P); add Ctrl/Cmd+S active-file save and Ctrl/Cmd+J terminal toggle. This is not the VS Code command registry or symbol/reference search.
+- [ ] Embed a tested Code - OSS workbench and complete workbench services, native extension host, symbol/reference search, workbench command registry, recent projects and upstream notices. Monaco is only the editor component.
 - [ ] Verify the native `node-pty` / xterm.js terminal implementation in draft PR #11: Electron ABI rebuild, interactive input/output, resize and process cleanup tests on Windows/macOS/Linux. The source implementation exists; the required cross-platform test evidence is not yet green.
 - [x] Add a tag-triggered signed installer build and draft-release workflow with required Windows/macOS signing secrets.
 - [ ] Configure real signing secrets and verify signed installers on Windows, macOS, and Linux; no production release has been published.
