@@ -228,9 +228,9 @@ export default function App() {
             <div><Bot/><b>Engineering Director</b><p>Routes one active task to the selected provider and applies a verification gate.</p><small>● Execution pipeline connected</small></div>
             <div><Activity/><b>Provider runtimes</b><p>Uses locally installed Codex CLI or Claude Agent SDK runtime and your own authentication.</p><small className={availability.codex || availability.claude ? "" : "pending"}>● {availability.codex || availability.claude ? "At least one provider detected" : "No provider detected"}</small></div>
             <div><ShieldCheck/><b>Workspace safety</b><p>Scoped file access, bounded previews, stale-save protection, and no full-access agent mode.</p><small>● Restricted workspace access</small></div>
-            <div><Workflow/><b>Quality gate</b><p>Runs a Git whitespace check. Full test, build, security, and release gates are not yet implemented.</p><small className="pending">Partial verification only</small></div>
+            <div><Workflow/><b>Quality gate</b><p>Per-task verification currently checks Git diff whitespace. CI separately runs tests, audit, typecheck, and builds.</p><small className="pending">Partial verification only</small></div>
           </div>
-          <p className="prototype-note">This is an engineering preview, not a production release. A VS Code OSS workbench, integrated terminal, durable task history, full automated verification, and signed installers are still required.</p>
+          <p className="prototype-note">Engineering preview only. The command panel is a bounded one-command shell runner, not yet a persistent PTY terminal. The embedded VS Code OSS workbench, end-to-end provider tests, richer task verification, signed installers, and release validation remain open.</p>
         </article>}
         {terminalOpen && <section className="terminal-panel">
         <div className="terminal-title"><span>INTEGRATED WORKSPACE TERMINAL · {workspaceName}</span><button onClick={() => setTerminalOutput([])}>Clear</button></div>
