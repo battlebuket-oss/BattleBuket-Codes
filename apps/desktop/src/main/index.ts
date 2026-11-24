@@ -486,13 +486,27 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
     risk: payload.risk,
     createdAt: new Date().toISOString()
   };
+  let independentReviewer: AgentProvider | undefined;
   const director = new EngineeringDirector(adapters, {
-    decide: async () => ({
-      primary: payload.provider,
-      reviewer: payload.provider,
-      rationale: "The user-selected provider performs implementation followed by a separate read-only review pass using the same runtime.",
-      requiresHumanApproval: payload.risk !== "low"
-    }),
+    decide: async () => {
+      const alternateProvider: AgentProvider = payload.provider === "codex" ? "claude" : "codex";
+      const alternateAdapter = adapters.find(item => item.provider === alternateProvider);
+      if (alternateAdapter) {
+        try {
+          if (await alternateAdapter.isAvailable()) independentReviewer = alternateProvider;
+        } catch {
+          independentReviewer = undefined;
+        }
+      }
+      return {
+        primary: payload.provider,
+        ...(independentReviewer ? { reviewer: independentReviewer } : {}),
+        rationale: independentReviewer
+          ? "Implementation and independent read-only review use separate authenticated provider runtimes."
+          : "The alternate provider is unavailable; independent review will be recorded as missing and write-capable tasks will fail closed.",
+        requiresHumanApproval: payload.risk !== "low"
+      };
+    },
     approve: async () => {
       const options = {
         type: "warning" as const,
@@ -595,7 +609,16 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
         return answer.response === 1;
       }, signal);
       const diffChecks = await verifyWorkspaceDiff(task.workspacePath, signal);
-      return [...projectChecks, ...diffChecks];
+      const independentReviewCheck: VerificationResult = independentReviewer
+        ? { name: "Independent cross-provider review", passed: true, output: "A separate authenticated provider performed the read-only review." }
+        : {
+            name: "Independent cross-provider review",
+            passed: payload.risk === "low",
+            output: payload.risk === "low"
+              ? "Not run: the alternate provider is unavailable. Perform a manual review before release."
+              : "Required for write-capable tasks, but the alternate provider is not installed and authenticated."
+          };
+      return [independentReviewCheck, ...projectChecks, ...diffChecks];
     },
     emit: (event: AgentEvent) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("agent:event", event);
