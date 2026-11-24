@@ -57,7 +57,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "forceCodeSigning": true
     },
     "nsis": {
       "oneClick": false,
@@ -70,7 +71,13 @@
       "target": [
         "dmg"
       ],
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "forceCodeSigning": true,
+      "notarize": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "linux": {
       "target": [
