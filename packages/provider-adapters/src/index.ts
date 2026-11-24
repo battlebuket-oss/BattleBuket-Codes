@@ -5,6 +5,7 @@ import type { AgentAdapter, AgentEvent, AgentResult, AgentRunRequest } from "@ba
 type ActiveRun = { abort: AbortController; process?: ResultPromise };
 const active = new Map<string, ActiveRun>();
 const now = () => new Date().toISOString();
+const MAX_AGENT_RUNTIME_MS = 45 * 60 * 1000;
 
 function emit(request: AgentRunRequest, send: (event: AgentEvent) => void, type: AgentEvent["type"], message: string, data?: Record<string, unknown>) {
   send({ taskId: request.task.id, timestamp: now(), type, message, ...(data ? { data } : {}) });
@@ -18,7 +19,9 @@ export function claudeAllowedTools(mode: AgentRunRequest["approvalMode"]): strin
 }
 
 async function changedFiles(cwd: string): Promise<string[]> {
-  const result = await execa("git", ["status", "--porcelain", "--untracked-files=all"], { cwd, reject: false, maxBuffer: 2 * 1024 * 1024 });
+  const result = await execa("git", ["status", "--porcelain", "--untracked-files=all"], {
+    cwd, reject: false, maxBuffer: 2 * 1024 * 1024, timeout: 15_000
+  });
   if (result.exitCode !== 0) return [];
   return result.stdout.split(/\r?\n/).filter(Boolean).map(line => line.slice(3).trim()).filter(Boolean);
 }
@@ -40,7 +43,7 @@ export function codexArguments(request: AgentRunRequest): string[] {
 export class CodexCliAdapter implements AgentAdapter {
   readonly provider = "codex" as const;
   async isAvailable(): Promise<boolean> {
-    const result = await execa("codex", ["login", "status"], { reject: false });
+    const result = await execa("codex", ["login", "status"], { reject: false, timeout: 8000, maxBuffer: 64 * 1024 });
     return result.exitCode === 0;
   }
   async run(request: AgentRunRequest, send: (event: AgentEvent) => void): Promise<AgentResult> {
@@ -53,6 +56,8 @@ export class CodexCliAdapter implements AgentAdapter {
     let totalOutputBytes = 0;
     let assistantSummary = "";
     let stderrTail = "";
+    let timedOut = false;
+    const timeoutHandle = setTimeout(() => { timedOut = true; controller.abort(); }, MAX_AGENT_RUNTIME_MS);
     const processLine = (line: string) => {
       if (!line.trim()) return;
       try {
@@ -107,15 +112,20 @@ export class CodexCliAdapter implements AgentAdapter {
       const result = await child;
       if (pendingLine.trim()) processLine(pendingLine);
 
+      if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Codex task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled", changedFiles: [], verification: [] };
       if (result.exitCode !== 0) return { taskId: request.task.id, status: "failed", summary: (stderrTail || "Codex exited with code " + result.exitCode).slice(-4000), changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       const files = await changedFiles(request.workingDirectory);
       emit(request, send, "completed", "Codex finished; review the resulting workspace diff");
       return { taskId: request.task.id, status: "succeeded", summary: (assistantSummary || "Codex completed successfully").slice(-4000), changedFiles: files, verification: [] };
     } catch (error) {
+      if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Codex task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled", changedFiles: [], verification: [] };
       throw error;
-    } finally { active.delete(request.task.id); }
+    } finally {
+      clearTimeout(timeoutHandle);
+      active.delete(request.task.id);
+    }
   }
   async cancel(taskId: string): Promise<void> { active.get(taskId)?.abort.abort(); }
 }
@@ -143,6 +153,8 @@ export class ClaudeAgentSdkAdapter implements AgentAdapter {
     active.set(request.task.id, { abort: controller });
     emit(request, send, "progress", "Starting Claude Agent SDK in the selected workspace");
     let summary = "";
+    let timedOut = false;
+    const timeoutHandle = setTimeout(() => { timedOut = true; controller.abort(); }, MAX_AGENT_RUNTIME_MS);
     try {
       const stream = query({
         prompt: request.task.prompt,
@@ -180,14 +192,19 @@ export class ClaudeAgentSdkAdapter implements AgentAdapter {
           emit(request, send, "progress", "Claude is processing the task");
         }
       }
+      if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Claude task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled", changedFiles: [], verification: [] };
       const files = await changedFiles(request.workingDirectory);
       emit(request, send, "completed", "Claude finished; review the resulting workspace diff");
       return { taskId: request.task.id, status: "succeeded", summary: summary || "Claude completed successfully", changedFiles: files, verification: [] };
     } catch (error) {
+      if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Claude task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled", changedFiles: [], verification: [] };
       throw error;
-    } finally { active.delete(request.task.id); }
+    } finally {
+      clearTimeout(timeoutHandle);
+      active.delete(request.task.id);
+    }
   }
   async cancel(taskId: string): Promise<void> { active.get(taskId)?.abort.abort(); }
 }
