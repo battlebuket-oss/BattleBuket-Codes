@@ -16,7 +16,8 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add bounded text-file preview, atomic saves, stale-write detection, and path/symlink safety tests.
 - [x] Add the task composer, provider selection, risk/permission selection, streamed task status, and cancellation controls.
 - [ ] Embed a tested Code - OSS workbench and complete the full editor experience: tabs, diagnostics, command palette, project search, and recent projects. The current editor remains a lightweight textarea preview.
-- [x] Add a bounded one-command workspace shell panel with output limits and explicit OS-permission disclosure.\n- [ ] Replace the command runner with a persistent PTY terminal, interactive TTY support, resize handling, session lifecycle, and a permission broker.
+- [x] Add a persistent pipe-based workspace shell session with session lifecycle, streamed output, bounds, and explicit OS-permission disclosure.
+- [ ] Replace the pipe-based shell with a native PTY, xterm terminal UI, interactive TTY support, resize handling, and a permission broker.
 - [x] Add a tag-triggered signed installer build and draft-release workflow with required Windows/macOS signing secrets.
 - [ ] Configure real signing secrets and verify signed installers on Windows, macOS, and Linux; no production release has been published.
 
@@ -53,11 +54,14 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add consent-gated project test/lint/typecheck/build and supported dependency-audit runners with bounded timeouts/output. These commands still run with the user account permissions and are not a sandbox.
 - [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
-- [x] Add opt-in live provider conformance tests for authenticated read-only and workspace-write boundaries, plus a manual self-hosted runner workflow. They have not yet been executed on an authenticated provider runner.\n- [ ] Add end-to-end tests for the whole app, approval/cancellation, installed-app recovery, corrupted workspaces, and upgrade/uninstall.
+- [x] Add opt-in live provider conformance tests and a manual self-hosted runner workflow. The live provider tests have not yet been executed on authenticated runners.
+- [x] Add packaged-app smoke mode and release workflow steps for clean install, launch and uninstall on all three OS targets. These steps have not run yet.
+- [ ] Execute authenticated provider and signed-installer workflows; add upgrade/rollback, crash-recovery and broader UI end-to-end tests.
 
 ## Phase 6 — Production release operations
 - [ ] Add telemetry with opt-in/privacy controls, crash reporting, diagnostics export, and support logs.
-- [x] Add the tag-triggered signed-release workflow, signing requirements, Windows/macOS signature checks, macOS notarization validation, and platform install/launch/uninstall smoke steps.\n- [ ] Obtain signing certificates; configure secrets and execute a tagged signed release on real runners.
+- [x] Add the tag-triggered signed-release workflow, signing requirements, Windows/macOS signature checks, macOS notarization validation, and platform install/launch/uninstall smoke steps.
+- [ ] Obtain signing certificates; configure secrets and execute a tagged signed release on real runners.
 - [ ] Add a signed update channel, update integrity checks, staged rollout, rollback, and release provenance.
 - [ ] Add backup/restore, data migration, offline/reconnect behavior, and a tested incident recovery plan.
 - [x] Add initial privacy/data-handling documentation covering local storage, provider sharing, task history, and command execution.
