@@ -1,57 +1,65 @@
 # Production roadmap
 
-This roadmap distinguishes committed foundation from work that is not yet implemented. No item is complete until code exists and its acceptance checks pass.
+This roadmap distinguishes implemented foundations from incomplete systems. A checkbox means the feature exists in the repository and the stated test/acceptance evidence is available; it does not imply the overall product is production-ready.
 
 ## Phase 0 — Repository and engineering foundation
 - [x] Initialize repository structure and document architecture/security boundaries.
-- [x] Add CI for install, lint, typecheck, tests, and build (verified green on commit 00aacb4).
-- [ ] Add contribution rules, code owners, issue templates, and release conventions.
-- [ ] Pin dependency versions and establish automated dependency/license scanning.
+- [x] Run CI install, lint, typecheck, tests, and build on Linux.
+- [x] Add a high-severity dependency audit to CI.
+- [ ] Generate and commit a reproducible pnpm lockfile; require frozen installs.
+- [ ] Add contribution rules, code owners, issue templates, release conventions, secret scanning, and dependency/license review automation.
 
 ## Phase 1 — Desktop shell
-- [ ] Decide and pin the VS Code OSS upstream revision and required notices.
-- [ ] Establish the branded dark workbench theme and BattleBuket navigation.
-- [x] Build secure Electron main/preload/renderer boundaries (context isolation, sandbox, restricted preload, navigation blocking, CSP).
-- [ ] Add recent projects, command palette, integrated terminal, and diagnostics.
-- [x] Add native project-folder selection, workspace-bounded directory listing, 1 MB text previews, and bounded saves with stale-version protection.
-- [x] Add tests for workspace path containment, symlink filtering, reads, writes, and stale-save rejection.
-- [ ] Produce repeatable development builds for Windows, macOS, and Linux.
-- [x] Configure a manual Windows NSIS installer-preview workflow (execution and signing still pending).
+- [x] Establish a secure Electron main/preload/renderer boundary with context isolation, sandboxing, navigation blocking, and a restrictive CSP.
+- [x] Add native project-folder selection and workspace-bounded directory browsing.
+- [x] Add bounded text-file preview, atomic saves, stale-write detection, and path/symlink safety tests.
+- [x] Add the task composer, provider selection, risk/permission selection, streamed task status, and cancellation controls.
+- [ ] Integrate a supported VS Code OSS workbench revision with all upstream notices and reproducible build instructions.
+- [ ] Add a true code editor experience, tabs, diagnostics, command palette, project search, and recent projects.
+- [ ] Add an integrated terminal with a permission broker and PTY lifecycle management.
+- [ ] Run and verify installers on Windows, macOS, and Linux; the current workflow only defines unsigned preview builds.
 
 ## Phase 2 — Platform contracts and persistence
-- [ ] Define task, plan, agent, tool-call, event, approval, and verification contracts.
-- [ ] Add SQLite schema, migrations, recovery, and structured logs.
+- [x] Define initial task, agent, provider, event, verification, risk, and approval contracts.
+- [ ] Complete task-plan, dependency, tool-call, audit-event, and recovery contracts.
+- [ ] Add durable local storage, schema migrations, corruption recovery, retention controls, and structured redacted logs.
 - [ ] Add workspace registry, Git status, and isolated worktree lifecycle.
-- [ ] Add provider-neutral streaming event protocol.
 
 ## Phase 3 — Engineering Director
-- [ ] Implement task intake and acceptance-criteria generation.
-- [ ] Implement planning, dependency graph, delegation, and scheduling.
-- [ ] Implement provider selection, retries, cancellation, and timeout handling.
-- [ ] Implement supervision, review loops, and conflict resolution.
-- [ ] Implement audit trail and resumable tasks.
+- [x] Accept one task, select a provider explicitly, enforce risk-based permissions, stream events, and support cancellation.
+- [x] Gate a successful result on the current Git whitespace check.
+- [ ] Implement prompt enhancement, acceptance-criteria generation, planning, dependency graphs, delegation, and scheduling.
+- [ ] Implement real specialist-agent delegation rather than role descriptions or simulated teams.
+- [ ] Implement observation, review loops, replanning, retries, timeouts, checkpoints, and resumable tasks.
+- [ ] Add multi-task isolation, worktree ownership, merge/conflict resolution, and human review of final diffs.
+- [ ] Record task state and provider/tool provenance durably.
 
 ## Phase 4 — Provider integrations
-- [ ] Verify Codex CLI/App Server interface, version, license, and distribution model.
-- [ ] Implement Codex adapter with streaming, cancellation, and permission mediation.
-- [ ] Verify Claude Agent SDK package terms, supported runtimes, and distribution requirements.
-- [ ] Implement Claude adapter with streaming, cancellation, and permission mediation.
-- [ ] Add provider health checks, credential setup, quotas, and clear failure states.
-- [ ] Run capability and cost/latency benchmarks before enabling automatic routing.
+- [x] Add an initial Codex CLI adapter with structured event ingestion, cancellation, and read-only/workspace-write modes.
+- [x] Add an initial Claude Agent SDK adapter with cancellation, a restricted built-in tool allowlist, disabled project/user settings and MCP config, and bounded turns.
+- [x] Add local runtime detection and explicit provider-unavailable states.
+- [ ] Verify exact CLI/SDK versions, account authentication, supported models, license terms, platform packaging, and failure behavior.
+- [ ] Add a credential setup/status flow; never log or persist provider secrets.
+- [ ] Add quota/cost visibility, capability benchmarks, model selection, and deterministic integration tests on each supported OS.
+- [ ] Add a proper permission broker for terminal, network, dependency installation, deletion, and other sensitive operations.
 
 ## Phase 5 — Quality and safety
-- [ ] Implement test/lint/typecheck/build runners and structured result reporting.
-- [ ] Add diff review, static analysis, dependency audit, and secret scanning.
-- [ ] Add human approval gates and safe merge workflow.
-- [ ] Add adversarial tests for prompt injection from repository content and tool misuse.
+- [x] Add workspace path/symlink, stale-save, binary-file, size-limit, and provider-permission tests.
+- [x] Add a basic Git diff whitespace gate for Git workspaces.
+- [x] Add CI dependency vulnerability auditing for high-severity findings.
+- [ ] Add project-aware test/lint/typecheck/build runners in a sandbox, with structured outputs and timeouts.
+- [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
+- [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
+- [ ] Add end-to-end tests for the whole app, real provider sessions, approval/cancellation, file recovery, and corrupted workspaces.
 
-## Phase 6 — Production readiness
-- [ ] Add telemetry with privacy controls, crash reporting, and diagnostics export.
-- [ ] Add trusted code-signing certificate and signed installers/notarization, auto-update, and rollback.
-- [ ] Add backup/restore, data migration, and offline/reconnect behavior.
-- [ ] Add end-to-end tests on supported operating systems.
-- [ ] Publish support policy, privacy disclosures, third-party notices, and release checklist.
+## Phase 6 — Production release operations
+- [ ] Add telemetry with opt-in/privacy controls, crash reporting, diagnostics export, and support logs.
+- [ ] Obtain signing certificates; configure Windows code signing and macOS Developer ID signing/notarization.
+- [ ] Add a signed update channel, update integrity checks, staged rollout, rollback, and release provenance.
+- [ ] Add backup/restore, data migration, offline/reconnect behavior, and a tested incident recovery plan.
+- [ ] Publish privacy disclosures, provider/third-party notices, license inventory, support policy, and a release checklist.
+- [ ] Verify clean install, upgrade, uninstall, data retention, and rollback on every supported OS.
 
 ## Release gate
 
-Production-ready means clean installation, secure credential handling, reproducible builds, tested update/rollback, no unresolved critical/high security issues, provider failure recovery, and end-to-end verification on every supported OS.
+Production readiness requires a reproducible, frozen dependency graph; secure credential handling; a real editor and terminal; isolated agent execution; durable task state and audit history; deterministic quality gates; no unresolved critical/high security issues; signed installers and update integrity; and end-to-end verification on every supported OS. The current repository does not meet this gate.
