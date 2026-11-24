@@ -5,6 +5,7 @@ This document describes the data flows implemented by the current BattleBuket Co
 ## Local data
 
 - Project browsing and text-file editing use the folder selected by the user.
+- The recent-workspace file is stored in Electron's per-user application data directory. It stores up to 10 canonical absolute folder paths and last-opened timestamps so users can reopen local projects; it is not uploaded by the app.
 - The local task-history file is stored in Electron's per-user application data directory. It stores a task ID, generic provider label, risk level, start/finish times, status, changed-file count and verification result. It does not store task prompts, source contents or model output.
 - Terminal input and terminal output are streamed between the renderer and a local shell process. The current shell runs with the permissions of the operating-system user.
 - No product analytics or telemetry service is currently configured.
