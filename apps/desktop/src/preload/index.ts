@@ -10,6 +10,15 @@ type AgentEvent = {
   message: string;
   data?: Record<string, unknown>;
 };
+type TerminalSessionEvent = {
+  sessionId: string;
+  type: "output" | "error" | "exit";
+  stream?: "stdout" | "stderr";
+  text?: string;
+  exitCode?: number | null;
+  signal?: NodeJS.Signals | null;
+};
+
 type TaskHistoryItem = {
   taskId: string;
   provider: AgentProvider;
@@ -36,7 +45,14 @@ contextBridge.exposeInMainWorld("battleBuket", {
   saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }): Promise<{ path: string; mtimeMs: number }> => ipcRenderer.invoke("workspace:write", payload),
   getAgentAvailability: (): Promise<Record<AgentProvider, boolean>> => ipcRenderer.invoke("agents:availability"),
   getTaskHistory: (): Promise<TaskHistoryItem[]> => ipcRenderer.invoke("tasks:history"),
-  runTerminalCommand: (command: string): Promise<{ command: string; exitCode: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> => ipcRenderer.invoke("terminal:run", { command }),
+  startTerminal: (): Promise<string> => ipcRenderer.invoke("terminal:start"),
+  writeTerminal: (sessionId: string, input: string): Promise<boolean> => ipcRenderer.invoke("terminal:write", { sessionId, input }),
+  closeTerminal: (sessionId: string): Promise<boolean> => ipcRenderer.invoke("terminal:close", { sessionId }),
+  onTerminalEvent: (listener: (event: TerminalSessionEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: TerminalSessionEvent) => listener(payload);
+    ipcRenderer.on("terminal:event", handler);
+    return () => ipcRenderer.removeListener("terminal:event", handler);
+  },
   runAgent: (payload: { prompt: string; provider: AgentProvider; risk: TaskRisk }): Promise<AgentResult> => ipcRenderer.invoke("agents:run", payload),
   cancelAgent: (): Promise<boolean> => ipcRenderer.invoke("agents:cancel"),
   onAgentEvent: (listener: (event: AgentEvent) => void): (() => void) => {
