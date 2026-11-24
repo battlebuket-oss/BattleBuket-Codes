@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import type { VerificationResult } from "../../../../packages/agent-contracts/src/index";
+import { prepareSandboxedCommand } from "./command-sandbox";
 
 export const QUALITY_SCRIPTS = ["test", "lint", "typecheck", "build"] as const;
 export const QUALITY_TIMEOUT_MS = 5 * 60 * 1000;
@@ -255,20 +256,33 @@ async function runScript(manager: PackageManager, script: string, cwd: string, s
 
   if (signal?.aborted) return { name: label, passed: false, output: "Cancelled by the user." };
 
+  let sandbox: Awaited<ReturnType<typeof prepareSandboxedCommand>>;
+  try {
+    sandbox = await prepareSandboxedCommand(cwd, executable, args, safeEnvironment());
+  } catch (error) {
+    return {
+      name: label,
+      passed: false,
+      output: "Blocked: OS-enforced project-command sandbox could not be prepared. " +
+        (error instanceof Error ? error.message : String(error))
+    };
+  }
+
   let child: ChildProcess;
   try {
-    child = spawn(executable, args, {
-      cwd,
-      env: safeEnvironment(),
+    child = spawn(sandbox.executable, sandbox.args, {
+      cwd: sandbox.cwd,
+      env: sandbox.env,
       windowsHide: true,
       detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"]
     });
   } catch (error) {
+    await sandbox.dispose();
     return {
       name: label,
       passed: false,
-      output: "Failed to start " + spec.display + ": " + (error instanceof Error ? error.message : String(error))
+      output: "Failed to start sandboxed " + spec.display + ": " + (error instanceof Error ? error.message : String(error))
     };
   }
 
@@ -346,6 +360,7 @@ async function runScript(manager: PackageManager, script: string, cwd: string, s
   } finally {
     clearTimeout(timeoutHandle);
     signal?.removeEventListener("abort", onAbort);
+    await sandbox.dispose().catch(() => {});
   }
 }
 
