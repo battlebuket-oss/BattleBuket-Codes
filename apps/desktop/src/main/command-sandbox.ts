@@ -79,10 +79,9 @@ export async function prepareSandboxedCommand(
   const scratchTmp = join(scratch, "tmp");
   const scratchCache = join(scratch, "cache");
   const scratchCorepack = join(scratch, "corepack");
-  await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack].map(path => fs.mkdir(path, { recursive: true })));
-
   const dispose = async () => fs.rm(scratch, { recursive: true, force: true });
   try {
+    await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack].map(path => fs.mkdir(path, { recursive: true })));
     const corepackHome = process.env.COREPACK_HOME || join(homedir(), ".cache", "node", "corepack");
     const hasCorepackHome = await isDirectory(corepackHome);
     if (hasCorepackHome) {
@@ -229,7 +228,7 @@ export async function prepareSandboxedCommand(
     if (process.platform === "win32") {
       throw new Error("Windows project scripts are blocked because an OS-enforced AppContainer execution broker is not yet configured. They will not be run with unrestricted user permissions.");
     }
-  
+    throw new Error("No supported OS-enforced command sandbox is available on this platform.");
   } catch (error) {
     await dispose().catch(() => {});
     throw error;
