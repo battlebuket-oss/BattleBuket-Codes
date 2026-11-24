@@ -51,4 +51,33 @@ describe("EngineeringDirector", () => {
     assert.equal(result.status, "failed");
     assert.equal(director.state.status, "failed");
   });
+
+  it("requires the configured read-only reviewer pass before task completion", async () => {
+    let reviewed = false;
+    const director = new EngineeringDirector([adapter({ taskId: task.id, status: "succeeded", summary: "Implemented", changedFiles: ["src/app.ts"], verification: [] })], {
+      decide: async () => ({ primary: "codex", reviewer: "codex", rationale: "Same-provider review", requiresHumanApproval: false }),
+      review: async () => {
+        reviewed = true;
+        return { name: "Read-only provider review", passed: true, output: "BATTLEBUKET_REVIEW: APPROVE" };
+      },
+      verify: async () => [{ name: "typecheck", passed: true }],
+      emit: () => {}
+    });
+    const result = await director.execute(task);
+    assert.equal(reviewed, true);
+    assert.equal(result.status, "succeeded");
+    assert.equal(result.verification.some(check => check.name === "Read-only provider review" && check.passed), true);
+  });
+
+  it("fails closed when a configured reviewer rejects the implementation", async () => {
+    const director = new EngineeringDirector([adapter({ taskId: task.id, status: "succeeded", summary: "Implemented", changedFiles: [], verification: [] })], {
+      decide: async () => ({ primary: "codex", reviewer: "codex", rationale: "Same-provider review", requiresHumanApproval: false }),
+      review: async () => ({ name: "Read-only provider review", passed: false, output: "BATTLEBUKET_REVIEW: REJECT\\nA blocker was found." }),
+      verify: async () => [{ name: "typecheck", passed: true }],
+      emit: () => {}
+    });
+    const result = await director.execute(task);
+    assert.equal(result.status, "failed");
+    assert.equal(result.verification.some(check => check.name === "Read-only provider review" && !check.passed), true);
+  });
 });
