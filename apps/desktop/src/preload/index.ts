@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("battleBuket", {
   saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }): Promise<{ path: string; mtimeMs: number }> => ipcRenderer.invoke("workspace:write", payload),
   getAgentAvailability: (): Promise<Record<AgentProvider, boolean>> => ipcRenderer.invoke("agents:availability"),
   getTaskHistory: (): Promise<TaskHistoryItem[]> => ipcRenderer.invoke("tasks:history"),
+  runTerminalCommand: (command: string): Promise<{ command: string; exitCode: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> => ipcRenderer.invoke("terminal:run", { command }),
   runAgent: (payload: { prompt: string; provider: AgentProvider; risk: TaskRisk }): Promise<AgentResult> => ipcRenderer.invoke("agents:run", payload),
   cancelAgent: (): Promise<boolean> => ipcRenderer.invoke("agents:cancel"),
   onAgentEvent: (listener: (event: AgentEvent) => void): (() => void) => {
