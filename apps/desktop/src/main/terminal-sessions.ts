@@ -24,12 +24,24 @@ type Session = {
   resolveExit: () => void;
 };
 
-function terminalEnvironment(): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
-    TERM: "xterm-256color",
-    COLORTERM: "truecolor"
-  };
+function terminalEnvironment(): Record<string, string> {
+  const env: Record<string, string> = {};
+  const allowed = [
+    "PATH", "Path", "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+    "SHELL", "ComSpec", "SystemRoot", "WINDIR", "SystemDrive",
+    "TEMP", "TMP", "TMPDIR", "APPDATA", "LOCALAPPDATA",
+    "LANG", "LC_ALL", "USER", "LOGNAME", "USERNAME", "PATHEXT",
+    "PSModulePath", "SSH_AUTH_SOCK", "JAVA_HOME", "ANDROID_HOME",
+    "ANDROID_SDK_ROOT", "GOPATH", "GOROOT", "CARGO_HOME", "RUSTUP_HOME",
+    "PNPM_HOME", "NVM_DIR", "VOLTA_HOME"
+  ];
+  for (const key of allowed) {
+    const value = process.env[key];
+    if (typeof value === "string") env[key] = value;
+  }
+  env.TERM = "xterm-256color";
+  env.COLORTERM = "truecolor";
+  return env;
 }
 
 export function validateTerminalInput(value: unknown): asserts value is string {
