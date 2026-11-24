@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverQualityScripts, dotnetOutputHasVulnerabilities, qualityCommand, runProjectQualityChecks } from "../src/main/project-verification";
+import { discoverQualityScripts, dotnetOutputHasVulnerabilities, hasExecutableQualityChecks, qualityCommand, runProjectQualityChecks } from "../src/main/project-verification";
 
 test("discovers supported project scripts and honours the declared package manager", async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-quality-"));
@@ -115,4 +115,11 @@ test("interprets .NET vulnerability reports fail-closed", () => {
   assert.equal(dotnetOutputHasVulnerabilities("Project App.csproj has the following vulnerable packages"), true);
   assert.equal(dotnetOutputHasVulnerabilities("2 vulnerable packages found"), true);
   assert.equal(dotnetOutputHasVulnerabilities("Restore completed successfully."), false);
+});
+
+test("does not treat dependency auditing alone as implementation verification", () => {
+  assert.equal(hasExecutableQualityChecks(["audit"]), false);
+  assert.equal(hasExecutableQualityChecks(["security"]), false);
+  assert.equal(hasExecutableQualityChecks(["test", "security"]), true);
+  assert.equal(hasExecutableQualityChecks(["lint", "build"]), true);
 });
