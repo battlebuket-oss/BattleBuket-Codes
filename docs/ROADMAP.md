@@ -4,15 +4,15 @@ This roadmap distinguishes committed foundation from work that is not yet implem
 
 ## Phase 0 — Repository and engineering foundation
 - [x] Initialize repository structure and document architecture/security boundaries.
-- [ ] Add CI for install, lint, typecheck, tests, and build.
+- [x] Add CI for install, lint, typecheck, tests, and build (latest passing commit recorded in GitHub Actions).
 - [ ] Add contribution rules, code owners, issue templates, and release conventions.
 - [ ] Pin dependency versions and establish automated dependency/license scanning.
 
 ## Phase 1 — Desktop shell
 - [ ] Decide and pin the VS Code OSS upstream revision and required notices.
 - [ ] Establish the branded dark workbench theme and BattleBuket navigation.
-- [ ] Build secure Electron main/preload/renderer boundaries.
-- [ ] Add project open/recent projects, command palette, terminal, and diagnostics.
+- [x] Build secure Electron main/preload/renderer boundaries (context isolation, sandbox, restricted preload, navigation blocking, CSP).
+- [ ] Add recent projects, command palette, terminal, and diagnostics.\n- [x] Add native project-folder selection, workspace-bounded directory listing, and 1 MB read-only text previews (initial explorer only).
 - [ ] Produce repeatable development builds for Windows, macOS, and Linux.
 
 ## Phase 2 — Platform contracts and persistence
