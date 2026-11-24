@@ -154,6 +154,7 @@ function createWindow(): void {
           };
           ptyTimer = setTimeout(() => resolvePtyResult(false), 12_000);
         });
+        let ptyHealthy = false;
         try {
           await terminalSessions.start(sessionId, smokeWorkspace, event => {
             if (event.type === "output" && event.text?.includes(marker)) resolvePtyResult(true);
@@ -165,16 +166,17 @@ function createWindow(): void {
           terminalSessions.write(sessionId, command);
           const outputHealthy = await ptyResult;
           const processExited = await terminalSessions.close(sessionId);
-          if (!outputHealthy || !processExited) {
-            finish(false);
-            return;
-          }
+          ptyHealthy = outputHealthy && processExited;
         } finally {
           resolvePtyResult(false);
           await terminalSessions.closeAll().catch(() => {});
           await fs.rm(smokeWorkspace, { recursive: true, force: true }).catch(() => {});
         }
 
+        if (!ptyHealthy) {
+          finish(false);
+          return;
+        }
         if (process.argv.includes("--smoke-clear-state")) await fs.unlink(statePath).catch(() => {});
         finish(true);
       })().catch(() => finish(false));
