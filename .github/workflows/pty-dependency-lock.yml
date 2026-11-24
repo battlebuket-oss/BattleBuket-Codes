@@ -1,0 +1,87 @@
+name: Native PTY dependency and platform verification
+
+on:
+  push:
+    branches:
+      - feature/pty-terminal
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pty-terminal-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-lockfile:
+    name: Resolve and commit native dependency lockfile
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pty-terminal
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Activate pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.0.0 --activate
+      - name: Resolve the native PTY dependency graph
+        run: pnpm install --lockfile-only --no-frozen-lockfile
+      - name: Commit the reproducible lockfile
+        run: |
+          if git diff --quiet -- pnpm-lock.yaml; then
+            echo "Lockfile is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "build(deps): lock native PTY and xterm dependencies"
+          git push origin HEAD:refs/heads/feature/pty-terminal
+
+  verify-native:
+    name: Native PTY on ${{ matrix.label }}
+    needs: resolve-lockfile
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux
+          - os: macos-latest
+            label: macOS
+          - os: windows-latest
+            label: Windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pty-terminal
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Activate pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.0.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Rebuild native dependencies for Electron
+        run: pnpm --filter @battlebuket/desktop exec electron-builder install-app-deps
+      - name: Verify node-pty against the bundled Electron runtime
+        env:
+          ELECTRON_RUN_AS_NODE: "1"
+        run: pnpm --filter @battlebuket/desktop exec electron scripts/pty-smoke.cjs
+      - name: Run unit tests
+        run: pnpm test
+      - name: Typecheck and lint
+        run: |
+          pnpm lint
+          pnpm typecheck
+      - name: Build desktop bundle
+        run: pnpm --filter @battlebuket/desktop build
