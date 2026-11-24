@@ -24,6 +24,12 @@ let activeTerminalSessionId: string | null = null;
 let shutdownInProgress = false;
 let shutdownComplete = false;
 
+let terminalCleanup: Promise<void> = Promise.resolve();
+function queueTerminalCleanup(): Promise<void> {
+  terminalCleanup = terminalCleanup.catch(() => {}).then(() => terminalSessions.closeAll());
+  return terminalCleanup;
+}
+
 // Only the trusted top-level renderer may invoke privileged main-process IPC.
 function handleTrustedIpc(
   channel: string,
@@ -92,7 +98,7 @@ function createWindow(): void {
     }
   });
   mainWindow = window;
-  window.on("closed", () => { if (mainWindow === window) mainWindow = null; activeTerminalSessionId = null; });
+  window.on("closed", () => { if (mainWindow === window) mainWindow = null; activeTerminalSessionId = null; void queueTerminalCleanup(); });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
   if (process.argv.includes("--smoke-test")) {
@@ -137,6 +143,7 @@ handleTrustedIpc("workspace:write", async (_event, payload: { path: string; cont
 handleTrustedIpc("tasks:history", async () => readTaskHistory(app.getPath("userData")));
 
 handleTrustedIpc("terminal:start", async () => {
+  await terminalCleanup;
   if (!activeWorkspace) throw new Error("Open a project folder before starting the terminal.");
   if (activeDirector || taskStartPending) throw new Error("Close or finish the engineering task before starting the terminal.");
   if (terminalSessions.hasActiveSession()) throw new Error("A terminal session is already active.");
@@ -378,7 +385,7 @@ app.on("before-quit", event => {
   event.preventDefault();
   if (shutdownInProgress) return;
   shutdownInProgress = true;
-  void terminalSessions.closeAll().finally(() => {
+  void queueTerminalCleanup().finally(() => {
     shutdownComplete = true;
     app.quit();
   });
