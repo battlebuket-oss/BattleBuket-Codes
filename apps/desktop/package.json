@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
-    "react": "^18.3.1",
+    "react": "^19.3.1",
     "react-dom": "^18.3.1",
     "@battlebuket/agent-contracts": "workspace:*",
     "@battlebuket/engineering-director": "workspace:*",
@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
-    "@types/react": "^18.3.18",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "6.3.0",
     "electron": "45.4.1",
