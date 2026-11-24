@@ -140,7 +140,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
 
   const task: AgentTask = {
     id: randomUUID(),
-    title: payload.prompt.trim().split(/\s+/).slice(0, 8).join(" ").slice(0, 80),
+    title: `${payload.provider === "codex" ? "Codex" : "Claude"} task`,
     prompt: payload.prompt.trim(),
     workspacePath: activeWorkspace,
     acceptanceCriteria: [{ id: "task-result", description: "Complete the requested task and report concrete changes.", required: true }],
@@ -179,7 +179,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
           `Scripts to run: ${scripts.map(script => `${manager} run ${script}`).join(", ")}`,
           "These repository-defined scripts can execute arbitrary code and may access the network using your user account.",
           "They run with a reduced environment, a five-minute timeout per script, and a bounded output buffer. Approve only if you trust this project."
-        ].join("\\n");
+        ].join("\n");
         const options = {
           type: "warning" as const,
           title: "Run project quality checks?",
