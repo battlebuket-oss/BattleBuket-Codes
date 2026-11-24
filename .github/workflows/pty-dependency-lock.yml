@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,6 +43,15 @@ jobs:
           git add pnpm-lock.yaml
           git commit -m "build(deps): lock native PTY and xterm dependencies"
           git push origin HEAD:refs/heads/feature/pty-terminal
+
+      - name: Run source security and quality checks against the updated branch head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: feature/pty-terminal
+        run: |
+          gh workflow run ci.yml --ref "$REF"
+          gh workflow run codeql.yml --ref "$REF"
+          gh workflow run secret-scan.yml --ref "$REF"
 
   verify-native:
     name: Native PTY on ${{ matrix.label }}
