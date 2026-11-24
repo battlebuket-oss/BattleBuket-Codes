@@ -70,10 +70,14 @@ function openNativeTerminal(runtime: Runtime): void {
 
   const applyEvent = (event: TerminalSessionEvent) => {
     if (!sessionId || event.sessionId !== sessionId) return;
-    if (event.type === "output" && event.text) output.fire(event.text);
-    else if (event.type === "error" && event.text) output.fire("\r\n\x1b[31m" + event.text + "\x1b[0m\r\n");
-    else if (event.type === "exit") {
+    if (event.type === "output" && event.text) {
+      window.__battleBuketTerminalOutputSeen = true;
+      output.fire(event.text);
+    } else if (event.type === "error" && event.text) {
+      output.fire("\r\n\x1b[31m" + event.text + "\x1b[0m\r\n");
+    } else if (event.type === "exit") {
       const exitCode = event.exitCode ?? 0;
+      window.__battleBuketNativeTerminalExited = true;
       output.fire("\r\n\x1b[90m[process exited: " + exitCode + "]\x1b[0m\r\n");
       sessionId = null;
       unsubscribe();
