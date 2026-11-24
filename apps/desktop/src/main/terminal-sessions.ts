@@ -1,5 +1,7 @@
 import * as pty from "node-pty";
+import { constants as fsConstants } from "node:fs";
 import { promises as fs } from "node:fs";
+import { isAbsolute } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 export const TERMINAL_MAX_INPUT_BYTES = 64 * 1024;
@@ -39,9 +41,33 @@ function terminalEnvironment(): Record<string, string> {
     const value = process.env[key];
     if (typeof value === "string") env[key] = value;
   }
+  if (process.platform !== "win32" && !env.PATH) {
+    env.PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+  }
   env.TERM = "xterm-256color";
   env.COLORTERM = "truecolor";
   return env;
+}
+
+export async function resolvePosixShell(preferredShell = process.env.SHELL): Promise<string> {
+  const candidates = [...new Set([
+    preferredShell,
+    "/bin/zsh",
+    "/bin/bash",
+    "/bin/sh",
+    "/usr/bin/bash"
+  ].filter((candidate): candidate is string => typeof candidate === "string" && isAbsolute(candidate)))];
+
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate, fsConstants.X_OK);
+      return candidate;
+    } catch {
+      // Ignore missing or non-executable configured shells and try the next system shell.
+    }
+  }
+
+  throw new Error("No executable POSIX shell was found. Checked: " + candidates.join(", "));
 }
 
 export function validateTerminalInput(value: unknown): asserts value is string {
@@ -88,7 +114,7 @@ export class WorkspaceTerminalSessions {
       const cwdStat = await fs.stat(cwd);
       if (!cwdStat.isDirectory()) throw new Error("Workspace terminal working directory must be a directory.");
       const isWindows = process.platform === "win32";
-      const shell = isWindows ? (process.env.ComSpec || "cmd.exe") : (process.env.SHELL || "/bin/sh");
+      const shell = isWindows ? (process.env.ComSpec || "cmd.exe") : await resolvePosixShell();
       const args = isWindows ? ["/D"] : ["-i"];
       const terminal = pty.spawn(shell, args, {
         name: "xterm-256color",
