@@ -87,10 +87,10 @@ export class CodexCliAdapter implements AgentAdapter {
         buffer: false
       });
       run.process = child;
-      child.stderr?.on("data", chunk => {
+      child.readable({ from: "stderr", binary: true }).on("data", chunk => {
         stderrTail = (stderrTail + String(chunk)).slice(-4000);
       });
-      child.stdout?.on("data", chunk => {
+      child.readable({ from: "stdout", binary: true }).on("data", chunk => {
         const text = String(chunk);
         totalOutputBytes += Buffer.byteLength(text, "utf8");
         if (totalOutputBytes > 2 * 1024 * 1024) {
