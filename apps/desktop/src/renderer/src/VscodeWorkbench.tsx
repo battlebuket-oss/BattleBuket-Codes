@@ -33,6 +33,7 @@ type Runtime = {
   filesystemRegistration: vscode.Disposable;
   commandRegistration: vscode.Disposable;
   statusItem: vscode.StatusBarItem;
+  smokeTest: boolean;
   terminal?: vscode.Terminal;
 };
 
@@ -196,7 +197,7 @@ async function createRuntime(container: HTMLElement): Promise<Runtime> {
   statusItem.tooltip = "Open the native workspace terminal";
   statusItem.command = "battlebuket.openNativeTerminal";
   statusItem.show();
-  runtime = { wrapper, provider, filesystemRegistration, commandRegistration, statusItem };
+  runtime = { wrapper, provider, filesystemRegistration, commandRegistration, statusItem, smokeTest };
   provider.setWorkspaceRoot("");
   return runtime;
 }
@@ -274,7 +275,7 @@ export function VscodeWorkbench(props: { workspacePath: string | null; onError: 
       if (!vscode.workspace.updateWorkspaceFolders(0, existing, { uri, name: props.workspacePath!.split(/[\\/]/).filter(Boolean).pop() || "Workspace" })) {
         throw new Error("VS Code could not switch to the selected workspace folder.");
       }
-      if (!smokeTest && !vscode.workspace.isTrusted) {
+      if (!runtime.smokeTest && !vscode.workspace.isTrusted) {
         setStatus("Requesting workspace trust…");
         const trustGranted = await vscode.workspace.requestWorkspaceTrust();
         if (cancelled) return;
