@@ -77,7 +77,6 @@
         "AppImage"
       ],
       "category": "Development",
-      "desktopName": "BattleBuket Codes",
       "executableName": "battlebuket-codes",
       "syncDesktopName": true
     },
@@ -97,5 +96,6 @@
     "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "0.3.331",
     "@anthropic-ai/claude-agent-sdk-win32-arm64": "0.3.331",
     "@anthropic-ai/claude-agent-sdk-win32-x64": "0.3.331"
-  }
+  },
+  "desktopName": "com.battlebuket.codes"
 }
