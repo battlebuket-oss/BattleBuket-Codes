@@ -154,10 +154,12 @@ jobs:
           set -euo pipefail
           appimage="$(find apps/desktop/release -maxdepth 1 -name '*.AppImage' -print -quit)"
           test -n "$appimage"
-          chmod +x "$appimage"
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$appimage" --smoke-test
-          rm -f "$appimage"
-          test ! -e "$appimage"
+          smoke_appimage="$RUNNER_TEMP/$(basename "$appimage")"
+          cp "$appimage" "$smoke_appimage"
+          chmod +x "$smoke_appimage"
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$smoke_appimage" --smoke-test
+          rm -f "$smoke_appimage"
+          test -e "$appimage"
       - uses: actions/upload-artifact@v4
         with:
           name: BattleBuket-Codes-${{ matrix.label }}
