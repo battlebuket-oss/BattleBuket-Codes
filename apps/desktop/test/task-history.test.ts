@@ -10,14 +10,15 @@ test("persists task state without storing prompts or model output", async () => 
   try {
     const startedAt = new Date(Date.now() - 10_000).toISOString();
     await appendTaskHistory(directory, {
-      taskId: "task-safe-1", provider: "codex", risk: "medium", status: "running", at: startedAt
+      taskId: "task-safe-1", provider: "codex", risk: "medium", title: "Inspect workspace security", status: "running", at: startedAt
     });
     let items = await readTaskHistory(directory);
     assert.equal(items.length, 1);
     assert.equal(items[0].status, "interrupted");
+    assert.equal(items[0].title, "Inspect workspace security");
 
     await appendTaskHistory(directory, {
-      taskId: "task-safe-1", provider: "codex", risk: "medium", status: "succeeded",
+      taskId: "task-safe-1", provider: "codex", risk: "medium", title: "Inspect workspace security", status: "succeeded",
       at: new Date().toISOString(), changedFileCount: 3, verificationPassed: true
     });
     items = await readTaskHistory(directory);
