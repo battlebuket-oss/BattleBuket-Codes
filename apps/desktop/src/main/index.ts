@@ -70,7 +70,10 @@ async function verifyWorkspaceDiff(workspacePath: string): Promise<VerificationR
     await execFile("git", ["diff", "--check"], {
       cwd: workspacePath, timeout: 15000, windowsHide: true, maxBuffer: 256 * 1024
     });
-    return [{ name: "Git diff whitespace check", passed: true, output: "No whitespace errors reported by git diff --check." }];
+    await execFile("git", ["diff", "--cached", "--check"], {
+      cwd: workspacePath, timeout: 15000, windowsHide: true, maxBuffer: 256 * 1024
+    });
+    return [{ name: "Git diff whitespace check", passed: true, output: "No whitespace errors in unstaged or staged changes." }];
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Git diff verification failed";
     return [{ name: "Git diff whitespace check", passed: false, output: detail.slice(0, 2000) }];
@@ -202,7 +205,6 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
       return result.response === 1;
     },
     verify: async () => {
-      const diffChecks = await verifyWorkspaceDiff(task.workspacePath);
       const projectChecks = await runProjectQualityChecks(task.workspacePath, async (scripts, manager) => {
         const detail = [
           `Package manager: ${manager}`,
@@ -225,7 +227,8 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
           : await dialog.showMessageBox(options);
         return answer.response === 1;
       });
-      return [...diffChecks, ...projectChecks];
+      const diffChecks = await verifyWorkspaceDiff(task.workspacePath);
+      return [...projectChecks, ...diffChecks];
     },
     emit: (event: AgentEvent) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("agent:event", event);
