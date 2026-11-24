@@ -235,7 +235,7 @@ export default function App() {
         </article>}
         {terminalOpen && <section className="terminal-panel">
         <div className="terminal-title"><span>INTEGRATED WORKSPACE TERMINAL · {workspaceName}</span><button onClick={() => setTerminalOutput([])}>Clear</button></div>
-        <div className="terminal-output" aria-live="polite">{terminalOutput.length ? terminalOutput.map((line, index) => <pre key={index}>{line}</pre>) : <p>Commands run in the selected project directory. Each command has a 120-second limit and 1 MB output cap.</p>}</div>
+        <div className="terminal-output" aria-live="polite">{terminalOutput.length ? terminalOutput.map((line, index) => <pre key={index}>{line}</pre>) : <p>Commands start in the selected project directory. They run with your OS account permissions (not a security sandbox). Only execute commands you trust. Each command has a 120-second limit and 1 MB output cap.</p>}</div>
         <form className="terminal-input" onSubmit={event => { event.preventDefault(); void runTerminalCommand(); }}>
           <span>$</span><input value={terminalCommand} onChange={event => setTerminalCommand(event.target.value)} placeholder="Enter a command…" disabled={!workspace || terminalBusy}/>
           <button type="submit" disabled={!workspace || terminalBusy || !terminalCommand.trim()}>{terminalBusy ? "Running…" : "Run"}</button>
