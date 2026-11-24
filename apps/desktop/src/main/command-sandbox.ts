@@ -111,6 +111,7 @@ export async function prepareSandboxedCommand(
       "--tmpfs", "/var/tmp",
       "--proc", "/proc",
       "--dev", "/dev",
+      "--dir", "/workspace",
       "--bind", workspace, "/workspace",
       "--bind", scratch, "/tmp/battlebuket-sandbox",
       "--chdir", "/workspace",
@@ -134,6 +135,8 @@ export async function prepareSandboxedCommand(
       "--setenv", "TEMP", "/tmp/battlebuket-sandbox/tmp",
       "--setenv", "XDG_CACHE_HOME", "/tmp/battlebuket-sandbox/cache",
       "--setenv", "PATH", baseEnvironment.PATH ?? "",
+      "--setenv", "LANG", baseEnvironment.LANG ?? "C.UTF-8",
+      "--setenv", "LC_ALL", baseEnvironment.LC_ALL ?? "C.UTF-8",
       "--setenv", "CI", baseEnvironment.CI ?? "1"
     );
     if (hasCorepackHome) args.push("--setenv", "COREPACK_HOME", corepackHome);
@@ -202,9 +205,8 @@ export async function prepareSandboxedCommand(
     const args = [
       "-f", profilePath,
       "-D", "WORKSPACE=" + workspace,
-      "-D", "SCRATCH=" + scratch,
-      sandboxExec === "/usr/bin/sandbox-exec" ? "" : ""
-    ].filter(Boolean);
+      "-D", "SCRATCH=" + scratch
+    ];
     if (hasCorepackHome) args.push("-D", "COREPACK_HOME=" + corepackPath);
     args.push(executable, ...commandArgs);
 
