@@ -9,10 +9,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: pty-terminal-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   resolve-lockfile:
     name: Resolve and commit native dependency lockfile
