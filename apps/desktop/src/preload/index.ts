@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 
-type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
+type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number; mtimeMs: number };
 type WorkspaceContentMatch = { path: string; lineNumber: number; preview: string };
 type RecentWorkspace = { path: string; lastOpenedAt: string };
 type AgentProvider = "codex" | "claude";
@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld("battleBuket", {
   searchWorkspaceContent: (query: string): Promise<WorkspaceContentMatch[]> => ipcRenderer.invoke("workspace:search-content", query),
   readWorkspaceFile: (path: string): Promise<{ path: string; content: string; mtimeMs: number }> => ipcRenderer.invoke("workspace:read", path),
   saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }): Promise<{ path: string; mtimeMs: number }> => ipcRenderer.invoke("workspace:write", payload),
+  writeWorkspaceFileSystemFile: (payload: { path: string; content: string; create: boolean; overwrite: boolean }): Promise<{ path: string; mtimeMs: number }> => ipcRenderer.invoke("workspace:write-file", payload),
+  createWorkspaceDirectory: (path: string): Promise<boolean> => ipcRenderer.invoke("workspace:mkdir", { path }),
+  deleteWorkspacePath: (path: string, recursive: boolean): Promise<boolean> => ipcRenderer.invoke("workspace:delete", { path, recursive }),
+  renameWorkspacePath: (oldPath: string, newPath: string, overwrite: boolean): Promise<boolean> => ipcRenderer.invoke("workspace:rename", { oldPath, newPath, overwrite }),
   getAgentAvailability: (): Promise<Record<AgentProvider, boolean>> => ipcRenderer.invoke("agents:availability"),
   getTaskHistory: (): Promise<TaskHistoryItem[]> => ipcRenderer.invoke("tasks:history"),
   startTerminal: (): Promise<string> => ipcRenderer.invoke("terminal:start"),

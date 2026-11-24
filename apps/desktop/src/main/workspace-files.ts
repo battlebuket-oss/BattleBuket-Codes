@@ -52,7 +52,8 @@ export async function listWorkspace(rootPath: string, relativePath = ""): Promis
     if (entry.isSymbolicLink() || (entry.isDirectory() && IGNORED_DIRECTORIES.has(entry.name))) continue;
     if (!entry.isDirectory() && !entry.isFile()) continue;
     const fullPath = join(target, entry.name);
-    const stat = await fs.stat(fullPath);
+    const stat = await fs.lstat(fullPath);
+    if (stat.isSymbolicLink()) continue;
     result.push({ name: entry.name, path: relative(root, fullPath), kind: entry.isDirectory() ? "directory" : "file", size: stat.size, mtimeMs: stat.mtimeMs });
   }
   return result.sort((a,b) => a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "directory" ? -1 : 1).slice(0,300);
@@ -226,8 +227,9 @@ export async function searchWorkspaceFiles(rootPath: string, query: string): Pro
       try {
         const real = await fs.realpath(fullPath);
         if (!isPathInside(root, real)) continue;
-        const stat = await fs.stat(real);
-        result.push({ name: entry.name, path: relativePath, kind: "file", size: stat.size });
+        const stat = await fs.lstat(real);
+        if (stat.isSymbolicLink() || !stat.isFile()) continue;
+        result.push({ name: entry.name, path: relativePath, kind: "file", size: stat.size, mtimeMs: stat.mtimeMs });
       } catch { /* Ignore files removed or made inaccessible during search. */ }
     }
   };

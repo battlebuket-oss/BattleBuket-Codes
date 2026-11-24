@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { listWorkspace, readWorkspaceFile, searchWorkspaceContent, searchWorkspaceFiles, writeWorkspaceFile } from "./workspace-files";
+import { createWorkspaceDirectory, deleteWorkspacePath, listWorkspace, readWorkspaceFile, renameWorkspacePath, searchWorkspaceContent, searchWorkspaceFiles, writeWorkspaceFile, writeWorkspaceFileSystemFile } from "./workspace-files";
 import { appendTaskHistory, readTaskHistory } from "./task-history";
 import { WorkspaceTerminalSessions, type TerminalSessionEvent } from "./terminal-sessions";
 import { openRecentWorkspace, readRecentWorkspaces, recordRecentWorkspace } from "./recent-workspaces";
@@ -231,6 +231,36 @@ handleTrustedIpc("workspace:read", async (_event, relativePath: string) => {
 handleTrustedIpc("workspace:write", async (_event, payload: { path: string; content: string; expectedMtimeMs: number }) => {
   if (!payload || typeof payload.path !== "string" || payload.path.length > 4096 || !activeWorkspace) throw new Error("Invalid save request");
   return writeWorkspaceFile(activeWorkspace, payload.path, payload.content, payload.expectedMtimeMs);
+});
+
+handleTrustedIpc("workspace:write-file", async (_event, payload: { path: string; content: string; create: boolean; overwrite: boolean }) => {
+  if (!payload || typeof payload.path !== "string" || payload.path.length > 4096 ||
+      typeof payload.content !== "string" || typeof payload.create !== "boolean" || typeof payload.overwrite !== "boolean" ||
+      !activeWorkspace) throw new Error("Invalid workspace file write request.");
+  return writeWorkspaceFileSystemFile(activeWorkspace, payload.path, payload.content, payload.create, payload.overwrite);
+});
+
+handleTrustedIpc("workspace:mkdir", async (_event, payload: { path: string }) => {
+  if (!payload || typeof payload.path !== "string" || payload.path.length > 4096 || !activeWorkspace) {
+    throw new Error("Invalid workspace directory creation request.");
+  }
+  await createWorkspaceDirectory(activeWorkspace, payload.path);
+  return true;
+});
+
+handleTrustedIpc("workspace:delete", async (_event, payload: { path: string; recursive: boolean }) => {
+  if (!payload || typeof payload.path !== "string" || payload.path.length > 4096 ||
+      typeof payload.recursive !== "boolean" || !activeWorkspace) throw new Error("Invalid workspace delete request.");
+  await deleteWorkspacePath(activeWorkspace, payload.path, payload.recursive);
+  return true;
+});
+
+handleTrustedIpc("workspace:rename", async (_event, payload: { oldPath: string; newPath: string; overwrite: boolean }) => {
+  if (!payload || typeof payload.oldPath !== "string" || payload.oldPath.length > 4096 ||
+      typeof payload.newPath !== "string" || payload.newPath.length > 4096 ||
+      typeof payload.overwrite !== "boolean" || !activeWorkspace) throw new Error("Invalid workspace rename request.");
+  await renameWorkspacePath(activeWorkspace, payload.oldPath, payload.newPath, payload.overwrite);
+  return true;
 });
 
 handleTrustedIpc("tasks:history", async () => readTaskHistory(app.getPath("userData")));

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listWorkspace, readWorkspaceFile, searchWorkspaceContent, searchWorkspaceFiles, writeWorkspaceFile } from "../src/main/workspace-files";
+import { createWorkspaceDirectory, createWorkspaceFile, deleteWorkspacePath, listWorkspace, readWorkspaceFile, renameWorkspacePath, searchWorkspaceContent, searchWorkspaceFiles, writeWorkspaceFile, writeWorkspaceFileSystemFile } from "../src/main/workspace-files";
 
 test("lists folders and regular files but skips symlinks and generated directories", async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-workspace-"));
@@ -102,6 +102,74 @@ test("project content search returns line previews and ignores generated, binary
     }]);
     assert.deepEqual(await searchWorkspaceContent(root, "x"), []);
     assert.deepEqual(await searchWorkspaceContent(root, "x".repeat(201)), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("workspace filesystem provider operations create, write, rename and delete safely", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-workspace-provider-"));
+  try {
+    await createWorkspaceDirectory(root, "src");
+    const created = await createWorkspaceFile(root, "src/app.ts", "export const value = 1;");
+    assert.equal(created.path, "src/app.ts");
+    const opened = await readWorkspaceFile(root, "src/app.ts");
+    assert.equal(opened.content, "export const value = 1;");
+    assert.equal(typeof opened.mtimeMs, "number");
+
+    const overwritten = await writeWorkspaceFileSystemFile(root, "src/app.ts", "export const value = 2;", false, true);
+    assert.equal(overwritten.path, "src/app.ts");
+    assert.equal((await readWorkspaceFile(root, "src/app.ts")).content, "export const value = 2;");
+    await assert.rejects(
+      () => writeWorkspaceFileSystemFile(root, "src/app.ts", "no overwrite", true, false),
+      /File already exists/
+    );
+
+    await createWorkspaceDirectory(root, "src/nested");
+    await createWorkspaceFile(root, "src/nested/new.ts", "export {};");
+    await renameWorkspacePath(root, "src/nested/new.ts", "src/nested/renamed.ts", false);
+    assert.equal((await readWorkspaceFile(root, "src/nested/renamed.ts")).content, "export {};");
+    await deleteWorkspacePath(root, "src/nested/renamed.ts", false);
+    await deleteWorkspacePath(root, "src/nested", false);
+    await assert.rejects(() => readWorkspaceFile(root, "src/nested/renamed.ts"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("workspace filesystem operations reject traversal, symlinks and root mutations", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-workspace-provider-safe-"));
+  const outside = await mkdtemp(join(tmpdir(), "bb-workspace-provider-outside-"));
+  try {
+    await writeFile(join(root, "inside.txt"), "inside");
+    await writeFile(join(outside, "secret.txt"), "outside");
+    await symlink(outside, join(root, "linked-dir"));
+    await symlink(join(outside, "secret.txt"), join(root, "linked-file.txt"));
+
+    await assert.rejects(() => createWorkspaceDirectory(root, "../escaped"), /outside the selected workspace/);
+    await assert.rejects(() => createWorkspaceFile(root, "linked-dir/new.txt", "x"), /outside the selected workspace/);
+    await assert.rejects(() => readWorkspaceFile(root, "linked-file.txt"), /outside the selected workspace/);
+    await assert.rejects(() => writeWorkspaceFileSystemFile(root, "linked-file.txt", "changed", false, true), /outside the selected workspace/);
+    await assert.rejects(() => deleteWorkspacePath(root, "linked-file.txt", false), /outside the selected workspace/);
+    await assert.rejects(() => renameWorkspacePath(root, "inside.txt", "linked-file.txt", true), /outside the selected workspace/);
+    await assert.rejects(() => deleteWorkspacePath(root, ".", true), /workspace root cannot be deleted/);
+    await assert.rejects(() => renameWorkspacePath(root, "inside.txt", ".", false), /workspace root cannot be renamed/);
+    assert.equal(await readFile(join(outside, "secret.txt"), "utf8"), "outside");
+    assert.equal(await readFile(join(root, "inside.txt"), "utf8"), "inside");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test("workspace directory entries and Quick Open results expose modification times", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-workspace-mtime-"));
+  try {
+    await writeFile(join(root, "entry.ts"), "export {};");
+    const directoryEntry = await listWorkspace(root);
+    const quickOpenEntry = await searchWorkspaceFiles(root, "entry.ts");
+    assert.equal(typeof directoryEntry[0].mtimeMs, "number");
+    assert.equal(typeof quickOpenEntry[0].mtimeMs, "number");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

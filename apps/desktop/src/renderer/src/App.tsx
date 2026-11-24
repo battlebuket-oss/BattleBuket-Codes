@@ -5,7 +5,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Activity, Bot, Braces, CheckCircle2, ChevronDown, Command, FileCode2, Folder, FolderOpen, GitBranch, LayoutDashboard, Loader2, Plus, Search, Settings2, ShieldCheck, Sparkles, Square, Workflow, XCircle } from "lucide-react";
 
-type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
+type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number; mtimeMs: number };
 type WorkspaceContentMatch = { path: string; lineNumber: number; preview: string };
 type RecentWorkspace = { path: string; lastOpenedAt: string };
 type EditorTab = { path: string; content: string; mtimeMs: number; draft: string };
@@ -57,6 +57,10 @@ declare global {
       searchWorkspaceContent: (query: string) => Promise<WorkspaceContentMatch[]>;
       readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;
       saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
+      writeWorkspaceFileSystemFile: (payload: { path: string; content: string; create: boolean; overwrite: boolean }) => Promise<{ path: string; mtimeMs: number }>;
+      createWorkspaceDirectory: (path: string) => Promise<boolean>;
+      deleteWorkspacePath: (path: string, recursive: boolean) => Promise<boolean>;
+      renameWorkspacePath: (oldPath: string, newPath: string, overwrite: boolean) => Promise<boolean>;
       getAgentAvailability: () => Promise<Record<AgentProvider, boolean>>;
       getTaskHistory: () => Promise<TaskHistoryItem[]>;
       startTerminal: () => Promise<string>;
