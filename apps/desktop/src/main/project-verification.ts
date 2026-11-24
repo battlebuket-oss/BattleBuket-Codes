@@ -63,12 +63,12 @@ async function runScript(manager: PackageManager, script: string, cwd: string): 
   try {
     const result = await execFile(executable, args, { cwd, env: safeEnvironment(), timeout: QUALITY_TIMEOUT_MS, killSignal: "SIGTERM", maxBuffer: QUALITY_MAX_OUTPUT_BYTES, windowsHide: true, encoding: "utf8" });
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n").slice(-12000);
-    return { name: `Project ${script}`, passed: true, output: `${manager} run ${script} passed in ${Date.now() - started} ms${output ? `\n${output}` : ""}` };
+    return { name: label, passed: true, output: `${command} passed in ${Date.now() - started} ms${output ? `\n${output}` : ""}` };
   } catch (error) {
     const failure = error as NodeJS.ErrnoException & { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };
     const timedOut = failure.killed === true || failure.code === "ETIMEDOUT";
     const output = [failure.stdout, failure.stderr, failure.message].filter(Boolean).join("\n").slice(-12000);
-    return { name: `Project ${script}`, passed: false, output: `${timedOut ? "Timed out" : "Failed"} after ${Date.now() - started} ms (exit ${String(failure.code ?? "unknown")})\n${output}` };
+    return { name: label, passed: false, output: `${timedOut ? "Timed out" : "Failed"} after ${Date.now() - started} ms (exit ${String(failure.code ?? "unknown")})\n${output}` };
   }
 }
 
