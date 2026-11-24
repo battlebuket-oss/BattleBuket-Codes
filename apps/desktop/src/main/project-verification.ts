@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import type { VerificationResult } from "../../../../packages/agent-contracts/src/index";
 
 export const QUALITY_SCRIPTS = ["test", "lint", "typecheck", "build"] as const;
@@ -224,8 +225,23 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
     return;
   }
 
+  const exited = new Promise<void>(resolveExit => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolveExit();
+      return;
+    }
+    child.once("close", () => resolveExit());
+  });
   try { process.kill(-pid, "SIGTERM"); }
   catch { try { child.kill("SIGTERM"); } catch { /* The process may already have exited. */ } }
+  const graceful = await Promise.race([
+    exited.then(() => true),
+    delay(750).then(() => false)
+  ]);
+  if (!graceful && child.exitCode === null && child.signalCode === null) {
+    try { process.kill(-pid, "SIGKILL"); }
+    catch { try { child.kill("SIGKILL"); } catch { /* The process may already have exited. */ } }
+  }
 }
 
 async function runScript(manager: PackageManager, script: string, cwd: string, signal?: AbortSignal, yarnMajor?: number): Promise<VerificationResult> {
