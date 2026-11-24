@@ -4,7 +4,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { validateTerminalInput, validateTerminalSize, WorkspaceTerminalSessions } from "../src/main/terminal-sessions";
+import { resolvePosixShell, validateTerminalInput, validateTerminalSize, WorkspaceTerminalSessions } from "../src/main/terminal-sessions";
+
+test("resolves a verified executable POSIX shell", { skip: process.platform === "win32" }, async () => {
+  const shell = await resolvePosixShell();
+  assert.equal(shell.startsWith("/"), true);
+  assert.doesNotThrow(() => require("node:fs").accessSync(shell, require("node:fs").constants.X_OK));
+});
 
 test("validates PTY input and resize bounds", () => {
   assert.throws(() => validateTerminalInput(""), /Terminal input/);
