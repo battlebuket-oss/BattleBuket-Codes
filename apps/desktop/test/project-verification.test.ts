@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { discoverQualityScripts, qualityCommand, runProjectQualityChecks } from "../src/main/project-verification";
+import { discoverQualityScripts, dotnetOutputHasVulnerabilities, qualityCommand, runProjectQualityChecks } from "../src/main/project-verification";
 
 test("discovers supported project scripts and honours the declared package manager", async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-quality-"));
@@ -108,4 +108,11 @@ test("fails closed when no project quality manifest or supported scripts exist",
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("interprets .NET vulnerability reports fail-closed", () => {
+  assert.equal(dotnetOutputHasVulnerabilities("No vulnerable packages found."), false);
+  assert.equal(dotnetOutputHasVulnerabilities("Project App.csproj has the following vulnerable packages"), true);
+  assert.equal(dotnetOutputHasVulnerabilities("2 vulnerable packages found"), true);
+  assert.equal(dotnetOutputHasVulnerabilities("Restore completed successfully."), false);
 });
