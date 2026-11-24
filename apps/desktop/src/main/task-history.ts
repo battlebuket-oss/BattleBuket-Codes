@@ -56,7 +56,7 @@ export async function appendTaskHistory(userDataPath: string, event: TaskHistory
   await fs.appendFile(file, JSON.stringify(safeEvent) + "\n", { encoding: "utf8", mode: 0o600, flag: "a" });
 }
 
-export async function readTaskHistory(userDataPath: string, now = new Date()): Promise<TaskHistoryItem[]> {
+export async function readTaskHistory(userDataPath: string): Promise<TaskHistoryItem[]> {
   const file = join(userDataPath, FILE_NAME);
   let contents: string;
   try {
