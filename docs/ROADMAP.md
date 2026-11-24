@@ -6,8 +6,9 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Initialize repository structure and document architecture/security boundaries.
 - [x] Run CI install, lint, typecheck, tests, and build on Linux.
 - [x] Add a high-severity dependency audit to CI.
-- [ ] Generate and commit a reproducible pnpm lockfile; require frozen installs.
-- [ ] Add contribution rules, code owners, issue templates, release conventions, secret scanning, and dependency/license review automation.
+- [x] Generate and commit a reproducible pnpm lockfile; require frozen installs.
+- [x] Add CodeQL analysis, full-history secret scanning, and scheduled Dependabot updates.
+- [ ] Add contribution rules, code owners, issue templates, release conventions, and dependency/license review automation.
 
 ## Phase 1 — Desktop shell
 - [x] Establish a secure Electron main/preload/renderer boundary with context isolation, sandboxing, navigation blocking, and a restrictive CSP.
@@ -22,7 +23,8 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 ## Phase 2 — Platform contracts and persistence
 - [x] Define initial task, agent, provider, event, verification, risk, and approval contracts.
 - [ ] Complete task-plan, dependency, tool-call, audit-event, and recovery contracts.
-- [ ] Add durable local storage, schema migrations, corruption recovery, retention controls, and structured redacted logs.
+- [x] Add a minimal local JSONL task-status history that omits prompts and provider output.
+- [ ] Replace the minimal log with a transactional task/event store, schema migrations, corruption recovery, retention controls, and structured redacted logs.
 - [ ] Add workspace registry, Git status, and isolated worktree lifecycle.
 
 ## Phase 3 — Engineering Director
@@ -47,6 +49,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add workspace path/symlink, stale-save, binary-file, size-limit, and provider-permission tests.
 - [x] Add a basic Git diff whitespace gate for Git workspaces.
 - [x] Add CI dependency vulnerability auditing for high-severity findings.
+- [x] Add CodeQL static analysis and full-history secret scanning.
 - [ ] Add project-aware test/lint/typecheck/build runners in a sandbox, with structured outputs and timeouts.
 - [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
