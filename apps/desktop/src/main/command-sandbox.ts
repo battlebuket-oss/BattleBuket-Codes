@@ -2,6 +2,7 @@ import { constants as fsConstants } from "node:fs";
 import { promises as fs } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir, tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 
 export type SandboxedCommand = {
   executable: string;
@@ -92,10 +93,12 @@ export async function prepareSandboxedCommand(
     if (process.platform === "linux") {
       const bwrap = await findExecutable("bwrap");
       if (!bwrap) {
-        await dispose();
         throw new Error("Linux project scripts are blocked because bubblewrap (bwrap) is not installed. Install bubblewrap to enable isolated verification.");
       }
-  
+      const help = spawnSync(bwrap, ["--help"], { encoding: "utf8", windowsHide: true });
+      if (help.status !== 0 || !String(help.stdout).includes("--disable-userns")) {
+        throw new Error("Linux project scripts are blocked because bubblewrap must support --disable-userns. Upgrade bubblewrap before running project commands.");
+      }
       const args = [
         "--die-with-parent",
         "--new-session",
@@ -104,6 +107,7 @@ export async function prepareSandboxedCommand(
         "--unshare-net",
         "--unshare-ipc",
         "--unshare-uts",
+        "--disable-userns",
         "--cap-drop", "ALL",
         "--ro-bind", "/", "/",
         "--tmpfs", "/home",
