@@ -40,3 +40,27 @@ test("returns an empty history for a new user data folder and ignores malformed 
     assert.deepEqual(await readTaskHistory(directory), []);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test("compacts oversized history while retaining the latest task records", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "bb-task-history-"));
+  try {
+    const records = Array.from({ length: 2500 }, (_, index) => ({
+      taskId: "task-" + index,
+      provider: "codex",
+      risk: "low",
+      title: "Codex task",
+      status: "running",
+      at: new Date(index * 1000).toISOString()
+    }));
+    await writeFile(join(directory, "task-history.jsonl"), records.map(item => JSON.stringify(item)).join("\n") + "\n");
+    await appendTaskHistory(directory, {
+      taskId: "task-2499", provider: "codex", risk: "low", title: "Codex task",
+      status: "succeeded", at: new Date(2_600_000).toISOString(), changedFileCount: 2, verificationPassed: true
+    });
+    const items = await readTaskHistory(directory);
+    assert.equal(items.length, 50);
+    assert.ok(items.some(item => item.taskId === "task-2499" && item.status === "succeeded"));
+    const contents = await readFile(join(directory, "task-history.jsonl"), "utf8");
+    assert.ok(Buffer.byteLength(contents, "utf8") < 512 * 1024);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
