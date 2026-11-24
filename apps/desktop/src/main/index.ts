@@ -53,6 +53,7 @@ function createWindow(): void {
 
 ipcMain.handle("platform:version", () => app.getVersion());
 ipcMain.handle("workspace:select", async () => {
+  if (activeDirector) throw new Error("Finish or cancel the active engineering task before changing projects.");
   const result = await dialog.showOpenDialog({ title: "Open project folder", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || result.filePaths.length === 0) return null;
   activeWorkspace = await fs.realpath(result.filePaths[0]);
