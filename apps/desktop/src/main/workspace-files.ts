@@ -79,3 +79,56 @@ export async function writeWorkspaceFile(rootPath: string, relativePath: string,
     await fs.unlink(temporary).catch(() => {});
   }
 }
+
+
+export async function searchWorkspaceFiles(rootPath: string, query: string): Promise<WorkspaceEntry[]> {
+  if (typeof query !== "string" || query.trim().length < 1 || query.length > 200) return [];
+  const { root, target } = await resolveInside(rootPath, "");
+  const needle = query.trim().toLocaleLowerCase();
+  const result: WorkspaceEntry[] = [];
+  let scanned = 0;
+  const maxScanned = 20_000;
+  const maxResults = 200;
+  const maxDepth = 12;
+
+  const walk = async (directory: string, depth: number): Promise<void> => {
+    if (depth > maxDepth || scanned >= maxScanned || result.length >= maxResults) return;
+    let entries;
+    try { entries = await fs.readdir(directory, { withFileTypes: true }); }
+    catch { return; }
+    for (const entry of entries) {
+      if (scanned >= maxScanned || result.length >= maxResults) break;
+      scanned++;
+      if (entry.isSymbolicLink()) continue;
+      const fullPath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (IGNORED_DIRECTORIES.has(entry.name)) continue;
+        try {
+          const real = await fs.realpath(fullPath);
+          if (!isPathInside(root, real)) continue;
+          await walk(real, depth + 1);
+        } catch { /* Ignore directories removed or made inaccessible during search. */ }
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const relativePath = relative(root, fullPath);
+      if (!relativePath.toLocaleLowerCase().includes(needle)) continue;
+      try {
+        const real = await fs.realpath(fullPath);
+        if (!isPathInside(root, real)) continue;
+        const stat = await fs.stat(real);
+        result.push({ name: entry.name, path: relativePath, kind: "file", size: stat.size });
+      } catch { /* Ignore files removed or made inaccessible during search. */ }
+    }
+  };
+
+  await walk(target, 0);
+  return result.sort((a, b) => {
+    const aPath = a.path.toLocaleLowerCase();
+    const bPath = b.path.toLocaleLowerCase();
+    const aName = a.name.toLocaleLowerCase();
+    const bName = b.name.toLocaleLowerCase();
+    const score = (path: string, name: string) => name === needle ? 0 : name.startsWith(needle) ? 1 : path.startsWith(needle) ? 2 : 3;
+    return score(aPath, aName) - score(bPath, bName) || a.path.localeCompare(b.path);
+  }).slice(0, maxResults);
+}
