@@ -128,3 +128,5 @@ h1 em{color:#9b8aff;font-style:normal}
 .terminal-canvas .xterm-viewport{overscroll-behavior:contain}
 .terminal-footnote{height:22px;flex:none;padding:4px 12px;border-top:1px solid #202a3a;color:#73819a;font:8px 'DM Mono';letter-spacing:.3px}
 
+
+.terminal-panel-hidden{display:none}
