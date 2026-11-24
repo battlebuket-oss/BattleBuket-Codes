@@ -94,12 +94,14 @@ h1 em{color:#9b8aff;font-style:normal}
 .file-entry span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .file-list>small{display:block;color:#8290a7;font-size:9px;padding:10px 5px}
 .workspace-error{font-size:9px;color:#ff9b9b;line-height:1.5;overflow-wrap:anywhere}
-.editor-preview{height:calc(100% - 64px);overflow:auto;background:#0b1018}
-.editor-toolbar{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#101722;border-bottom:1px solid #253044;color:#bdc8da;font:10px 'DM Mono'}
-.editor-toolbar span{color:#d6ad6e;margin-left:auto}
-.editor-toolbar button{margin-left:12px;background:#30285a;border:1px solid #6252a0;color:#f0edff;border-radius:4px;padding:5px 12px;font:10px 'DM Mono';cursor:pointer}
+.editor-preview{height:calc(100% - 64px);min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#0b1018}
+.editor-toolbar{height:38px;min-height:38px;display:flex;align-items:center;gap:12px;padding:0 14px;background:#101722;border-bottom:1px solid #253044;color:#bdc8da;font:10px 'DM Mono'}
+.editor-toolbar .editor-file-path{min-width:0;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bdc8da;margin-right:auto}
+.editor-toolbar span:not(.editor-file-path){color:#d6ad6e;white-space:nowrap}
+.editor-toolbar button{background:#30285a;border:1px solid #6252a0;color:#f0edff;border-radius:4px;padding:5px 12px;font:10px 'DM Mono';cursor:pointer}
 .editor-toolbar button:disabled{opacity:.45;cursor:not-allowed}
-.code-editor{display:block;width:100%;height:calc(100% - 38px);resize:none;border:0;outline:0;background:#0b1018;color:#c8d3e5;padding:20px;font:12px/1.7 'DM Mono',monospace;tab-size:2;white-space:pre;overflow:auto}
+.monaco-editor-host{flex:1;min-height:0;overflow:hidden;background:#1e1e1e}
+.monaco-editor-host .monaco-editor{outline:none}
 @media(max-height:780px){article{padding-top:28px}h1{font-size:38px}.cards{margin-top:16px}.director h4{padding-top:15px}.note{margin-top:16px}}
 
 .history-list{display:flex;flex-direction:column;gap:7px}
