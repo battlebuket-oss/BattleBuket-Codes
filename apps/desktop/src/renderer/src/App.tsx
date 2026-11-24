@@ -7,6 +7,7 @@ import { Activity, Bot, Braces, CheckCircle2, ChevronDown, Command, FileCode2, F
 
 type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
 type EditorTab = { path: string; content: string; mtimeMs: number; draft: string };
+type EditorDiagnostic = { message: string; line: number; column: number; severity: number };
 type AgentProvider = "codex" | "claude";
 type TaskRisk = "low" | "medium" | "high";
 type AgentEvent = {
@@ -88,6 +89,7 @@ export default function App() {
   const [currentDirectory, setCurrentDirectory] = useState("");
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string; mtimeMs: number } | null>(null);
   const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
+  const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnostic[]>([]);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
@@ -132,7 +134,7 @@ export default function App() {
       setError("");
       const selected = await window.battleBuket?.selectWorkspace();
       if (selected) {
-        setWorkspace(selected); setCurrentDirectory(""); setSelectedFile(null); setEditorTabs([]); setDraft(""); setTaskResult(null); setDataConsent(false);
+        setWorkspace(selected); setCurrentDirectory(""); setSelectedFile(null); setEditorTabs([]); setDraft(""); setEditorDiagnostics([]); setTaskResult(null); setDataConsent(false);
         await refreshFiles("");
       }
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open project folder"); }
@@ -149,6 +151,7 @@ export default function App() {
       const cached = editorTabs.find(tab => tab.path === path);
       if (cached) {
         setSelectedFile({ path: cached.path, content: cached.content, mtimeMs: cached.mtimeMs });
+        setEditorDiagnostics([]);
         setDraft(cached.draft);
         setSaveMessage(cached.draft !== cached.content ? "Unsaved changes" : "");
         return;
@@ -158,6 +161,7 @@ export default function App() {
         const tab: EditorTab = { ...file, draft: file.content };
         setEditorTabs(current => current.some(item => item.path === file.path) ? current : [...current, tab]);
         setSelectedFile(file);
+        setEditorDiagnostics([]);
         setDraft(file.content);
         setSaveMessage("");
       }
@@ -165,6 +169,7 @@ export default function App() {
   };
   const activateEditorTab = (tab: EditorTab) => {
     setSelectedFile({ path: tab.path, content: tab.content, mtimeMs: tab.mtimeMs });
+    setEditorDiagnostics([]);
     setDraft(tab.draft);
     setSaveMessage(tab.draft !== tab.content ? "Unsaved changes" : "");
   };
@@ -573,6 +578,12 @@ export default function App() {
               theme="vs-dark"
               value={draft}
               onChange={value => { const nextDraft = value ?? ""; setDraft(nextDraft); setEditorTabs(current => current.map(tab => tab.path === selectedFile.path ? { ...tab, draft: nextDraft } : tab)); setSaveMessage(""); }}
+              onValidate={markers => setEditorDiagnostics(markers.map(marker => ({
+                message: marker.message,
+                line: marker.startLineNumber,
+                column: marker.startColumn,
+                severity: marker.severity
+              })))}
               options={{
                 automaticLayout: true,
                 minimap: { enabled: true, scale: 1 },
@@ -594,6 +605,18 @@ export default function App() {
               }}
             />
           </div>
+          <section className="problems-panel" aria-label="Editor diagnostics">
+            <div className="problems-heading"><span>PROBLEMS</span><small>{editorDiagnostics.length} {editorDiagnostics.length === 1 ? "issue" : "issues"}</small></div>
+            {editorDiagnostics.length === 0
+              ? <p className="problems-empty">No editor diagnostics for this file.</p>
+              : <div className="problems-list">
+                  {editorDiagnostics.slice(0, 100).map((diagnostic, index) => <div className="problem-item" key={diagnostic.line + ":" + diagnostic.column + ":" + index}>
+                    <span className={diagnostic.severity === 8 ? "problem-error" : diagnostic.severity === 4 ? "problem-warning" : "problem-info"}>{diagnostic.severity === 8 ? "ERROR" : diagnostic.severity === 4 ? "WARNING" : "INFO"}</span>
+                    <span className="problem-message">{diagnostic.message}</span>
+                    <small>{diagnostic.line}:{diagnostic.column}</small>
+                  </div>)}
+                </div>}
+          </section>
         </div> : <article>
           <label className="eyebrow">AUTONOMOUS ENGINEERING WORKSPACE</label>
           <h1>Build something<br/><em>extraordinary.</em></h1>
