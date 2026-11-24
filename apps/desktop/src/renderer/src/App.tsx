@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
+import Editor from "@monaco-editor/react";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Activity, Bot, Braces, CheckCircle2, ChevronDown, Command, FileCode2, Folder, FolderOpen, GitBranch, LayoutDashboard, Loader2, Plus, Search, Settings2, ShieldCheck, Sparkles, Square, Workflow, XCircle } from "lucide-react";
@@ -59,6 +60,23 @@ declare global {
       onAgentEvent: (listener: (event: AgentEvent) => void) => () => void;
     };
   }
+}
+
+function editorLanguageForPath(path: string): string {
+  const extension = path.toLowerCase().split(".").pop() ?? "";
+  const languages: Record<string, string> = {
+    ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", mjs: "javascript", cjs: "javascript",
+    json: "json", jsonc: "json", py: "python", pyw: "python", rs: "rust", go: "go", java: "java",
+    c: "cpp", h: "cpp", cc: "cpp", cpp: "cpp", hpp: "cpp", cs: "csharp",
+    html: "html", htm: "html", xml: "xml", svg: "xml", css: "css", scss: "scss", less: "less",
+    yaml: "yaml", yml: "yaml", md: "markdown", mdx: "markdown", sh: "shell", bash: "shell", zsh: "shell",
+    ps1: "powershell", sql: "sql", graphql: "graphql", gql: "graphql", toml: "ini", ini: "ini",
+    dockerfile: "dockerfile", makefile: "makefile", diff: "diff", txt: "plaintext", log: "log"
+  };
+  const lowerPath = path.toLowerCase();
+  if (lowerPath.endsWith("/dockerfile") || lowerPath === "dockerfile") return "dockerfile";
+  if (lowerPath.endsWith("/makefile") || lowerPath === "makefile") return "makefile";
+  return languages[extension] ?? "plaintext";
 }
 
 export default function App() {
@@ -331,8 +349,39 @@ export default function App() {
       <section className="center">
         <div className="tab"><FileCode2 size={14}/> {selectedFile ? selectedFile.path : "Engineering command center"}<button className="terminal-toggle" onClick={() => { if (terminalOpen) setTerminalOpen(false); else void openTerminal(); }}>{terminalOpen ? "Hide terminal" : "Terminal"}</button></div>
         {selectedFile ? <div className="editor-preview">
-          <div className="editor-toolbar">{selectedFile.path}<span>{saveMessage || (draft !== selectedFile.content ? "Unsaved changes" : "Editable text · 1 MB limit")}</span><button onClick={saveFile} disabled={saving || draft === selectedFile.content}>{saving ? "Saving…" : "Save"}</button></div>
-          <textarea className="code-editor" spellCheck={false} value={draft} onChange={event => { setDraft(event.target.value); setSaveMessage(""); }} />
+          <div className="editor-toolbar">
+            <span className="editor-file-path">{selectedFile.path}</span>
+            <span>{saveMessage || (draft !== selectedFile.content ? "Unsaved changes" : "Monaco · 1 MB file limit")}</span>
+            <button onClick={saveFile} disabled={saving || draft === selectedFile.content}>{saving ? "Saving…" : "Save"}</button>
+          </div>
+          <div className="monaco-editor-host">
+            <Editor
+              height="100%"
+              language={editorLanguageForPath(selectedFile.path)}
+              theme="vs-dark"
+              value={draft}
+              onChange={value => { setDraft(value ?? ""); setSaveMessage(""); }}
+              options={{
+                automaticLayout: true,
+                minimap: { enabled: true, scale: 1 },
+                fontFamily: "'DM Mono', 'Cascadia Code', ui-monospace, monospace",
+                fontSize: 13,
+                fontLigatures: true,
+                lineNumbers: "on",
+                renderWhitespace: "selection",
+                scrollBeyondLastLine: false,
+                wordWrap: "off",
+                tabSize: 2,
+                smoothScrolling: true,
+                cursorBlinking: "smooth",
+                bracketPairColorization: { enabled: true },
+                guides: { bracketPairs: true, indentation: true },
+                padding: { top: 12, bottom: 12 },
+                overviewRulerBorder: false,
+                scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 }
+              }}
+            />
+          </div>
         </div> : <article>
           <label className="eyebrow">AUTONOMOUS ENGINEERING WORKSPACE</label>
           <h1>Build something<br/><em>extraordinary.</em></h1>
