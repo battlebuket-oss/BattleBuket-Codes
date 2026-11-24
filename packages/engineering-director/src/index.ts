@@ -12,7 +12,7 @@ export type DirectorState =
 export interface DirectorHooks {
   decide(task: AgentTask): Promise<DirectorDecision>;
   verify(task: AgentTask, result: AgentResult, signal?: AbortSignal): Promise<VerificationResult[]>;
-  review?(task: AgentTask, result: AgentResult, decision: DirectorDecision): Promise<VerificationResult>;
+  review?(task: AgentTask, result: AgentResult, decision: DirectorDecision, signal?: AbortSignal): Promise<VerificationResult>;
   emit(event: AgentEvent): void;
   approve?(task: AgentTask, decision: DirectorDecision): Promise<boolean>;
 }
@@ -62,10 +62,13 @@ export class EngineeringDirector {
             passed: false,
             output: "A reviewer provider was selected but no review hook is configured."
           });
+        } else if (cancellation.signal.aborted) {
+          this.current = { status: "cancelled", task };
+          return cancelledResult();
         } else {
           this.activeAdapter = this.adapters.find(item => item.provider === decision.reviewer);
           this.activeTaskId = task.id;
-          reviewChecks.push(await this.hooks.review(task, result, decision));
+          reviewChecks.push(await this.hooks.review(task, result, decision, cancellation.signal));
           this.activeAdapter = adapter;
         }
       }
