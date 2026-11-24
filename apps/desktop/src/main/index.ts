@@ -9,7 +9,7 @@ import { listWorkspace, readWorkspaceFile, searchWorkspaceContent, searchWorkspa
 import { appendTaskHistory, readTaskHistory } from "./task-history";
 import { WorkspaceTerminalSessions, type TerminalSessionEvent } from "./terminal-sessions";
 import { openRecentWorkspace, readRecentWorkspaces, recordRecentWorkspace } from "./recent-workspaces";
-import { runProjectQualityChecks } from "./project-verification";
+import { formatQualityCommand, runProjectQualityChecks } from "./project-verification";
 import { EngineeringDirector } from "../../../../packages/engineering-director/src/index";
 import { ClaudeAgentSdkAdapter, CodexCliAdapter } from "../../../../packages/provider-adapters/src/index";
 import type { AgentEvent, AgentProvider, AgentResult, AgentTask, DirectorDecision, RiskLevel, VerificationResult } from "../../../../packages/agent-contracts/src/index";
@@ -397,8 +397,8 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
     verify: async (_verifiedTask, _implementation, signal) => {
       const projectChecks = await runProjectQualityChecks(task.workspacePath, async (scripts, manager) => {
         const detail = [
-          `Package manager: ${manager}`,
-          `Commands to run: ${scripts.map(script => script === "audit" ? (manager === "pnpm" ? "pnpm audit --audit-level high" : "npm audit --audit-level=high") : `${manager} run ${script}`).join(", ")}`,
+          `Project toolchain: ${manager}`,
+          `Commands to run: ${scripts.map(script => formatQualityCommand(manager, script)).join(", ")}` ,
           "These repository-defined scripts can execute arbitrary code and may access the network using your user account.",
           "They run with a reduced environment, a five-minute timeout per script, and a bounded output buffer. Approve only if you trust this project."
         ].join("\n");
