@@ -167,6 +167,10 @@ export async function discoverQualityScripts(workspacePath: string): Promise<{ m
   return discoverAlternativeProject(root, entries);
 }
 
+export function hasExecutableQualityChecks(scripts: string[]): boolean {
+  return scripts.some(script => script !== "audit" && script !== "security");
+}
+
 export function formatQualityCommand(manager: string, script: string): string {
   return qualityCommand(manager as PackageManager, script).display;
 }
@@ -236,12 +240,19 @@ export async function runProjectQualityChecks(
   const approved = await approve(project.scripts, project.manager);
   if (signal?.aborted) return [{ name: "Project quality checks", passed: false, output: "Cancelled by the user." }];
   if (!approved) return project.scripts.map(script => ({
-    name: script === "audit" ? "Dependency audit" : "Project " + script,
+    name: script === "audit" || script === "security" ? "Project dependency/security audit" : "Project " + script,
     passed: false,
     output: "Not run: the user did not approve execution of repository-defined quality commands."
   }));
   const root = await fs.realpath(workspacePath);
   const results: VerificationResult[] = [];
+  if (!hasExecutableQualityChecks(project.scripts)) {
+    results.push({
+      name: "Project quality capability",
+      passed: false,
+      output: "Dependency scanning is available, but no test, lint, typecheck or build check is configured. Security scanning alone cannot certify an implementation change."
+    });
+  }
   for (const script of project.scripts) {
     if (signal?.aborted) break;
     results.push(await runScript(project.manager, script, root, signal));
