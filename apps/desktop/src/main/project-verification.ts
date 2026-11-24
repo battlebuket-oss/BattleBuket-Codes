@@ -38,6 +38,9 @@ export async function discoverQualityScripts(workspacePath: string): Promise<{ m
   const entries = await fs.readdir(root);
   const manager = packageManagerFrom(manifest, new Set(entries));
   const scripts = QUALITY_SCRIPTS.filter(name => typeof manifest.scripts?.[name] === "string" && (manifest.scripts[name] as string).trim().length > 0);
+  const hasSupportedAuditLock = (manager === "pnpm" && entries.includes("pnpm-lock.yaml")) ||
+    (manager === "npm" && entries.includes("package-lock.json"));
+  if (hasSupportedAuditLock) scripts.push("audit");
   return { manager, scripts };
 }
 
@@ -50,8 +53,12 @@ function safeEnvironment(): NodeJS.ProcessEnv {
 
 async function runScript(manager: PackageManager, script: string, cwd: string): Promise<VerificationResult> {
   const started = Date.now();
+  const auditArgs = script === "audit"
+    ? manager === "pnpm" ? ["audit", "--audit-level", "high"] : ["audit", "--audit-level=high"]
+    : ["run", script];
   const executable = process.platform === "win32" ? "cmd.exe" : manager;
-  const args = process.platform === "win32" ? ["/d", "/s", "/c", `${manager} run ${script}`] : ["run", script];
+  const commandArgs = script === "audit" ? auditArgs : auditArgs;
+  const args = process.platform === "win32" ? ["/d", "/s", "/c", `${manager} ${commandArgs.join(" ")}`] : commandArgs;
   try {
     const result = await execFile(executable, args, { cwd, env: safeEnvironment(), timeout: QUALITY_TIMEOUT_MS, killSignal: "SIGTERM", maxBuffer: QUALITY_MAX_OUTPUT_BYTES, windowsHide: true, encoding: "utf8" });
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n").slice(-12000);
