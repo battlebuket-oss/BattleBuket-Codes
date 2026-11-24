@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "electron-vite build && node scripts/verify-renderer-assets.cjs",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
