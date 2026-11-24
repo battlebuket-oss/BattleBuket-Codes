@@ -590,8 +590,12 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
         const detail = [
           `Project toolchain: ${manager}`,
           `Commands to run: ${scripts.map(script => formatQualityCommand(manager, script)).join(", ")}` ,
-          "These repository-defined scripts can execute arbitrary code and may access the network using your user account.",
-          "They run with a reduced environment, a five-minute timeout per script, and a bounded output buffer. Approve only if you trust this project."
+          process.platform === "linux"
+            ? "Scripts run inside a bubblewrap namespace with networking disabled, the selected workspace as the only writable project path, and a temporary isolated home/cache."
+            : process.platform === "darwin"
+              ? "Scripts run inside a macOS Seatbelt profile with networking denied, workspace/scratch-only writes, and a temporary isolated home/cache."
+              : "Project scripts are blocked on Windows until an OS-enforced AppContainer broker is configured; they will not run with unrestricted user permissions.",
+          "Checks have a five-minute timeout per command and a bounded output buffer. Interactive terminal sessions are separate and continue to run with your signed-in OS account permissions. Approve only if you trust the project content."
         ].join("\n");
         const options = {
           type: "warning" as const,
