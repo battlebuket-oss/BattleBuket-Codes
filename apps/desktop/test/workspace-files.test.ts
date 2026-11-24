@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listWorkspace, readWorkspaceFile, writeWorkspaceFile } from "../src/main/workspace-files";
+import { listWorkspace, readWorkspaceFile, searchWorkspaceFiles, writeWorkspaceFile } from "../src/main/workspace-files";
 
 test("lists folders and regular files but skips symlinks and generated directories", async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-workspace-"));
@@ -59,5 +59,22 @@ test("rejects binary and oversized previews without altering the source", async 
     await assert.rejects(() => readWorkspaceFile(root, "large.txt"), /1 MB preview limit/);
     await assert.rejects(() => writeWorkspaceFile(root, "large.txt", "y".repeat(1024 * 1024 + 1), 0), /1 MB save limit/);
     assert.equal((await readFile(join(root, "large.txt"), "utf8")).length, 1024 * 1024 + 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("quick-open search finds nested files and excludes generated folders and symlinks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-workspace-search-"));
+  try {
+    await mkdir(join(root, "src", "components"), { recursive: true });
+    await mkdir(join(root, "node_modules", "fixture"), { recursive: true });
+    await mkdir(join(root, ".git", "objects"), { recursive: true });
+    await writeFile(join(root, "src", "components", "SearchPanel.tsx"), "export {};");
+    await writeFile(join(root, "node_modules", "fixture", "SearchPanel.tsx"), "ignored");
+    await writeFile(join(root, ".git", "objects", "SearchPanel.tsx"), "ignored");
+    await symlink(join(root, "src"), join(root, "linked-src"));
+    const matches = await searchWorkspaceFiles(root, "searchpanel");
+    assert.deepEqual(matches.map(item => item.path), ["src/components/SearchPanel.tsx"]);
+    assert.deepEqual(await searchWorkspaceFiles(root, ""), []);
+    assert.deepEqual(await searchWorkspaceFiles(root, "x".repeat(201)), []);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
