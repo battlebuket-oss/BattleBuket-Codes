@@ -69,6 +69,26 @@ ipcMain.handle("workspace:read", async (_event, relativePath: string) => {
   return { path: relative(activeWorkspace!, file), content: content.toString("utf8"), mtimeMs: stat.mtimeMs };
 });
 
+ipcMain.handle("workspace:write", async (_event, payload: { path: string; content: string; expectedMtimeMs: number }) => {
+  if (!payload || typeof payload.path !== "string" || payload.path.length > 4096 ||
+      typeof payload.content !== "string" || !Number.isFinite(payload.expectedMtimeMs)) {
+    throw new Error("Invalid save request");
+  }
+  if (Buffer.byteLength(payload.content, "utf8") > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MB save limit");
+  const file = await resolveWorkspacePath(payload.path);
+  const handle = await fs.open(file, "r+");
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error("Selected path is not a regular file");
+    if (stat.mtimeMs !== payload.expectedMtimeMs) throw new Error("File changed outside BattleBuket Codes. Reopen it before saving to avoid overwriting newer changes.");
+    await handle.truncate(0);
+    await handle.writeFile(payload.content, "utf8");
+    return { path: relative(activeWorkspace!, file), mtimeMs: (await handle.stat()).mtimeMs };
+  } finally {
+    await handle.close();
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
