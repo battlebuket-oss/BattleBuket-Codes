@@ -105,8 +105,17 @@ jobs:
         run: |
           $application = Get-ChildItem "apps/desktop/release-smoke" -Recurse -Filter "battlebuket-codes.exe" | Select-Object -First 1
           if (-not $application) { throw "Packaged Windows application executable was not produced." }
-          $smoke = Start-Process -FilePath $application.FullName -ArgumentList "--smoke-test" -Wait -PassThru
-          if ($smoke.ExitCode -ne 0) { throw "Packaged Windows workbench/PTY smoke test failed with exit code $($smoke.ExitCode)." }
+          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-packaged-smoke.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-packaged-smoke.stderr.log"
+          $smoke = Start-Process -FilePath $application.FullName -ArgumentList @("--smoke-test", "--enable-logging=stderr") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if ($smoke.ExitCode -ne 0) {
+            Write-Host "===== Packaged app stdout ====="
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 250 }
+            Write-Host "===== Packaged app stderr ====="
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 500 }
+            throw "Packaged Windows workbench/PTY smoke test failed with exit code $($smoke.ExitCode)."
+          }
+          if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
       - name: Launch packaged app and run workbench/PTY smoke on macOS
         if: runner.os == 'macOS'
         run: |
