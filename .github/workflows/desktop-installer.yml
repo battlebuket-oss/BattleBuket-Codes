@@ -1,4 +1,4 @@
-name: Desktop installer preview
+name: Desktop installer previews
 
 on:
   workflow_dispatch:
@@ -7,9 +7,23 @@ permissions:
   contents: read
 
 jobs:
-  windows-installer:
-    runs-on: windows-latest
-    timeout-minutes: 30
+  installer:
+    name: Build ${{ matrix.label }} unsigned installer preview
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows
+            script: dist:win
+          - os: macos-latest
+            label: macOS
+            script: dist:mac
+          - os: ubuntu-latest
+            label: Linux
+            script: dist:linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,10 +32,11 @@ jobs:
       - run: corepack enable
       - run: corepack prepare pnpm@10.0.0 --activate
       - run: pnpm install --no-frozen-lockfile
-      - run: pnpm --filter @battlebuket/desktop dist:win
+      - name: Build installer
+        run: pnpm --filter @battlebuket/desktop ${{ matrix.script }}
       - uses: actions/upload-artifact@v4
         with:
-          name: battlebuket-codes-windows-unsigned-preview
-          path: apps/desktop/release/*.exe
+          name: battlebuket-codes-${{ matrix.label }}-unsigned-preview
+          path: apps/desktop/release/
           if-no-files-found: error
           retention-days: 14
