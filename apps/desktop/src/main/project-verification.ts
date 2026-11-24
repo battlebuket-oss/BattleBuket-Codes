@@ -115,17 +115,22 @@ async function discoverAlternativeProject(root: string, entries: string[]): Prom
   if (entrySet.has("Cargo.toml") && await isRegularFile(join(root, "Cargo.toml"))) {
     return { manager: "cargo", scripts: ["test", "lint", "typecheck", "build", "security"] };
   }
-  if (entrySet.has("pyproject.toml") && await isRegularFile(join(root, "pyproject.toml"))) {
-    const path = join(root, "pyproject.toml");
-    const stat = await fs.stat(path);
-    if (stat.size > 1024 * 1024) throw new Error("Workspace pyproject.toml exceeds the 1 MB limit.");
-    const config = await fs.readFile(path, "utf8");
+  const hasPyproject = entrySet.has("pyproject.toml") && await isRegularFile(join(root, "pyproject.toml"));
+  const hasRequirements = entrySet.has("requirements.txt") && await isRegularFile(join(root, "requirements.txt"));
+  if (hasPyproject || hasRequirements) {
+    let config = "";
+    if (hasPyproject) {
+      const path = join(root, "pyproject.toml");
+      const stat = await fs.stat(path);
+      if (stat.size > 1024 * 1024) throw new Error("Workspace pyproject.toml exceeds the 1 MB limit.");
+      config = await fs.readFile(path, "utf8");
+    }
     const scripts: string[] = [];
     if (await hasDirectory(join(root, "tests")) || await hasDirectory(join(root, "test")) || config.includes("[tool.pytest.ini_options]")) scripts.push("test");
     if (config.includes("[tool.ruff]")) scripts.push("lint");
     if (config.includes("[tool.mypy]")) scripts.push("typecheck");
     if (config.includes("[build-system]")) scripts.push("build");
-    if (entrySet.has("requirements.txt") && await isRegularFile(join(root, "requirements.txt"))) scripts.push("security");
+    if (hasRequirements) scripts.push("security");
     return { manager: "python", scripts };
   }
   if (entries.some(name => name.endsWith(".sln") || name.endsWith(".slnx") || name.endsWith(".csproj"))) {
