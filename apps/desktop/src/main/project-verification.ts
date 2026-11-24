@@ -133,8 +133,11 @@ async function discoverAlternativeProject(root: string, entries: string[]): Prom
     if (hasRequirements) scripts.push("security");
     return { manager: "python", scripts };
   }
-  if (entries.some(name => name.endsWith(".sln") || name.endsWith(".slnx") || name.endsWith(".csproj"))) {
-    return { manager: "dotnet", scripts: ["test", "lint", "build", "security"] };
+  const dotnetCandidates = entries.filter(name => name.endsWith(".sln") || name.endsWith(".slnx") || name.endsWith(".csproj"));
+  for (const candidate of dotnetCandidates) {
+    if (await isRegularFile(join(root, candidate))) {
+      return { manager: "dotnet", scripts: ["test", "lint", "build", "security"] };
+    }
   }
   return null;
 }
