@@ -56,9 +56,9 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add consent-gated project test/lint/typecheck/build and supported dependency-audit runners with bounded timeouts/output. These commands still run with the user account permissions and are not a sandbox.
 - [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
-- [x] Add opt-in live provider conformance tests and a manual self-hosted runner workflow. The live provider tests have not yet been executed on authenticated runners.
+- [x] Add opt-in live Codex/Claude read-only smoke tests and a manual self-hosted runner workflow. The tests require real sign-in and have not yet been executed on authenticated runners.
 - [x] Add packaged-app smoke mode and release workflow steps for clean install, launch and uninstall on all three OS targets. These steps have not run yet.
-- [ ] Execute authenticated provider and signed-installer workflows; add upgrade/rollback, crash-recovery and broader UI end-to-end tests.
+- [ ] Execute authenticated provider and signed-installer workflows; add workspace-write/escalation smoke tests, upgrade/rollback, crash-recovery and broader UI end-to-end tests.
 
 ## Phase 6 — Production release operations
 - [ ] Add telemetry with opt-in/privacy controls, crash reporting, diagnostics export, and support logs.
