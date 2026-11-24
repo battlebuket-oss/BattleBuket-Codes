@@ -130,9 +130,10 @@ function createWindow(): void {
             return;
           }
         }
-        const healthy = await window.webContents.executeJavaScript(
-          "window.battleBuket && window.battleBuket.getVersion().then(version => { let worker; try { const environment = globalThis.MonacoEnvironment; if (!environment || typeof environment.getWorker !== 'function') return false; worker = environment.getWorker('', 'typescript'); return typeof version === 'string' && version.length > 0 && typeof worker.postMessage === 'function' && typeof worker.terminate === 'function'; } finally { worker && worker.terminate(); } })"
-        );
+        const expectedVersion = process.argv.find(argument => argument.startsWith("--smoke-expect-version="))
+          ?.slice("--smoke-expect-version=".length);
+        const smokeScript = `window.battleBuket && window.battleBuket.getVersion().then(version => { const expectedVersion = ${JSON.stringify(expectedVersion ?? null)}; let worker; try { const environment = globalThis.MonacoEnvironment; if (!environment || typeof environment.getWorker !== 'function') return false; worker = environment.getWorker('', 'typescript'); return typeof version === 'string' && version.length > 0 && (!expectedVersion || version === expectedVersion) && typeof worker.postMessage === 'function' && typeof worker.terminate === 'function'; } finally { worker && worker.terminate(); } })`;
+        const healthy = await window.webContents.executeJavaScript(smokeScript);
         if (healthy !== true) {
           finish(false);
           return;
