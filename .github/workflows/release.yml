@@ -22,6 +22,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install Linux sandbox and desktop smoke prerequisites
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap dbus-daemon xvfb
       - name: Configure pinned package manager
         run: |
           corepack enable
@@ -155,7 +157,7 @@ jobs:
           "$installed_app/Contents/MacOS/battlebuket-codes" --smoke-test
           rm -rf "$installed_app"
           test ! -e "$installed_app"
-      - name: Launch Linux AppImage and remove installed artifact
+      - name: Launch Linux AppImage with Chromium sandbox enabled
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
@@ -164,7 +166,7 @@ jobs:
           smoke_appimage="$RUNNER_TEMP/$(basename "$appimage")"
           cp "$appimage" "$smoke_appimage"
           chmod +x "$smoke_appimage"
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$smoke_appimage" --smoke-test
+          bash apps/desktop/scripts/run-appimage-smoke.sh "$smoke_appimage" --smoke-test
           rm -f "$smoke_appimage"
           test -e "$appimage"
       - uses: actions/upload-artifact@v4
