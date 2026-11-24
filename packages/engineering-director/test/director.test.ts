@@ -20,6 +20,27 @@ describe("EngineeringDirector", () => {
     assert.equal(result.status, "succeeded");
     assert.equal(director.state.status, "completed");
   });
+  it("uses read-only mode for low and high risk tasks and workspace writes only for medium risk", async () => {
+    const modes: string[] = [];
+    const captureAdapter: AgentAdapter = {
+      provider: "codex",
+      isAvailable: async () => true,
+      run: async request => {
+        modes.push(request.approvalMode);
+        return { taskId: request.task.id, status: "succeeded", summary: "Done", changedFiles: [], verification: [] };
+      },
+      cancel: async () => {}
+    };
+    for (const risk of ["low", "medium", "high"] as const) {
+      const director = new EngineeringDirector([captureAdapter], {
+        decide: async () => ({ primary: "codex", rationale: "Permission mapping test", requiresHumanApproval: false }),
+        verify: async () => [{ name: "permission test", passed: true }],
+        emit: () => {}
+      });
+      await director.execute({ ...task, id: "risk-" + risk, risk });
+    }
+    assert.deepEqual(modes, ["read-only", "workspace-write", "read-only"]);
+  });
   it("fails the task when verification fails", async () => {
     const director = new EngineeringDirector([adapter({ taskId: task.id, status: "succeeded", summary: "Done", changedFiles: [], verification: [] })], {
       decide: async () => ({ primary: "codex", rationale: "Test adapter", requiresHumanApproval: false }),
