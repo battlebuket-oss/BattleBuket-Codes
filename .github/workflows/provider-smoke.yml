@@ -35,4 +35,4 @@ jobs:
           corepack prepare pnpm@10.0.0 --activate
       - run: pnpm install --frozen-lockfile
       - name: Verify installed and authenticated provider runtimes
-        run: pnpm --filter @battlebuket/provider-adapters test -- --test-reporter=spec
+        run: pnpm --filter @battlebuket/provider-adapters test
