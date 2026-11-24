@@ -23,7 +23,7 @@ The repository currently includes:
 - Single-task Engineering Director lifecycle, explicit provider selection, risk-based approval and task status events.
 - Local JSONL task history with interrupted-run recovery and size compaction. History stores status metadata and generic provider labels—not prompts, source files or model output.
 - Native **PTY-based** interactive workspace terminal using node-pty and xterm.js, including input/output streaming, session lifecycle, terminal resize and bounded IO.
-- Consent-gated project test/lint/typecheck/build script checks and supported npm/pnpm high-severity dependency audits, with bounded output and per-command timeouts.
+- Consent-gated project-aware test/lint/typecheck/build and dependency-security checks for Node.js, Go, Rust, Python and .NET, with bounded output, per-command timeouts and fail-closed handling for unsupported projects.
 - CI workflows for audit, lint, typecheck, unit tests, build, CodeQL, secret scanning and Windows/macOS/Linux desktop bundles.
 - A tag-triggered signed-release workflow with platform signing checks, packaged Monaco-worker launch smoke mode, clean-install/uninstall steps and draft-release assembly; plus a manual two-tag upgrade/rollback smoke workflow.
 - Opt-in live Codex/Claude adapter conformance tests and a manual self-hosted runner workflow.
@@ -34,7 +34,7 @@ The full Code - OSS / VS Code workbench is **not embedded**. The current editor 
 
 The PTY implementation is currently on the draft `feature/pty-terminal` pull request. It is not a verified production feature until the native Electron ABI and Windows/macOS/Linux workflow passes.
 
-Project verification asks before executing project-defined scripts, but those scripts run with the user's operating-system permissions. They are not isolated in a dedicated execution sandbox. The current verification gate does not yet provide full SAST, independent diff review, license/provenance analysis or a complete adversarial prompt-injection test suite.
+Project verification supports the currently documented Node.js, Go, Rust, Python and .NET command mappings; missing security scanner tools or unsupported project manifests fail verification rather than being marked as passed. It asks before executing project-defined scripts, but those scripts run with the user's operating-system permissions. They are not isolated in a dedicated execution sandbox. The current verification gate does not yet provide full SAST, independent diff review, license/provenance analysis or a complete adversarial prompt-injection test suite.
 
 The live provider tests are opt-in and have not been run until an authenticated self-hosted runner is configured and the workflow succeeds. The signed installer workflow has not produced a production release; Windows and Apple signing credentials must be configured, and the actual tag build/install smoke tests must pass. Upgrade/rollback, broader crash recovery, auto-update integrity, and cross-version migration tests also remain.
 
@@ -68,6 +68,8 @@ Never commit signing certificates, passwords, provider credentials or API keys.
 ## Data handling
 
 Agent prompts and project files read by an agent may be sent to the selected provider for processing. Project verification may execute repository-defined code after explicit approval. The integrated terminal runs with the user's OS account permissions. Task history remains local and omits prompts and model output. See [Privacy and data handling](docs/PRIVACY.md) before testing with non-public code or data.
+
+See [Project verification and quality gates](docs/QUALITY-GATES.md) for supported language toolchains, security scanner prerequisites and known limits.
 
 ## Architecture and security
 
