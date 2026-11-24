@@ -184,6 +184,14 @@ function createWindow(): void {
           return;
         }
 
+        const workspaceFilesystemHealthy = await window.webContents.executeJavaScript(
+          "window.__battleBuketWorkbenchSmoke ? window.__battleBuketWorkbenchSmoke() : false"
+        );
+        if (workspaceFilesystemHealthy !== true) {
+          finish(false);
+          return;
+        }
+
         await window.webContents.executeJavaScript("window.dispatchEvent(new Event('battlebuket:toggle-terminal')); true");
         const workbenchTerminalSessionId = await window.webContents.executeJavaScript(
           "new Promise(resolve => { const deadline = Date.now() + 15000; const check = () => { const id = window.__battleBuketTerminalSessionId; if (window.__battleBuketNativeTerminalReady === true && typeof id === 'string') resolve(id); else if (Date.now() >= deadline) resolve(null); else setTimeout(check, 100); }; check(); })"
