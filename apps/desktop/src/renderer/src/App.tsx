@@ -170,7 +170,7 @@ export default function App() {
                 ? <button className="run-button cancel" onClick={cancelTask}><Square size={14}/> Cancel task</button>
                 : <button className="run-button" onClick={startTask} disabled={!workspace || !availability[provider]}><Sparkles size={15}/> Run task</button>}
             </div>
-            <div className="composer-hint">{!workspace ? "Open a project folder to enable engineering tasks." : availability[provider] ? "Provider detected · task execution is restricted to this workspace." : "Selected provider is not detected on this computer."}</div>
+            <div className="composer-hint">{!workspace ? "Open a project folder to enable engineering tasks." : availability[provider] ? "Runtime detected · authentication is checked when the task starts; access stays restricted to the workspace." : "Selected provider runtime is not detected on this computer."}</div>
           </div>
           {running && <div className="run-panel"><div className="run-heading"><Loader2 className="spin"/><b>Engineering Director is supervising {activeProviderName}</b><span>RUNNING</span></div>
             <div className="event-feed">{agentEvents.slice(-8).map((event, index) => <p key={event.taskId + event.timestamp + index}><span>{new Date(event.timestamp).toLocaleTimeString()}</span>{event.message}</p>)}</div>
@@ -195,8 +195,8 @@ export default function App() {
         <label>● CONTROL PLANE</label><h3>Engineering Director</h3>
         <div className="director-card"><Bot/><div><b>{running ? "Supervising active task" : "Ready for a task"}</b><p>{workspace ? "Workspace: " + workspaceName : "Open a project to begin."}</p></div></div>
         <h4>PROVIDER HEALTH</h4>
-        <p className="gate">◈ Codex CLI <b className={availability.codex ? "" : "pending"}>{availability.codex ? "READY" : "OFFLINE"}</b></p>
-        <p className="gate">◈ Claude runtime <b className={availability.claude ? "" : "pending"}>{availability.claude ? "READY" : "OFFLINE"}</b></p>
+        <p className="gate">◈ Codex CLI <b className={availability.codex ? "" : "pending"}>{availability.codex ? "DETECTED" : "NOT FOUND"}</b></p>
+        <p className="gate">◈ Claude runtime <b className={availability.claude ? "" : "pending"}>{availability.claude ? "DETECTED" : "NOT FOUND"}</b></p>
         <h4>TASK PIPELINE</h4>
         <p className="no-tasks">{running ? "1 task running" : taskResult ? "Last task: " + taskResult.status : "No active tasks"}<br/><small>One task at a time; progress events are streamed from the provider.</small></p>
         <h4>QUALITY GATES</h4>
