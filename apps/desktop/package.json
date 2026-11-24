@@ -20,7 +20,8 @@
     "react-dom": "^18.3.1",
     "@battlebuket/agent-contracts": "workspace:*",
     "@battlebuket/engineering-director": "workspace:*",
-    "@battlebuket/virtual-team": "workspace:*"
+    "@battlebuket/virtual-team": "workspace:*",
+    "@battlebuket/provider-adapters": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
