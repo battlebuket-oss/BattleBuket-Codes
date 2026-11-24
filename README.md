@@ -27,7 +27,7 @@ BattleBuket Codes brings a branded developer workspace together with multiple co
 
 ## Repository status
 
-This repository is being initialized. The architecture and implementation plan are committed before provider integration so that engine adapters, permissions, and acceptance criteria have a stable contract.
+The current preview includes the Electron desktop shell, secure context-isolated preload bridge, native project-folder selection, workspace-scoped directory browsing, and bounded read-only text-file previews. It also includes agent contracts, a virtual specialist workload planner, an Engineering Director foundation, and CI validation. This is not yet a production coding assistant: VS Code OSS, Codex and Claude execution adapters, terminal, editable code workflows, persistence, signed installers, and end-to-end release validation remain outstanding.
 
 ## Development status
 
