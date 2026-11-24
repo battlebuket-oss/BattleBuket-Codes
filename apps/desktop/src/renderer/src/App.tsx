@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Activity, Bot, Braces, CheckCircle2, ChevronDown, Command, FileCode2, Folder, FolderOpen, GitBranch, LayoutDashboard, Loader2, Plus, Search, Settings2, ShieldCheck, Sparkles, Square, Workflow, XCircle } from "lucide-react";
 
 type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
@@ -22,6 +22,14 @@ type TaskHistoryItem = {
   changedFileCount?: number;
   verificationPassed?: boolean;
 };
+type TerminalSessionEvent = {
+  sessionId: string;
+  type: "output" | "error" | "exit";
+  stream?: "stdout" | "stderr";
+  text?: string;
+  exitCode?: number | null;
+  signal?: string | null;
+};
 type AgentResult = {
   taskId: string;
   status: "succeeded" | "failed" | "cancelled";
@@ -39,7 +47,10 @@ declare global {
       saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
       getAgentAvailability: () => Promise<Record<AgentProvider, boolean>>;
       getTaskHistory: () => Promise<TaskHistoryItem[]>;
-      runTerminalCommand: (command: string) => Promise<{ command: string; exitCode: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }>;
+      startTerminal: () => Promise<string>;
+      writeTerminal: (sessionId: string, input: string) => Promise<boolean>;
+      closeTerminal: (sessionId: string) => Promise<boolean>;
+      onTerminalEvent: (listener: (event: TerminalSessionEvent) => void) => () => void;
       runAgent: (payload: { prompt: string; provider: AgentProvider; risk: TaskRisk }) => Promise<AgentResult>;
       cancelAgent: () => Promise<boolean>;
       onAgentEvent: (listener: (event: AgentEvent) => void) => () => void;
@@ -71,6 +82,9 @@ export default function App() {
   const [terminalCommand, setTerminalCommand] = useState("");
   const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
   const [terminalBusy, setTerminalBusy] = useState(false);
+  const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null);
+  const [terminalStatus, setTerminalStatus] = useState<"closed" | "starting" | "running" | "exited">("closed");
+  const terminalSessionRef = useRef<string | null>(null);
 
   const refreshFiles = async (directory = currentDirectory) => {
     try {
@@ -125,16 +139,45 @@ export default function App() {
     } catch (e) { setError(e instanceof Error ? e.message : "The engineering task failed to start"); }
     finally { setRunning(false); void refreshHistory(); }
   };
-  const runTerminalCommand = async () => {
-    if (!window.battleBuket || !terminalCommand.trim() || terminalBusy) return;
+  const openTerminal = async () => {
+    setTerminalOpen(true);
+    if (!window.battleBuket || !workspace) { setError("Open a project folder before starting the terminal."); return; }
+    if (terminalStatus === "starting" || terminalSessionRef.current) return;
+    try {
+      setTerminalStatus("starting");
+      setTerminalOutput(current => [...current, "Starting a persistent shell in the selected workspace…"].slice(-200));
+      const id = await window.battleBuket.startTerminal();
+      terminalSessionRef.current = id;
+      setTerminalSessionId(id);
+      setTerminalStatus("running");
+    } catch (e) {
+      setTerminalSessionRef.current = null;
+      setTerminalSessionId(null);
+      setTerminalStatus("closed");
+      setTerminalOutput(current => [...current, e instanceof Error ? e.message : "Could not start terminal session"].slice(-200));
+    }
+  };
+  const closeTerminal = async () => {
+    const id = terminalSessionRef.current;
+    if (id && window.battleBuket) {
+      try { await window.battleBuket.closeTerminal(id); }
+      catch (e) { setTerminalOutput(current => [...current, e instanceof Error ? e.message : "Could not close terminal session"].slice(-200)); }
+    }
+    terminalSessionRef.current = null;
+    setTerminalSessionId(null);
+    setTerminalStatus("closed");
+  };
+  const sendTerminalInput = async () => {
+    const id = terminalSessionRef.current;
+    if (!id || !window.battleBuket || !terminalCommand.trim() || terminalBusy) return;
+    const command = terminalCommand;
     try {
       setTerminalBusy(true);
-      const result = await window.battleBuket.runTerminalCommand(terminalCommand);
-      const output = [`$ ${result.command}`, result.stdout, result.stderr, result.timedOut ? "Command timed out after 120 seconds." : `Exit code: ${result.exitCode} · ${result.durationMs} ms`].filter(Boolean).join("\\n");
-      setTerminalOutput(current => [...current, output].slice(-40));
+      setTerminalOutput(current => [...current, "$ " + command].slice(-200));
+      await window.battleBuket.writeTerminal(id, command + "\\n");
       setTerminalCommand("");
     } catch (e) {
-      setTerminalOutput(current => [...current, e instanceof Error ? e.message : "Terminal command failed"].slice(-40));
+      setTerminalOutput(current => [...current, e instanceof Error ? e.message : "Terminal input failed"].slice(-200));
     } finally { setTerminalBusy(false); }
   };
 
@@ -150,7 +193,20 @@ export default function App() {
     const unsubscribe = window.battleBuket?.onAgentEvent(event => {
       setAgentEvents(current => [...current, event].slice(-80));
     });
-    return () => unsubscribe?.();
+    const unsubscribeTerminal = window.battleBuket?.onTerminalEvent(event => {
+      if (terminalSessionRef.current !== event.sessionId) return;
+      if (event.type === "output" && event.text) {
+        setTerminalOutput(current => [...current, event.text as string].slice(-200));
+      } else if (event.type === "error") {
+        setTerminalOutput(current => [...current, "Terminal error: " + (event.text ?? "Unknown terminal error")].slice(-200));
+      } else if (event.type === "exit") {
+        setTerminalOutput(current => [...current, "Shell exited (code " + String(event.exitCode ?? "unknown") + ")."].slice(-200));
+        terminalSessionRef.current = null;
+        setTerminalSessionId(null);
+        setTerminalStatus("exited");
+      }
+    });
+    return () => { unsubscribe?.(); unsubscribeTerminal?.(); };
   }, []);
 
   const workspaceName = workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : "Director workspace";
@@ -184,7 +240,7 @@ export default function App() {
         <footer>● Local workspace · {workspace ? "Connected" : "Ready"}</footer>
       </aside>
       <section className="center">
-        <div className="tab"><FileCode2 size={14}/> {selectedFile ? selectedFile.path : "Engineering command center"}<button className="terminal-toggle" onClick={() => setTerminalOpen(value => !value)}>{terminalOpen ? "Hide terminal" : "Terminal"}</button></div>
+        <div className="tab"><FileCode2 size={14}/> {selectedFile ? selectedFile.path : "Engineering command center"}<button className="terminal-toggle" onClick={() => { if (terminalOpen) setTerminalOpen(false); else void openTerminal(); }}>{terminalOpen ? "Hide terminal" : "Terminal"}</button></div>
         {selectedFile ? <div className="editor-preview">
           <div className="editor-toolbar">{selectedFile.path}<span>{saveMessage || (draft !== selectedFile.content ? "Unsaved changes" : "Editable text · 1 MB limit")}</span><button onClick={saveFile} disabled={saving || draft === selectedFile.content}>{saving ? "Saving…" : "Save"}</button></div>
           <textarea className="code-editor" spellCheck={false} value={draft} onChange={event => { setDraft(event.target.value); setSaveMessage(""); }} />
@@ -231,14 +287,15 @@ export default function App() {
             <div><ShieldCheck/><b>Workspace safety</b><p>Scoped file access, bounded previews, stale-save protection, and no full-access agent mode.</p><small>● Restricted workspace access</small></div>
             <div><Workflow/><b>Quality gate</b><p>Per-task verification currently checks Git diff whitespace. CI separately runs tests, audit, typecheck, and builds.</p><small className="pending">Partial verification only</small></div>
           </div>
-          <p className="prototype-note">Engineering preview only. The command panel is a bounded one-command shell runner, not yet a persistent PTY terminal. The embedded VS Code OSS workbench, end-to-end provider tests, richer task verification, signed installers, and release validation remain open.</p>
+          <p className="prototype-note">Engineering preview only. The shell now persists between commands but is pipe-based, not a PTY. The embedded VS Code OSS workbench, full TTY terminal, authenticated provider tests and installed signed-release verification remain open.</p>
         </article>}
         {terminalOpen && <section className="terminal-panel">
-        <div className="terminal-title"><span>INTEGRATED WORKSPACE TERMINAL · {workspaceName}</span><button onClick={() => setTerminalOutput([])}>Clear</button></div>
-        <div className="terminal-output" aria-live="polite">{terminalOutput.length ? terminalOutput.map((line, index) => <pre key={index}>{line}</pre>) : <p>Commands start in the selected project directory. They run with your OS account permissions (not a security sandbox). Only execute commands you trust. Each command has a 120-second limit and 1 MB output cap.</p>}</div>
-        <form className="terminal-input" onSubmit={event => { event.preventDefault(); void runTerminalCommand(); }}>
-          <span>$</span><input value={terminalCommand} onChange={event => setTerminalCommand(event.target.value)} placeholder="Enter a command…" disabled={!workspace || terminalBusy}/>
-          <button type="submit" disabled={!workspace || terminalBusy || !terminalCommand.trim()}>{terminalBusy ? "Running…" : "Run"}</button>
+        <div className="terminal-title"><span>WORKSPACE SHELL · {workspaceName} · {terminalStatus.toUpperCase()}</span><div><button onClick={() => setTerminalOutput([])}>Clear</button>{terminalSessionId && <button onClick={() => void closeTerminal()}>Close session</button>}</div></div>
+        <div className="terminal-output" aria-live="polite">{terminalOutput.length ? terminalOutput.map((line, index) => <pre key={index}>{line}</pre>) : <p>Persistent shell session. Commands share the same working directory and shell state. This pipe-based shell is not a PTY: full-screen TTY applications, terminal resize and interactive terminal control are not supported. Commands run with your OS account permissions, so only run commands you trust.</p>}</div>
+        <form className="terminal-input" onSubmit={event => { event.preventDefault(); void sendTerminalInput(); }}>
+          <span>$</span><input value={terminalCommand} onChange={event => setTerminalCommand(event.target.value)} placeholder={terminalStatus === "running" ? "Enter a command…" : "Terminal session is not running"} disabled={terminalStatus !== "running" || terminalBusy}/>
+          <button type="submit" disabled={terminalStatus !== "running" || terminalBusy || !terminalCommand.trim()}>{terminalBusy ? "Sending…" : "Send"}</button>
+          {terminalStatus === "exited" && <button type="button" onClick={() => void openTerminal()}>Restart</button>}
         </form>
       </section>}
       <footer className="status"><span><GitBranch size={12}/> main</span><span><ShieldCheck size={12}/> Restricted workspace access</span><span>BattleBuket Codes · Engineering preview</span></footer>
