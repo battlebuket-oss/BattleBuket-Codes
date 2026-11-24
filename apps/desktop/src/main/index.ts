@@ -20,6 +20,7 @@ const adapters = [new CodexCliAdapter(), new ClaudeAgentSdkAdapter()];
 const terminalSessions = new WorkspaceTerminalSessions();
 let activeWorkspace: string | null = null;
 let workspaceWatcher: FSWatcher | null = null;
+let smokeWorkspaceRoot: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 let activeDirector: EngineeringDirector | null = null;
 let taskStartPending = false;
@@ -141,7 +142,15 @@ function createWindow(): void {
     const timeout = setTimeout(() => app.exit(1), 30_000);
     const finish = (success: boolean) => {
       clearTimeout(timeout);
-      app.exit(success ? 0 : 1);
+      const smokeRoot = smokeWorkspaceRoot;
+      smokeWorkspaceRoot = null;
+      workspaceWatcher?.close();
+      workspaceWatcher = null;
+      if (smokeRoot) {
+        void fs.rm(smokeRoot, { recursive: true, force: true }).finally(() => app.exit(success ? 0 : 1));
+      } else {
+        app.exit(success ? 0 : 1);
+      }
     };
     window.webContents.once("did-fail-load", () => finish(false));
     window.webContents.once("did-finish-load", () => {
@@ -164,6 +173,13 @@ function createWindow(): void {
         const smokeScript = `window.battleBuket && window.battleBuket.getVersion().then(async version => { const expectedVersion = ${JSON.stringify(expectedVersion ?? null)}; let worker; try { const environment = globalThis.MonacoEnvironment; if (!environment || typeof environment.getWorker !== 'function') return false; worker = environment.getWorker('', 'typescript'); if (typeof worker.postMessage !== 'function' || typeof worker.terminate !== 'function') return false; const workerHealthy = await new Promise(resolve => { const timer = setTimeout(() => resolve(true), 1000); worker.addEventListener('error', () => { clearTimeout(timer); resolve(false); }, { once: true }); }); return typeof version === 'string' && version.length > 0 && (!expectedVersion || version === expectedVersion) && workerHealthy; } finally { worker && worker.terminate(); } })`;
         const editorHealthy = await window.webContents.executeJavaScript(smokeScript);
         if (editorHealthy !== true) {
+          finish(false);
+          return;
+        }
+        const workbenchHealthy = await window.webContents.executeJavaScript(
+          "new Promise(resolve => { const deadline = Date.now() + 20000; const check = () => { if (window.__battleBuketWorkbenchReady === true) resolve(true); else if (Date.now() >= deadline) resolve(false); else setTimeout(check, 100); }; check(); })"
+        );
+        if (workbenchHealthy !== true) {
           finish(false);
           return;
         }
@@ -544,7 +560,12 @@ handleTrustedIpc("agents:cancel", async () => {
   return true;
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (process.argv.includes("--smoke-test")) {
+    smokeWorkspaceRoot = await fs.mkdtemp(join(app.getPath("temp"), "battlebuket-workbench-smoke-"));
+    activeWorkspace = smokeWorkspaceRoot;
+    attachWorkspaceWatcher(smokeWorkspaceRoot);
+  }
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

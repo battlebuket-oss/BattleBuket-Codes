@@ -4,6 +4,7 @@ import { LogLevel } from "@codingame/monaco-vscode-api";
 import { MonacoVscodeApiWrapper } from "monaco-languageclient/vscodeApiWrapper";
 import getBaseServiceOverride from "@codingame/monaco-vscode-base-service-override";
 import getExtensionsServiceOverride from "@codingame/monaco-vscode-extensions-service-override";
+import type { WorkerConfig } from "@codingame/monaco-vscode-extensions-service-override";
 import getHostServiceOverride from "@codingame/monaco-vscode-host-service-override";
 import getQuickAccessServiceOverride from "@codingame/monaco-vscode-quickaccess-service-override";
 import getExplorerServiceOverride from "@codingame/monaco-vscode-explorer-service-override";
@@ -46,6 +47,11 @@ type Runtime = {
 };
 
 let runtimePromise: Promise<Runtime> | null = null;
+
+const extensionHostWorkerConfig: WorkerConfig = {
+  url: new URL("vscode/workers/extensionHost.worker", import.meta.url).toString(),
+  options: { type: "module", name: "battlebuket-extension-host" }
+};
 
 function openNativeTerminal(runtime: Runtime): void {
   if (runtime.terminal) {
@@ -137,7 +143,7 @@ async function createRuntime(container: HTMLElement): Promise<Runtime> {
     serviceOverrides: {
       ...getBaseServiceOverride(),
       ...getHostServiceOverride(),
-      ...getExtensionsServiceOverride(),
+      ...getExtensionsServiceOverride(extensionHostWorkerConfig),
       ...getQuickAccessServiceOverride(),
       ...getKeybindingsServiceOverride(),
       ...getFilesServiceOverride(),
@@ -202,12 +208,19 @@ async function getRuntime(container: HTMLElement): Promise<Runtime> {
   return runtimePromise;
 }
 
+declare global {
+  interface Window {
+    __battleBuketWorkbenchReady?: boolean;
+  }
+}
+
 export function VscodeWorkbench(props: { workspacePath: string | null; onError: (message: string) => void }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState("Waiting for a project workspace…");
 
   useEffect(() => {
     const container = containerRef.current;
+    window.__battleBuketWorkbenchReady = false;
     if (!container || !props.workspacePath) {
       setStatus("Open a project folder to start the VS Code workbench.");
       return;
@@ -222,13 +235,14 @@ export function VscodeWorkbench(props: { workspacePath: string | null; onError: 
         throw new Error("VS Code could not switch to the selected workspace folder.");
       }
       setStatus("");
+      window.__battleBuketWorkbenchReady = true;
     }).catch(error => {
       if (cancelled) return;
       const message = error instanceof Error ? error.message : String(error);
       setStatus("Workbench initialization failed: " + message);
       props.onError(message);
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; window.__battleBuketWorkbenchReady = false; };
   }, [props.workspacePath]);
 
   useEffect(() => {
