@@ -1,5 +1,5 @@
 import { promises as fs } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import type { VerificationResult } from "../../../../packages/agent-contracts/src/index";
@@ -8,8 +8,71 @@ const execFile = promisify(execFileCallback);
 export const QUALITY_SCRIPTS = ["test", "lint", "typecheck", "build"] as const;
 export const QUALITY_TIMEOUT_MS = 5 * 60 * 1000;
 export const QUALITY_MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
-type PackageManager = "pnpm" | "npm" | "yarn" | "bun";
+export type PackageManager = "pnpm" | "npm" | "yarn" | "bun" | "go" | "cargo" | "python" | "dotnet";
 type ProjectManifest = { scripts?: Record<string, unknown>; packageManager?: string };
+
+export type QualityCommand = {
+  executable: string;
+  args: string[];
+  display: string;
+  shellCommand?: boolean;
+};
+
+export function qualityCommand(manager: PackageManager, script: string): QualityCommand {
+  if (manager === "go") {
+    const commands: Record<string, string[]> = {
+      test: ["test", "./..."],
+      lint: ["vet", "./..."],
+      build: ["build", "./..."]
+    };
+    const args = commands[script];
+    if (!args) throw new Error("Unsupported Go quality check: " + script);
+    return { executable: "go", args, display: "go " + args.join(" ") };
+  }
+  if (manager === "cargo") {
+    const commands: Record<string, string[]> = {
+      test: ["test"],
+      lint: ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"],
+      typecheck: ["check", "--all-targets"],
+      build: ["build", "--all-targets"]
+    };
+    const args = commands[script];
+    if (!args) throw new Error("Unsupported Rust quality check: " + script);
+    return { executable: "cargo", args, display: "cargo " + args.join(" ") };
+  }
+  if (manager === "python") {
+    const commands: Record<string, string[]> = {
+      test: ["-m", "pytest", "-q"],
+      lint: ["-m", "ruff", "check", "."],
+      typecheck: ["-m", "mypy", "."],
+      build: ["-m", "build"]
+    };
+    const args = commands[script];
+    if (!args) throw new Error("Unsupported Python quality check: " + script);
+    const executable = process.platform === "win32" ? "python" : "python3";
+    return { executable, args, display: executable + " " + args.join(" ") };
+  }
+  if (manager === "dotnet") {
+    const commands: Record<string, string[]> = {
+      test: ["test"],
+      lint: ["format", "--verify-no-changes"],
+      build: ["build"]
+    };
+    const args = commands[script];
+    if (!args) throw new Error("Unsupported .NET quality check: " + script);
+    return { executable: "dotnet", args, display: "dotnet " + args.join(" ") };
+  }
+
+  const args = script === "audit"
+    ? manager === "pnpm" ? ["audit", "--audit-level", "high"] : ["audit", "--audit-level=high"]
+    : ["run", script];
+  return {
+    executable: manager,
+    args,
+    display: manager + " " + args.join(" "),
+    shellCommand: true
+  };
+}
 
 function packageManagerFrom(manifest: ProjectManifest, files: Set<string>): PackageManager {
   const declared = manifest.packageManager?.split("@")[0];
@@ -20,28 +83,78 @@ function packageManagerFrom(manifest: ProjectManifest, files: Set<string>): Pack
   return "npm";
 }
 
-export async function discoverQualityScripts(workspacePath: string): Promise<{ manager: PackageManager; scripts: string[] } | null> {
-  const root = await fs.realpath(workspacePath);
-  const manifestPath = resolve(root, "package.json");
-  let raw: string;
+async function isRegularFile(path: string): Promise<boolean> {
   try {
-    const stat = await fs.lstat(manifestPath);
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024) throw new Error("Workspace package.json is not a regular file or exceeds 1 MB.");
-    raw = await fs.readFile(manifestPath, "utf8");
+    const stat = await fs.lstat(path);
+    return stat.isFile() && !stat.isSymbolicLink();
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
-  let manifest: ProjectManifest;
-  try { manifest = JSON.parse(raw) as ProjectManifest; }
-  catch { throw new Error("Workspace package.json contains invalid JSON."); }
+}
+
+async function hasDirectory(path: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(path);
+    return stat.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function discoverAlternativeProject(root: string, entries: string[]): Promise<{ manager: PackageManager; scripts: string[] } | null> {
+  const entrySet = new Set(entries);
+  if (entrySet.has("go.mod") && await isRegularFile(join(root, "go.mod"))) {
+    return { manager: "go", scripts: ["test", "lint", "build"] };
+  }
+  if (entrySet.has("Cargo.toml") && await isRegularFile(join(root, "Cargo.toml"))) {
+    return { manager: "cargo", scripts: ["test", "lint", "typecheck", "build"] };
+  }
+  if (entrySet.has("pyproject.toml") && await isRegularFile(join(root, "pyproject.toml"))) {
+    const path = join(root, "pyproject.toml");
+    const stat = await fs.stat(path);
+    if (stat.size > 1024 * 1024) throw new Error("Workspace pyproject.toml exceeds the 1 MB limit.");
+    const config = await fs.readFile(path, "utf8");
+    const scripts: string[] = [];
+    if (await hasDirectory(join(root, "tests")) || await hasDirectory(join(root, "test")) || config.includes("[tool.pytest.ini_options]")) scripts.push("test");
+    if (config.includes("[tool.ruff]")) scripts.push("lint");
+    if (config.includes("[tool.mypy]")) scripts.push("typecheck");
+    if (config.includes("[build-system]")) scripts.push("build");
+    return { manager: "python", scripts };
+  }
+  if (entries.some(name => name.endsWith(".sln") || name.endsWith(".slnx") || name.endsWith(".csproj"))) {
+    return { manager: "dotnet", scripts: ["test", "lint", "build"] };
+  }
+  return null;
+}
+
+export async function discoverQualityScripts(workspacePath: string): Promise<{ manager: PackageManager; scripts: string[] } | null> {
+  const root = await fs.realpath(workspacePath);
   const entries = await fs.readdir(root);
-  const manager = packageManagerFrom(manifest, new Set(entries));
-  const scripts: string[] = QUALITY_SCRIPTS.filter(name => typeof manifest.scripts?.[name] === "string" && (manifest.scripts[name] as string).trim().length > 0);
-  const hasSupportedAuditLock = (manager === "pnpm" && entries.includes("pnpm-lock.yaml")) ||
-    (manager === "npm" && entries.includes("package-lock.json"));
-  if (hasSupportedAuditLock) scripts.push("audit");
-  return { manager, scripts };
+  const manifestPath = resolve(root, "package.json");
+
+  if (await isRegularFile(manifestPath)) {
+    const stat = await fs.stat(manifestPath);
+    if (stat.size > 1024 * 1024) throw new Error("Workspace package.json exceeds the 1 MB limit.");
+    const raw = await fs.readFile(manifestPath, "utf8");
+    let manifest: ProjectManifest;
+    try { manifest = JSON.parse(raw) as ProjectManifest; }
+    catch { throw new Error("Workspace package.json contains invalid JSON."); }
+    const manager = packageManagerFrom(manifest, new Set(entries));
+    const scripts: string[] = QUALITY_SCRIPTS.filter(name =>
+      typeof manifest.scripts?.[name] === "string" && (manifest.scripts[name] as string).trim().length > 0
+    );
+    const hasSupportedAuditLock = (manager === "pnpm" && entries.includes("pnpm-lock.yaml")) ||
+      (manager === "npm" && entries.includes("package-lock.json"));
+    if (hasSupportedAuditLock) scripts.push("audit");
+    if (scripts.length > 0) return { manager, scripts };
+  }
+
+  return discoverAlternativeProject(root, entries);
+}
+
+export function formatQualityCommand(manager: string, script: string): string {
+  return qualityCommand(manager as PackageManager, script).display;
 }
 
 function safeEnvironment(): NodeJS.ProcessEnv {
@@ -53,23 +166,31 @@ function safeEnvironment(): NodeJS.ProcessEnv {
 
 async function runScript(manager: PackageManager, script: string, cwd: string, signal?: AbortSignal): Promise<VerificationResult> {
   const started = Date.now();
-  const commandArgs = script === "audit"
-    ? manager === "pnpm" ? ["audit", "--audit-level", "high"] : ["audit", "--audit-level=high"]
-    : ["run", script];
-  const command = `${manager} ${commandArgs.join(" ")}`;
-  const label = script === "audit" ? "Dependency audit" : `Project ${script}`;
-  const executable = process.platform === "win32" ? "cmd.exe" : manager;
-  const args = process.platform === "win32" ? ["/d", "/s", "/c", command] : commandArgs;
+  const spec = qualityCommand(manager, script);
+  const label = script === "audit" ? "Dependency audit" : "Project " + script;
+  const executable = process.platform === "win32" && spec.shellCommand ? "cmd.exe" : spec.executable;
+  const args = process.platform === "win32" && spec.shellCommand
+    ? ["/d", "/s", "/c", spec.display]
+    : spec.args;
   try {
-    const result = await execFile(executable, args, { cwd, env: safeEnvironment(), timeout: QUALITY_TIMEOUT_MS, killSignal: "SIGTERM", maxBuffer: QUALITY_MAX_OUTPUT_BYTES, windowsHide: true, encoding: "utf8", ...(signal ? { signal } : {}) });
+    const result = await execFile(executable, args, {
+      cwd,
+      env: safeEnvironment(),
+      timeout: QUALITY_TIMEOUT_MS,
+      killSignal: "SIGTERM",
+      maxBuffer: QUALITY_MAX_OUTPUT_BYTES,
+      windowsHide: true,
+      encoding: "utf8",
+      ...(signal ? { signal } : {})
+    });
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n").slice(-12000);
-    return { name: label, passed: true, output: `${command} passed in ${Date.now() - started} ms${output ? `\n${output}` : ""}` };
+    return { name: label, passed: true, output: spec.display + " passed in " + (Date.now() - started) + " ms" + (output ? "\n" + output : "") };
   } catch (error) {
     const failure = error as NodeJS.ErrnoException & { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };
     const timedOut = failure.killed === true || failure.code === "ETIMEDOUT";
     if (signal?.aborted) return { name: label, passed: false, output: "Cancelled by the user." };
     const output = [failure.stdout, failure.stderr, failure.message].filter(Boolean).join("\n").slice(-12000);
-    return { name: label, passed: false, output: `${timedOut ? "Timed out" : "Failed"} after ${Date.now() - started} ms (exit ${String(failure.code ?? "unknown")})\n${output}` };
+    return { name: label, passed: false, output: (timedOut ? "Timed out" : "Failed") + " after " + (Date.now() - started) + " ms (exit " + String(failure.code ?? "unknown") + ")\n" + output };
   }
 }
 
@@ -80,16 +201,31 @@ export async function runProjectQualityChecks(
 ): Promise<VerificationResult[]> {
   if (signal?.aborted) return [{ name: "Project quality checks", passed: false, output: "Cancelled by the user." }];
   const project = await discoverQualityScripts(workspacePath);
-  if (!project) return [{ name: "Project quality scripts", passed: true, output: "Skipped: no root package.json was found." }];
-  if (project.scripts.length === 0) return [{ name: "Project quality scripts", passed: true, output: "Skipped: package.json defines none of test, lint, typecheck, or build." }];
+  if (!project) return [{
+    name: "Project quality capability",
+    passed: false,
+    output: "Not verified: no supported root project manifest or test/build scripts were detected. The Git whitespace check alone is not a substitute for project tests, lint, typecheck or build."
+  }];
+  if (project.scripts.length === 0) return [{
+    name: "Project quality capability",
+    passed: false,
+    output: "Not verified: the detected " + project.manager + " project does not expose supported test, lint, typecheck or build checks. Configure its toolchain before treating changes as verified."
+  }];
   const approved = await approve(project.scripts, project.manager);
   if (signal?.aborted) return [{ name: "Project quality checks", passed: false, output: "Cancelled by the user." }];
-  if (!approved) return project.scripts.map(script => ({ name: script === "audit" ? "Dependency audit" : `Project ${script}`, passed: false, output: "Not run: the user did not approve execution of repository-defined scripts." }));
+  if (!approved) return project.scripts.map(script => ({
+    name: script === "audit" ? "Dependency audit" : "Project " + script,
+    passed: false,
+    output: "Not run: the user did not approve execution of repository-defined quality commands."
+  }));
   const root = await fs.realpath(workspacePath);
   const results: VerificationResult[] = [];
   for (const script of project.scripts) {
     if (signal?.aborted) break;
     results.push(await runScript(project.manager, script, root, signal));
+  }
+  if (signal?.aborted && results.length === 0) {
+    results.push({ name: "Project quality checks", passed: false, output: "Cancelled by the user." });
   }
   return results;
 }
