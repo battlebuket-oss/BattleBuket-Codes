@@ -139,6 +139,12 @@ function createWindow(): void {
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
   if (process.argv.includes("--smoke-test")) {
+    window.webContents.on("console-message", (_event, details) => {
+      console.error("[renderer-console] level=" + details.level + " message=" + details.message + " source=" + details.sourceId + ":" + details.lineNumber);
+    });
+    window.webContents.on("render-process-gone", (_event, details) => {
+      console.error("[renderer-process-gone] reason=" + details.reason + " exitCode=" + details.exitCode);
+    });
     const timeout = setTimeout(() => app.exit(1), 150_000);
     const finish = (success: boolean) => {
       clearTimeout(timeout);
@@ -176,10 +182,51 @@ function createWindow(): void {
         }
         const expectedVersion = process.argv.find(argument => argument.startsWith("--smoke-expect-version="))
           ?.slice("--smoke-expect-version=".length);
-        const smokeScript = `window.battleBuket && window.battleBuket.getVersion().then(async version => { const expectedVersion = ${JSON.stringify(expectedVersion ?? null)}; let worker; try { const environment = globalThis.MonacoEnvironment; if (!environment || typeof environment.getWorker !== 'function') return false; worker = environment.getWorker('', 'typescript'); if (typeof worker.postMessage !== 'function' || typeof worker.terminate !== 'function') return false; const workerHealthy = await new Promise(resolve => { const timer = setTimeout(() => resolve(true), 1000); worker.addEventListener('error', () => { clearTimeout(timer); resolve(false); }, { once: true }); }); return typeof version === 'string' && version.length > 0 && (!expectedVersion || version === expectedVersion) && workerHealthy; } finally { worker && worker.terminate(); } })`;
-        const editorHealthy = await window.webContents.executeJavaScript(smokeScript);
-        if (editorHealthy !== true) {
-          failSmoke("Monaco TypeScript worker or platform version", editorHealthy);
+        const smokeScript = `(async () => {
+          if (!window.battleBuket || typeof window.battleBuket.getVersion !== "function") {
+            return { ok: false, reason: "preload-bridge-missing" };
+          }
+          const version = await window.battleBuket.getVersion();
+          const expectedVersion = ${JSON.stringify(expectedVersion ?? null)};
+          if (typeof version !== "string" || version.length === 0) {
+            return { ok: false, reason: "app-version-unavailable", version };
+          }
+          if (expectedVersion && version !== expectedVersion) {
+            return { ok: false, reason: "app-version-mismatch", version, expectedVersion };
+          }
+          const environment = globalThis.MonacoEnvironment;
+          if (!environment || typeof environment.getWorker !== "function") {
+            return { ok: false, reason: "monaco-worker-environment-missing", workerKeys: environment ? Object.keys(environment) : [] };
+          }
+          let worker;
+          try {
+            worker = environment.getWorker("", "typescript");
+            if (!worker || typeof worker.postMessage !== "function" || typeof worker.terminate !== "function") {
+              return { ok: false, reason: "typescript-worker-constructor-invalid", workerType: typeof worker };
+            }
+            const workerFailure = await new Promise(resolve => {
+              let settled = false;
+              const finish = value => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
+              const timer = setTimeout(() => finish(null), 1500);
+              worker.addEventListener("error", event => finish({
+                message: event.message || "Worker emitted an error",
+                filename: event.filename || "",
+                line: event.lineno || 0,
+                column: event.colno || 0
+              }), { once: true });
+              worker.addEventListener("messageerror", () => finish({ message: "Worker emitted messageerror" }), { once: true });
+            });
+            if (workerFailure) return { ok: false, reason: "typescript-worker-runtime-error", details: workerFailure };
+            return { ok: true, version, workerType: worker.constructor?.name || "Worker" };
+          } catch (error) {
+            return { ok: false, reason: "typescript-worker-construction-threw", message: String(error), stack: error && error.stack ? String(error.stack) : "" };
+          } finally {
+            if (worker && typeof worker.terminate === "function") worker.terminate();
+          }
+        })()`;
+        const editorHealth = await window.webContents.executeJavaScript(smokeScript);
+        if (!editorHealth || editorHealth.ok !== true) {
+          failSmoke("Monaco TypeScript worker or platform version", editorHealth);
           return;
         }
         const workbenchHealthy = await window.webContents.executeJavaScript(
