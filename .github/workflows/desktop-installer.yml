@@ -31,7 +31,7 @@ jobs:
           node-version: 22
       - run: corepack enable
       - run: corepack prepare pnpm@10.0.0 --activate
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - name: Build installer
         run: pnpm --filter @battlebuket/desktop ${{ matrix.script }}
       - uses: actions/upload-artifact@v4
