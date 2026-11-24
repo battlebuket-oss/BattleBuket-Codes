@@ -147,7 +147,7 @@ export default function App() {
       <nav className="rail"><LayoutDashboard/><FolderOpen/><Search/><GitBranch/><span/><ShieldCheck/></nav>
       <aside className="projects">
         <label>PROJECT EXPLORER</label>
-        <button onClick={openWorkspace}><FolderOpen size={15}/> {workspace ? "Change project" : "Open project"} <Plus size={13}/></button>
+        <button onClick={openWorkspace} disabled={running}><FolderOpen size={15}/> {workspace ? "Change project" : "Open project"} <Plus size={13}/></button>
         {workspace && <div className="file-list">
           <div className="file-heading" onClick={() => { setCurrentDirectory(""); void refreshFiles(""); }}><Folder size={13}/> {currentDirectory || workspaceName} <span>↻</span></div>
           {loading && <small>Loading files…</small>}
@@ -160,7 +160,7 @@ export default function App() {
           </button>)}
           {entries.length === 0 && !loading && <small>No visible files in this folder.</small>}
         </div>}
-        {!workspace && <div className="empty"><FileCode2 size={26}/><b>Your workspace starts here</b><p>Open a project folder to browse files and preview source code.</p><button className="open" onClick={openWorkspace}><Plus size={14}/> Open project</button></div>}
+        {!workspace && <div className="empty"><FileCode2 size={26}/><b>Your workspace starts here</b><p>Open a project folder to browse files and preview source code.</p><button className="open" onClick={openWorkspace} disabled={running}><Plus size={14}/> Open project</button></div>}
         {error && <p className="workspace-error" role="alert">{error}</p>}
         <footer>● Local workspace · {workspace ? "Connected" : "Ready"}</footer>
       </aside>
