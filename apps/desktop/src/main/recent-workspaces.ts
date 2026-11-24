@@ -102,8 +102,14 @@ export async function openRecentWorkspace(userDataPath: string, requestedPath: s
   if (typeof requestedPath !== "string" || requestedPath.length === 0 || requestedPath.length > 4096) {
     throw new Error("Invalid recent workspace path.");
   }
+  let canonicalRequestedPath: string;
+  try {
+    canonicalRequestedPath = await fs.realpath(requestedPath);
+  } catch {
+    throw new Error("This project is not in the recent workspace list. Open it through the project picker first.");
+  }
   const recent = await readRecentWorkspaces(userDataPath);
-  const requestedKey = normalizePath(requestedPath);
+  const requestedKey = normalizePath(canonicalRequestedPath);
   const selected = recent.find(item => normalizePath(item.path) === requestedKey);
   if (!selected) throw new Error("This project is not in the recent workspace list. Open it through the project picker first.");
   return selected.path;
