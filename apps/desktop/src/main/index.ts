@@ -167,7 +167,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
   taskStartPending = true;
   try {
     await appendTaskHistory(userDataPath, {
-      taskId: task.id, provider: payload.provider, risk: payload.risk, status: "running", at: startedAt
+      taskId: task.id, provider: payload.provider, risk: payload.risk, title: task.title, status: "running", at: startedAt
     });
     activeDirector = director;
     taskStartPending = false;
@@ -177,6 +177,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
         taskId: task.id,
         provider: payload.provider,
         risk: payload.risk,
+        title: task.title,
         status: result.status,
         at: new Date().toISOString(),
         changedFileCount: result.changedFiles.length,
@@ -194,7 +195,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
   } catch (error) {
     try {
       await appendTaskHistory(userDataPath, {
-        taskId: task.id, provider: payload.provider, risk: payload.risk,
+        taskId: task.id, provider: payload.provider, risk: payload.risk, title: task.title,
         status: director.state.status === "cancelled" ? "cancelled" : "failed",
         at: new Date().toISOString()
       });
