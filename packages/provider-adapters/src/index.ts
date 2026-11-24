@@ -18,7 +18,7 @@ export function claudeAllowedTools(mode: AgentRunRequest["approvalMode"]): strin
 }
 
 async function changedFiles(cwd: string): Promise<string[]> {
-  const result = await execa("git", ["status", "--porcelain", "--untracked-files=all"], { cwd, reject: false });
+  const result = await execa("git", ["status", "--porcelain", "--untracked-files=all"], { cwd, reject: false, maxBuffer: 2 * 1024 * 1024 });
   if (result.exitCode !== 0) return [];
   return result.stdout.split(/\r?\n/).filter(Boolean).map(line => line.slice(3).trim()).filter(Boolean);
 }
@@ -52,6 +52,7 @@ export class CodexCliAdapter implements AgentAdapter {
     let pendingLine = "";
     let totalOutputBytes = 0;
     let assistantSummary = "";
+    let stderrTail = "";
     const processLine = (line: string) => {
       if (!line.trim()) return;
       try {
@@ -79,8 +80,16 @@ export class CodexCliAdapter implements AgentAdapter {
       }
     };
     try {
-      const child = execa("codex", codexArguments(request), { cwd: request.workingDirectory, cancelSignal: controller.signal, reject: false });
+      const child = execa("codex", codexArguments(request), {
+        cwd: request.workingDirectory,
+        cancelSignal: controller.signal,
+        reject: false,
+        buffer: false
+      });
       run.process = child;
+      child.stderr?.on("data", chunk => {
+        stderrTail = (stderrTail + String(chunk)).slice(-4000);
+      });
       child.stdout?.on("data", chunk => {
         const text = String(chunk);
         totalOutputBytes += Buffer.byteLength(text, "utf8");
@@ -99,7 +108,7 @@ export class CodexCliAdapter implements AgentAdapter {
       if (pendingLine.trim()) processLine(pendingLine);
 
       if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled", changedFiles: [], verification: [] };
-      if (result.exitCode !== 0) return { taskId: request.task.id, status: "failed", summary: (result.stderr || result.stdout || "Codex exited with code " + result.exitCode).slice(-4000), changedFiles: await changedFiles(request.workingDirectory), verification: [] };
+      if (result.exitCode !== 0) return { taskId: request.task.id, status: "failed", summary: (stderrTail || "Codex exited with code " + result.exitCode).slice(-4000), changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       const files = await changedFiles(request.workingDirectory);
       emit(request, send, "completed", "Codex finished; review the resulting workspace diff");
       return { taskId: request.task.id, status: "succeeded", summary: (assistantSummary || "Codex completed successfully").slice(-4000), changedFiles: files, verification: [] };
