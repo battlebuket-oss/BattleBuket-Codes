@@ -109,8 +109,10 @@ ipcMain.handle("agents:run", async (_event, payload: { prompt: string; provider:
       const options = {
         type: "warning" as const,
         title: "Approve engineering task",
-        message: payload.risk === "high" ? "Run this task in read-only mode?" : "Allow this agent to edit files in the selected project?",
-        detail: "The agent will be limited to the selected workspace. Full system access is disabled. Review its changes before using or releasing them.",
+        message: payload.risk === "high"
+          ? "Run this task in read-only mode? The agent will not be allowed to edit files."
+          : "Allow this agent to edit files and run routine local commands inside the selected project?",
+        detail: "The agent is sandboxed to this workspace. Full-system access and outbound network access are disabled. Codex permission escalations use automatic review, which may consume additional provider usage. Review all changes before using or releasing them.",
         buttons: ["Cancel task", "Approve and continue"],
         defaultId: 0,
         cancelId: 0,
