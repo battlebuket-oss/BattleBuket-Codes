@@ -17,7 +17,7 @@ BattleBuket Codes brings a project workspace, local coding-engine integrations, 
 The repository currently includes:
 
 - Electron desktop shell with a context-isolated preload bridge, navigation blocking and trusted-renderer IPC checks.
-- Native project-folder selection, bounded workspace browsing, a Monaco code editor with language-aware highlighting, minimap and bundled language workers, atomic saves, stale-write protection and path/symlink checks.
+- Native project-folder selection, bounded workspace browsing, a Monaco code editor with language-aware highlighting, minimap and bundled language workers, multi-file tabs, unsaved-draft protection, Ctrl/Cmd+S saving, bounded Quick Open filename search and a keyboard command palette, atomic saves, stale-write protection and path/symlink checks.
 - Codex CLI adapter with version/login preflight, structured event streaming, cancellation, bounded runtime, read-only and workspace-write modes.
 - Claude Agent SDK adapter with sandbox-required startup, restricted built-in tool allowlists, bounded turns and cancellation.
 - Single-task Engineering Director lifecycle, explicit provider selection, risk-based approval and task status events.
@@ -30,7 +30,7 @@ The repository currently includes:
 
 ## Important limitations — not a production release
 
-The full Code - OSS / VS Code workbench is **not embedded**. The current editor uses Monaco (the code editor component from the VS Code ecosystem) with language workers, per-file models, multi-file tabs and unsaved-draft protection, but it is not the complete Code - OSS workbench. Workbench services, native extension host, diagnostics integration, project search and command palette integration remain.
+The full Code - OSS / VS Code workbench is **not embedded**. The current editor uses Monaco (the code editor component from the VS Code ecosystem) with language workers, per-file models, multi-file tabs and unsaved-draft protection, but it is not the complete Code - OSS workbench. Workbench services, native extension host, diagnostics integration, in-editor symbol/content search, extension APIs and upstream Code - OSS integration remain. Quick Open currently searches file paths/names only; the lightweight command palette exposes BattleBuket desktop actions, not the complete VS Code command registry.
 
 The PTY implementation is currently on the draft `feature/pty-terminal` pull request. It is not a verified production feature until the native Electron ABI and Windows/macOS/Linux workflow passes.
 
