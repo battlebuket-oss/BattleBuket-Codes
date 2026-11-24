@@ -116,6 +116,48 @@ jobs:
         run: |
           cd apps/desktop/release
           sha256sum *.AppImage > SHA256SUMS
+      - name: Install, launch and uninstall Windows app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "apps/desktop/release" -Filter "*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer not found." }
+          $installDir = Join-Path $env:RUNNER_TEMP "BattleBuketInstallSmoke"
+          Start-Process -FilePath $installer.FullName -ArgumentList @("/S", "/D=$installDir") -Wait
+          $application = Join-Path $installDir "battlebuket-codes.exe"
+          if (-not (Test-Path $application)) { throw "Installed application executable was not found." }
+          $smoke = Start-Process -FilePath $application -ArgumentList "--smoke-test" -Wait -PassThru
+          if ($smoke.ExitCode -ne 0) { throw "Installed application smoke test failed with exit code $($smoke.ExitCode)." }
+          $uninstaller = Join-Path $installDir "Uninstall BattleBuket Codes.exe"
+          if (-not (Test-Path $uninstaller)) { throw "NSIS uninstaller was not found." }
+          Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait
+          if (Test-Path $application) { throw "Application executable remains after silent uninstall." }
+      - name: Install, launch and uninstall macOS app
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          dmg="$(find apps/desktop/release -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          mkdir -p /tmp/battlebuket-install-smoke
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint /tmp/battlebuket-install-smoke
+          source_app="$(find /tmp/battlebuket-install-smoke -maxdepth 2 -name '*.app' -print -quit)"
+          test -n "$source_app"
+          installed_app="$RUNNER_TEMP/BattleBuket Codes.app"
+          ditto "$source_app" "$installed_app"
+          hdiutil detach /tmp/battlebuket-install-smoke
+          open -n -W -a "$installed_app" --args --smoke-test
+          rm -rf "$installed_app"
+          test ! -e "$installed_app"
+      - name: Launch Linux AppImage and remove installed artifact
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          appimage="$(find apps/desktop/release -maxdepth 1 -name '*.AppImage' -print -quit)"
+          test -n "$appimage"
+          chmod +x "$appimage"
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$appimage" --smoke-test
+          rm -f "$appimage"
+          test ! -e "$appimage"
       - uses: actions/upload-artifact@v4
         with:
           name: BattleBuket-Codes-${{ matrix.label }}
