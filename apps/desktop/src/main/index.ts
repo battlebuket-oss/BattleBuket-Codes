@@ -116,10 +116,30 @@ function createWindow(): void {
     };
     window.webContents.once("did-fail-load", () => finish(false));
     window.webContents.once("did-finish-load", () => {
-      void window.webContents.executeJavaScript(
-        "window.battleBuket && window.battleBuket.getVersion().then(version => { let worker; try { const environment = globalThis.MonacoEnvironment; if (!environment || typeof environment.getWorker !== 'function') return false; worker = environment.getWorker('', 'typescript'); return typeof version === 'string' && version.length > 0 && typeof worker.postMessage === 'function' && typeof worker.terminate === 'function'; } finally { worker && worker.terminate(); } })"
-      ).then((healthy: unknown) => finish(healthy === true))
-        .catch(() => finish(false));
+      void (async () => {
+        const marker = "battlebuket-upgrade-smoke-v1";
+        const statePath = join(app.getPath("userData"), "upgrade-smoke-state.json");
+        if (process.argv.includes("--smoke-seed-state")) {
+          await fs.mkdir(app.getPath("userData"), { recursive: true });
+          await fs.writeFile(statePath, JSON.stringify({ marker, schemaVersion: 1 }), { encoding: "utf8", mode: 0o600 });
+        }
+        if (process.argv.includes("--smoke-verify-state")) {
+          const state = JSON.parse(await fs.readFile(statePath, "utf8")) as { marker?: unknown; schemaVersion?: unknown };
+          if (state.marker !== marker || state.schemaVersion !== 1) {
+            finish(false);
+            return;
+          }
+        }
+        const healthy = await window.webContents.executeJavaScript(
+          "window.battleBuket && window.battleBuket.getVersion().then(version => { let worker; try { const environment = globalThis.MonacoEnvironment; if (!environment || typeof environment.getWorker !== 'function') return false; worker = environment.getWorker('', 'typescript'); return typeof version === 'string' && version.length > 0 && typeof worker.postMessage === 'function' && typeof worker.terminate === 'function'; } finally { worker && worker.terminate(); } })"
+        );
+        if (healthy !== true) {
+          finish(false);
+          return;
+        }
+        if (process.argv.includes("--smoke-clear-state")) await fs.unlink(statePath).catch(() => {});
+        finish(true);
+      })().catch(() => finish(false));
     });
   }
   if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
