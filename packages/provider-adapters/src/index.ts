@@ -150,7 +150,10 @@ export class ClaudeAgentSdkAdapter implements AgentAdapter {
     let warm: Awaited<ReturnType<typeof startup>> | undefined;
     try {
       warm = await startup({
-        options: { cwd: process.cwd(), settingSources: [], permissionMode: "plan", maxTurns: 1 },
+        options: {
+          cwd: process.cwd(), settingSources: [], permissionMode: "plan", maxTurns: 1,
+          sandbox: { enabled: true, failIfUnavailable: true }
+        },
         initializeTimeoutMs: 8000
       });
       return true;
@@ -180,6 +183,7 @@ export class ClaudeAgentSdkAdapter implements AgentAdapter {
           settingSources: [],
           strictMcpConfig: true,
           permissionPrompts: "none",
+          sandbox: { enabled: true, failIfUnavailable: true },
           maxTurns: 40,
           env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: "battlebuket-codes" },
           persistSession: false
