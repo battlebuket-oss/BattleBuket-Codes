@@ -14,6 +14,7 @@ import getLifecycleServiceOverride from "@codingame/monaco-vscode-lifecycle-serv
 import getMarkersServiceOverride from "@codingame/monaco-vscode-markers-service-override";
 import getSearchServiceOverride from "@codingame/monaco-vscode-search-service-override";
 import getTerminalServiceOverride from "@codingame/monaco-vscode-terminal-service-override";
+import getWorkspaceTrustServiceOverride from "@codingame/monaco-vscode-workspace-trust-service-override";
 import "@codingame/monaco-vscode-all-language-feature-default-extensions";
 import { configureMonacoWorkers } from "./monaco-workers";
 import { BattleBuketFileSystemProvider, WORKSPACE_SCHEME } from "./vscode-workspace";
@@ -132,6 +133,8 @@ function openNativeTerminal(runtime: Runtime): void {
 }
 
 async function createRuntime(container: HTMLElement): Promise<Runtime> {
+  // Smoke mode uses an isolated temporary workspace and bypasses the user prompt only in CI.
+  const smokeTest = window.battleBuket ? await window.battleBuket.isSmokeTest() : false;
   const wrapper = new MonacoVscodeApiWrapper({
     $type: "extended",
     logLevel: LogLevel.Error,
@@ -147,7 +150,8 @@ async function createRuntime(container: HTMLElement): Promise<Runtime> {
       ...getExplorerServiceOverride(),
       ...getMarkersServiceOverride(),
       ...getSearchServiceOverride(),
-      ...getTerminalServiceOverride()
+      ...getTerminalServiceOverride(),
+      ...getWorkspaceTrustServiceOverride()
     },
     viewsConfig: {
       $type: "WorkbenchService",
@@ -168,7 +172,7 @@ async function createRuntime(container: HTMLElement): Promise<Runtime> {
     },
     workspaceConfig: {
       workspaceProvider: {
-        trusted: true,
+        trusted: smokeTest,
         workspace: { workspaceUri: vscode.Uri.file("/battlebuket-empty.code-workspace") },
         async open() { return true; }
       },
@@ -269,6 +273,16 @@ export function VscodeWorkbench(props: { workspacePath: string | null; onError: 
       const existing = vscode.workspace.workspaceFolders?.length ?? 0;
       if (!vscode.workspace.updateWorkspaceFolders(0, existing, { uri, name: props.workspacePath!.split(/[\\/]/).filter(Boolean).pop() || "Workspace" })) {
         throw new Error("VS Code could not switch to the selected workspace folder.");
+      }
+      if (!smokeTest && !vscode.workspace.isTrusted) {
+        setStatus("Requesting workspace trust…");
+        const trustGranted = await vscode.workspace.requestWorkspaceTrust();
+        if (cancelled) return;
+        if (trustGranted !== true && !vscode.workspace.isTrusted) {
+          setStatus("Restricted Mode: workspace extensions and tasks stay disabled until you trust this folder. Use Manage Workspace Trust to change this later.");
+          window.__battleBuketWorkbenchReady = true;
+          return;
+        }
       }
       setStatus("Starting built-in language services…");
       const typeScriptExtension = vscode.extensions.getExtension("vscode.typescript-language-features");
