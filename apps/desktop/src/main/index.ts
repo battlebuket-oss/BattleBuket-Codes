@@ -105,7 +105,7 @@ function createWindow(): void {
     }
   });
   mainWindow = window;
-  window.on("closed", () => { if (mainWindow === window) mainWindow = null; activeTerminalSessionId = null; void queueRuntimeCleanup(); });
+  window.on("closed", () => { if (mainWindow === window) mainWindow = null; activeTerminalSessionId = null; void queueRuntimeCleanup().catch(error => console.error("Workspace cleanup after window close failed:", error)); });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
   if (process.argv.includes("--smoke-test")) {
@@ -406,7 +406,9 @@ app.on("before-quit", event => {
   event.preventDefault();
   if (shutdownInProgress) return;
   shutdownInProgress = true;
-  void queueRuntimeCleanup().finally(() => {
+  void queueRuntimeCleanup().catch(error => {
+    console.error("Runtime cleanup failed during application shutdown:", error);
+  }).finally(() => {
     shutdownComplete = true;
     app.quit();
   });
