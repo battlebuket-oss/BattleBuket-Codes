@@ -24,7 +24,7 @@ export async function runWorkspaceCommand(workspacePath: string, command: string
     if (process.env[key] !== undefined) env[key] = process.env[key];
   }
   const executable = platform === "win32" ? "cmd.exe" : "/bin/sh";
-  const args = platform === "win32" ? ["/d", "/s", "/c", command] : ["-lc", command];
+  const args = platform === "win32" ? ["/d", "/s", "/c", command] : ["-c", command];
   try {
     const result = await execFile(executable, args, { cwd, env, timeout: TERMINAL_MAX_RUNTIME_MS, killSignal: "SIGTERM", maxBuffer: TERMINAL_MAX_OUTPUT_BYTES, windowsHide: true, encoding: "utf8" });
     return { command, exitCode: 0, stdout: result.stdout, stderr: result.stderr, durationMs: Date.now() - started, timedOut: false };
