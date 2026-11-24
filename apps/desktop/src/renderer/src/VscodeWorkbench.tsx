@@ -26,17 +26,6 @@ type TerminalSessionEvent = {
   exitCode?: number;
 };
 
-declare global {
-  interface Window {
-    battleBuket?: {
-      startTerminal: () => Promise<string>;
-      writeTerminal: (sessionId: string, input: string) => Promise<boolean>;
-      closeTerminal: (sessionId: string) => Promise<boolean>;
-      resizeTerminal: (sessionId: string, columns: number, rows: number) => Promise<boolean>;
-      onTerminalEvent: (listener: (event: TerminalSessionEvent) => void) => () => void;
-    };
-  }
-}
 
 type Runtime = {
   wrapper: MonacoVscodeApiWrapper;
