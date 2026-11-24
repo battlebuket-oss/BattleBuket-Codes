@@ -120,6 +120,8 @@ export default function App() {
   };
   const openWorkspace = async () => {
     try {
+      if (editorTabs.some(tab => tab.draft !== tab.content) &&
+          !window.confirm("Discard unsaved changes before opening another project?")) return;
       setError("");
       const selected = await window.battleBuket?.selectWorkspace();
       if (selected) {
@@ -284,6 +286,17 @@ export default function App() {
     const unsubscribeTerminal = window.battleBuket?.onTerminalEvent(event => applyTerminalEvent(event));
     return () => { unsubscribe?.(); unsubscribeTerminal?.(); };
   }, []);
+
+  useEffect(() => {
+    const hasUnsavedChanges = editorTabs.some(tab => tab.draft !== tab.content);
+    const warnBeforeClose = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeClose);
+    return () => window.removeEventListener("beforeunload", warnBeforeClose);
+  }, [editorTabs]);
 
   useEffect(() => {
     if (!terminalOpen || !terminalHostRef.current || terminalRef.current) return;
