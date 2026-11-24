@@ -171,16 +171,17 @@ async function createRuntime(container: HTMLElement): Promise<Runtime> {
     isCaseSensitive: true,
     isReadonly: false
   });
+  let runtime!: Runtime;
   const commandRegistration = vscode.commands.registerCommand("battlebuket.openNativeTerminal", () => {
-    openNativeTerminal(runtimePromise ? (undefined as never) : (undefined as never));
+    openNativeTerminal(runtime);
   });
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusItem.text = "$(terminal) BattleBuket Terminal";
   statusItem.tooltip = "Open the native workspace terminal";
   statusItem.command = "battlebuket.openNativeTerminal";
   statusItem.show();
-  const runtime: Runtime = { wrapper, provider, filesystemRegistration, commandRegistration, statusItem };
-  await provider.setWorkspaceRoot("");
+  runtime = { wrapper, provider, filesystemRegistration, commandRegistration, statusItem };
+  provider.setWorkspaceRoot("");
   return runtime;
 }
 
