@@ -38,6 +38,7 @@ declare global {
       saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
       getAgentAvailability: () => Promise<Record<AgentProvider, boolean>>;
       getTaskHistory: () => Promise<TaskHistoryItem[]>;
+      runTerminalCommand: (command: string) => Promise<{ command: string; exitCode: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }>;
       runAgent: (payload: { prompt: string; provider: AgentProvider; risk: TaskRisk }) => Promise<AgentResult>;
       cancelAgent: () => Promise<boolean>;
       onAgentEvent: (listener: (event: AgentEvent) => void) => () => void;
@@ -65,6 +66,10 @@ export default function App() {
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([]);
   const [taskResult, setTaskResult] = useState<AgentResult | null>(null);
   const [taskHistory, setTaskHistory] = useState<TaskHistoryItem[]>([]);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalCommand, setTerminalCommand] = useState("");
+  const [terminalOutput, setTerminalOutput] = useState<string[]>([]);
+  const [terminalBusy, setTerminalBusy] = useState(false);
 
   const refreshFiles = async (directory = currentDirectory) => {
     try {
@@ -119,6 +124,19 @@ export default function App() {
     } catch (e) { setError(e instanceof Error ? e.message : "The engineering task failed to start"); }
     finally { setRunning(false); void refreshHistory(); }
   };
+  const runTerminalCommand = async () => {
+    if (!window.battleBuket || !terminalCommand.trim() || terminalBusy) return;
+    try {
+      setTerminalBusy(true);
+      const result = await window.battleBuket.runTerminalCommand(terminalCommand);
+      const output = [`$ ${result.command}`, result.stdout, result.stderr, result.timedOut ? "Command timed out after 120 seconds." : `Exit code: ${result.exitCode} · ${result.durationMs} ms`].filter(Boolean).join("\\n");
+      setTerminalOutput(current => [...current, output].slice(-40));
+      setTerminalCommand("");
+    } catch (e) {
+      setTerminalOutput(current => [...current, e instanceof Error ? e.message : "Terminal command failed"].slice(-40));
+    } finally { setTerminalBusy(false); }
+  };
+
   const cancelTask = async () => {
     try { await window.battleBuket?.cancelAgent(); }
     catch (e) { setError(e instanceof Error ? e.message : "Could not cancel the task"); }
@@ -165,7 +183,7 @@ export default function App() {
         <footer>● Local workspace · {workspace ? "Connected" : "Ready"}</footer>
       </aside>
       <section className="center">
-        <div className="tab"><FileCode2 size={14}/> {selectedFile ? selectedFile.path : "Engineering command center"}</div>
+        <div className="tab"><FileCode2 size={14}/> {selectedFile ? selectedFile.path : "Engineering command center"}<button className="terminal-toggle" onClick={() => setTerminalOpen(value => !value)}>{terminalOpen ? "Hide terminal" : "Terminal"}</button></div>
         {selectedFile ? <div className="editor-preview">
           <div className="editor-toolbar">{selectedFile.path}<span>{saveMessage || (draft !== selectedFile.content ? "Unsaved changes" : "Editable text · 1 MB limit")}</span><button onClick={saveFile} disabled={saving || draft === selectedFile.content}>{saving ? "Saving…" : "Save"}</button></div>
           <textarea className="code-editor" spellCheck={false} value={draft} onChange={event => { setDraft(event.target.value); setSaveMessage(""); }} />
@@ -214,7 +232,15 @@ export default function App() {
           </div>
           <p className="prototype-note">This is an engineering preview, not a production release. A VS Code OSS workbench, integrated terminal, durable task history, full automated verification, and signed installers are still required.</p>
         </article>}
-        <footer className="status"><span><GitBranch size={12}/> main</span><span><ShieldCheck size={12}/> Restricted workspace access</span><span>BattleBuket Codes · Engineering preview</span></footer>
+        {terminalOpen && <section className="terminal-panel">
+        <div className="terminal-title"><span>INTEGRATED WORKSPACE TERMINAL · {workspaceName}</span><button onClick={() => setTerminalOutput([])}>Clear</button></div>
+        <div className="terminal-output" aria-live="polite">{terminalOutput.length ? terminalOutput.map((line, index) => <pre key={index}>{line}</pre>) : <p>Commands run in the selected project directory. Each command has a 120-second limit and 1 MB output cap.</p>}</div>
+        <form className="terminal-input" onSubmit={event => { event.preventDefault(); void runTerminalCommand(); }}>
+          <span>$</span><input value={terminalCommand} onChange={event => setTerminalCommand(event.target.value)} placeholder="Enter a command…" disabled={!workspace || terminalBusy}/>
+          <button type="submit" disabled={!workspace || terminalBusy || !terminalCommand.trim()}>{terminalBusy ? "Running…" : "Run"}</button>
+        </form>
+      </section>}
+      <footer className="status"><span><GitBranch size={12}/> main</span><span><ShieldCheck size={12}/> Restricted workspace access</span><span>BattleBuket Codes · Engineering preview</span></footer>
       </section>
       <aside className="director">
         <label>● CONTROL PLANE</label><h3>Engineering Director</h3>
