@@ -2,13 +2,6 @@ import * as vscode from "vscode";
 
 const WORKSPACE_SCHEME = "battlebuket-workspace";
 
-declare global {
-  interface Window {
-    battleBuket?: {
-      onWorkspaceFileSystemChange: (listener: (event: { path: string; eventType: string }) => void) => () => void;
-    };
-  }
-}
 
 type WorkspaceEntry = {
   name: string;
