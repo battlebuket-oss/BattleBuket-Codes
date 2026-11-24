@@ -57,10 +57,10 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add consent-gated, fail-closed project quality runners for Node.js, Go, Rust, Python and .NET, including ecosystem dependency-security checks, bounded timeouts/output and approval of the exact commands. These commands still run with the user account permissions and are not a sandbox.
 - [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
-- [x] Add opt-in live Codex/Claude read-only smoke tests and a manual self-hosted runner workflow. The tests require real sign-in and have not yet been executed on authenticated runners.
+- [x] Add opt-in live Codex/Claude read-only and single-file workspace-write boundary smoke tests, including an outside-workspace sentinel check, plus a manual self-hosted runner workflow. The tests require real sign-in and have not yet been executed on authenticated runners.
 - [x] Add packaged-app smoke mode with Monaco worker and expected-version checks, plus release workflow steps for clean install, launch and uninstall on all three OS targets. These steps have not run yet.
 - [x] Add manual cross-platform installer upgrade/rollback tests that verify a user-data marker survives baseline → candidate → rollback. The workflow requires two existing signed releases and has not yet run.
-- [ ] Execute authenticated provider and signed-installer workflows; add workspace-write/escalation smoke tests, upgrade/rollback, crash-recovery and broader UI end-to-end tests.
+- [ ] Execute authenticated provider and signed-installer workflows; add permission-escalation and longer-session tests, run the two-release upgrade/rollback workflow, and add crash-recovery and broader UI end-to-end tests.
 
 ## Phase 6 — Production release operations
 - [ ] Add telemetry with opt-in/privacy controls, crash reporting, diagnostics export, and support logs.
