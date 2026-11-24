@@ -15,7 +15,6 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add native project-folder selection and workspace-bounded directory browsing.
 - [x] Add bounded text-file preview, atomic saves, stale-write detection, and path/symlink safety tests.
 - [x] Add the task composer, provider selection, risk/permission selection, streamed task status, and cancellation controls.
-- [ ] Integrate a supported VS Code OSS workbench revision with all upstream notices and reproducible build instructions.
 - [ ] Embed a tested Code - OSS workbench and complete the full editor experience: tabs, diagnostics, command palette, project search, and recent projects. The current editor remains a lightweight textarea preview.
 - [x] Add a bounded one-command workspace shell panel with output limits and explicit OS-permission disclosure.\n- [ ] Replace the command runner with a persistent PTY terminal, interactive TTY support, resize handling, session lifecycle, and a permission broker.
 - [x] Add a tag-triggered signed installer build and draft-release workflow with required Windows/macOS signing secrets.
@@ -61,7 +60,8 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add the tag-triggered signed-release workflow, signing requirements, Windows/macOS signature checks, macOS notarization validation, and platform install/launch/uninstall smoke steps.\n- [ ] Obtain signing certificates; configure secrets and execute a tagged signed release on real runners.
 - [ ] Add a signed update channel, update integrity checks, staged rollout, rollback, and release provenance.
 - [ ] Add backup/restore, data migration, offline/reconnect behavior, and a tested incident recovery plan.
-- [ ] Publish privacy disclosures, provider/third-party notices, license inventory, support policy, and a release checklist.
+- [x] Add initial privacy/data-handling documentation covering local storage, provider sharing, task history, and command execution.
+- [ ] Complete legal review, user-facing privacy and retention controls, third-party/license inventory, support policy, and a release checklist.
 - [ ] Verify clean install, upgrade, uninstall, data retention, and rollback on every supported OS.
 
 ## Release gate
