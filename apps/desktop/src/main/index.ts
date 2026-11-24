@@ -33,7 +33,7 @@ function attachWorkspaceWatcher(rootPath: string): void {
   workspaceWatcher = null;
   try {
     const watcher = watchFs(rootPath, { recursive: true }, (eventType, filename) => {
-      const relativePath = (filename?.toString() ?? "").replace(/\\/g, "/").replace(/^\\/+/, "");
+      const relativePath = (filename?.toString() ?? "").replace(/\\/g, "/").replace(/^\/+/, "");
       const segments = relativePath.split("/").filter(Boolean);
       const ignored = new Set([".git", "node_modules", "dist", "out", ".next", ".cache", ".turbo", ".venv", "venv", "coverage", "vendor", ".dart_tool"]);
       if (segments.some(segment => ignored.has(segment))) return;

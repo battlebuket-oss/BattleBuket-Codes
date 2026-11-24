@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import * as vscode from "vscode";
 import { LogLevel } from "@codingame/monaco-vscode-api";
 import { MonacoVscodeApiWrapper } from "monaco-languageclient/vscodeApiWrapper";
+import getBaseServiceOverride from "@codingame/monaco-vscode-base-service-override";
+import getExtensionsServiceOverride from "@codingame/monaco-vscode-extensions-service-override";
+import getHostServiceOverride from "@codingame/monaco-vscode-host-service-override";
+import getQuickAccessServiceOverride from "@codingame/monaco-vscode-quickaccess-service-override";
 import getExplorerServiceOverride from "@codingame/monaco-vscode-explorer-service-override";
 import getFilesServiceOverride from "@codingame/monaco-vscode-files-service-override";
 import getKeybindingsServiceOverride from "@codingame/monaco-vscode-keybindings-service-override";
@@ -131,6 +135,10 @@ async function createRuntime(container: HTMLElement): Promise<Runtime> {
     logLevel: LogLevel.Error,
     monacoWorkerFactory: configureMonacoWorkers,
     serviceOverrides: {
+      ...getBaseServiceOverride(),
+      ...getHostServiceOverride(),
+      ...getExtensionsServiceOverride(),
+      ...getQuickAccessServiceOverride(),
       ...getKeybindingsServiceOverride(),
       ...getFilesServiceOverride(),
       ...getLifecycleServiceOverride(),

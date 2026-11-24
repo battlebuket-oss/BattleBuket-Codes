@@ -30,7 +30,7 @@ The repository currently includes:
 
 ## Important limitations — not a production release
 
-The full Code - OSS / VS Code workbench is **not embedded**. The current editor uses Monaco (the code editor component from the VS Code ecosystem) with language workers, per-file models, multi-file tabs and unsaved-draft protection, but it is not the complete Code - OSS workbench. Workbench services, native extension host, symbol/reference search, extension APIs and upstream Code - OSS integration remain. Quick Open searches file names/paths and Find in Files searches bounded plain-text file contents; the lightweight command palette exposes BattleBuket desktop actions, not the complete VS Code command registry.
+The desktop now embeds the VS Code workbench service through the MIT-licensed Monaco VS Code API packages when a project is open, with a scoped workspace filesystem provider, built-in explorer/search/quick access, language feature extensions, Problems/markers and a native PTY terminal bridge. This is an embedded VS Code web workbench integration; it does not vendor the full Code - OSS desktop source or ship the entire Microsoft Marketplace extension catalog. The integration is source-complete but still requires green cross-platform builds, installed-app smoke tests and extension-host acceptance before production certification.
 
 The PTY implementation is currently on the draft `feature/pty-terminal` pull request. It is not a verified production feature until the native Electron ABI and Windows/macOS/Linux workflow passes.
 

@@ -779,7 +779,7 @@ export default function App() {
             <div><ShieldCheck/><b>Workspace safety</b><p>Scoped file access, bounded previews, stale-save protection, and no full-access agent mode.</p><small>● Restricted workspace access</small></div>
             <div><Workflow/><b>Quality gate</b><p>Per-task verification runs approved project test/lint/typecheck/build scripts and supported dependency audits, then checks staged and unstaged Git diffs. Scripts still run with OS-user permissions, not in a dedicated sandbox.</p><small className="pending">Partial verification only</small></div>
           </div>
-          <p className="prototype-note">Engineering preview only. Tasks include a separate read-only review pass using the same provider runtime, which may consume additional usage. The integrated terminal uses a native PTY with xterm.js. The embedded VS Code OSS workbench, authenticated provider tests and installed signed-release verification remain open.</p>
+          <p className="prototype-note">Engineering preview. Open a project to enter the embedded VS Code workbench. Provider tasks use your local login and the native integrated terminal runs with your OS account permissions. Authenticated provider and signed installer acceptance tests are still required before production use.</p>
         </article>}
           </>}
         {!workspace && (terminalOpen || terminalSessionId) && <section className={terminalOpen ? "terminal-panel" : "terminal-panel terminal-panel-hidden"}>
