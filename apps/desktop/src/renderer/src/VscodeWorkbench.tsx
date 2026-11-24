@@ -223,10 +223,42 @@ async function getRuntime(container: HTMLElement): Promise<Runtime> {
 declare global {
   interface Window {
     __battleBuketWorkbenchReady?: boolean;
+    __battleBuketWorkbenchSmoke?: () => Promise<boolean>;
     __battleBuketNativeTerminalReady?: boolean;
     __battleBuketNativeTerminalExited?: boolean;
     __battleBuketTerminalOutputSeen?: boolean;
     __battleBuketTerminalSessionId?: string | null;
+  }
+}
+
+async function runWorkspaceFilesystemSmoke(): Promise<boolean> {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) return false;
+
+  const directory = vscode.Uri.joinPath(folder.uri, ".battlebuket-workbench-smoke");
+  const original = vscode.Uri.joinPath(directory, "created.txt");
+  const renamed = vscode.Uri.joinPath(directory, "renamed.txt");
+  try {
+    await vscode.workspace.fs.createDirectory(directory);
+    await vscode.workspace.fs.writeFile(original, new TextEncoder().encode("BATTLEBUKET_WORKBENCH_CREATE"));
+    const created = new TextDecoder().decode(await vscode.workspace.fs.readFile(original));
+    if (created !== "BATTLEBUKET_WORKBENCH_CREATE") return false;
+
+    await vscode.workspace.fs.writeFile(original, new TextEncoder().encode("BATTLEBUKET_WORKBENCH_SAVE"));
+    const saved = new TextDecoder().decode(await vscode.workspace.fs.readFile(original));
+    if (saved !== "BATTLEBUKET_WORKBENCH_SAVE") return false;
+
+    await vscode.workspace.fs.rename(original, renamed, { overwrite: false });
+    const moved = new TextDecoder().decode(await vscode.workspace.fs.readFile(renamed));
+    if (moved !== "BATTLEBUKET_WORKBENCH_SAVE") return false;
+
+    await vscode.workspace.fs.delete(renamed, { useTrash: false });
+    await vscode.workspace.fs.delete(directory, { useTrash: false });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await vscode.workspace.fs.delete(directory, { recursive: true, useTrash: false }).catch(() => {});
   }
 }
 
@@ -255,6 +287,7 @@ export function VscodeWorkbench(props: { workspacePath: string | null; onError: 
       if (!typeScriptExtension) throw new Error("The bundled TypeScript language extension was not registered with the workbench.");
       await typeScriptExtension.activate();
       setStatus("");
+      window.__battleBuketWorkbenchSmoke = runWorkspaceFilesystemSmoke;
       window.__battleBuketWorkbenchReady = true;
     }).catch(error => {
       if (cancelled) return;
@@ -262,7 +295,11 @@ export function VscodeWorkbench(props: { workspacePath: string | null; onError: 
       setStatus("Workbench initialization failed: " + message);
       props.onError(message);
     });
-    return () => { cancelled = true; window.__battleBuketWorkbenchReady = false; };
+    return () => {
+      cancelled = true;
+      window.__battleBuketWorkbenchReady = false;
+      window.__battleBuketWorkbenchSmoke = undefined;
+    };
   }, [props.workspacePath]);
 
   useEffect(() => {
