@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openRecentWorkspace, readRecentWorkspaces, recordRecentWorkspace } from "../src/main/recent-workspaces";
@@ -15,14 +15,15 @@ test("records, deduplicates and bounds recent workspaces", async () => {
       await mkdir(path);
       paths.push(path);
     }
+    const canonicalPaths = await Promise.all(paths.map(path => realpath(path)));
     for (const path of paths) await recordRecentWorkspace(userData, path);
     await recordRecentWorkspace(userData, paths[11]);
 
     const recent = await readRecentWorkspaces(userData);
     assert.equal(recent.length, 10);
-    assert.equal(recent[0].path, paths[11]);
-    assert.equal(recent.filter(item => item.path === paths[11]).length, 1);
-    assert.equal(await openRecentWorkspace(userData, paths[11]), paths[11]);
+    assert.equal(recent[0].path, canonicalPaths[11]);
+    assert.equal(recent.filter(item => item.path === canonicalPaths[11]).length, 1);
+    assert.equal(await openRecentWorkspace(userData, paths[11]), canonicalPaths[11]);
     await assert.rejects(() => openRecentWorkspace(userData, paths[0]), /not in the recent workspace list/);
   } finally {
     await rm(userData, { recursive: true, force: true });
@@ -42,7 +43,7 @@ test("drops missing and non-directory recent paths and rejects tampered paths on
       { path: recentFile, lastOpenedAt: new Date().toISOString() }
     ]));
     const recent = await readRecentWorkspaces(userData);
-    assert.deepEqual(recent.map(item => item.path), [project]);
+    assert.deepEqual(recent.map(item => item.path), [await realpath(project)]);
     await writeFile(recentFile, JSON.stringify([{ path: outside, lastOpenedAt: "invalid" }]));
     await assert.rejects(() => openRecentWorkspace(userData, outside), /not in the recent workspace list/);
   } finally {
@@ -76,10 +77,11 @@ test("serializes concurrent recent-project updates without losing the final sele
       await mkdir(path);
       paths.push(path);
     }
+    const canonicalPaths = await Promise.all(paths.map(path => realpath(path)));
     await Promise.all(paths.map(path => recordRecentWorkspace(userData, path)));
     const recent = await readRecentWorkspaces(userData);
     assert.equal(recent.length, paths.length);
-    assert.deepEqual(new Set(recent.map(item => item.path)), new Set(paths));
+    assert.deepEqual(new Set(recent.map(item => item.path)), new Set(canonicalPaths));
   } finally {
     await rm(userData, { recursive: true, force: true });
     await rm(projects, { recursive: true, force: true });
