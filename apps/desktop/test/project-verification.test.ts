@@ -74,12 +74,13 @@ test("discovers Go, Rust, Python and .NET project verification commands", async 
     await writeFile(join(rustRoot, "Cargo.toml"), "[package]\nname='example'\nversion='0.1.0'\n");
     await writeFile(join(pythonRoot, "pyproject.toml"), "[tool.pytest.ini_options]\n[tool.ruff]\n[tool.mypy]\n[build-system]\nrequires=[]\nbuild-backend='setuptools.build_meta'\n");
     await mkdir(join(pythonRoot, "tests"));
+    await writeFile(join(pythonRoot, "requirements.txt"), "requests==2.32.0\\n");
     await writeFile(join(dotnetRoot, "App.csproj"), "<Project />");
 
-    assert.deepEqual(await discoverQualityScripts(goRoot), { manager: "go", scripts: ["test", "lint", "build"] });
-    assert.deepEqual(await discoverQualityScripts(rustRoot), { manager: "cargo", scripts: ["test", "lint", "typecheck", "build"] });
-    assert.deepEqual(await discoverQualityScripts(pythonRoot), { manager: "python", scripts: ["test", "lint", "typecheck", "build"] });
-    assert.deepEqual(await discoverQualityScripts(dotnetRoot), { manager: "dotnet", scripts: ["test", "lint", "build"] });
+    assert.deepEqual(await discoverQualityScripts(goRoot), { manager: "go", scripts: ["test", "lint", "build", "security"] });
+    assert.deepEqual(await discoverQualityScripts(rustRoot), { manager: "cargo", scripts: ["test", "lint", "typecheck", "build", "security"] });
+    assert.deepEqual(await discoverQualityScripts(pythonRoot), { manager: "python", scripts: ["test", "lint", "typecheck", "build", "security"] });
+    assert.deepEqual(await discoverQualityScripts(dotnetRoot), { manager: "dotnet", scripts: ["test", "lint", "build", "security"] });
   } finally {
     await Promise.all([goRoot, rustRoot, pythonRoot, dotnetRoot].map(path => rm(path, { recursive: true, force: true })));
   }
@@ -90,6 +91,9 @@ test("maps non-Node project checks to explicit toolchain commands", () => {
   assert.equal(qualityCommand("cargo", "lint").display, "cargo clippy --all-targets --all-features -- -D warnings");
   assert.equal(qualityCommand("python", "test").display, (process.platform === "win32" ? "python" : "python3") + " -m pytest -q");
   assert.equal(qualityCommand("dotnet", "build").display, "dotnet build");
+  assert.equal(qualityCommand("go", "security").display, "govulncheck ./...");
+  assert.equal(qualityCommand("cargo", "security").display, "cargo audit");
+  assert.equal(qualityCommand("dotnet", "security").display, "dotnet list package --vulnerable --include-transitive");
 });
 
 test("fails closed when no project quality manifest or supported scripts exist", async () => {
