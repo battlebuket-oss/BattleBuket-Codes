@@ -27,7 +27,9 @@ BattleBuket Codes brings a branded developer workspace together with multiple co
 
 ## Repository status
 
-The current preview includes the Electron desktop shell, secure context-isolated preload bridge, native project-folder selection, workspace-scoped directory browsing, bounded text-file previews, and editable text-file saves with stale-version protection. It also includes agent contracts, a virtual specialist workload planner, an Engineering Director foundation, and CI validation. This is not yet a production coding assistant: VS Code OSS, Codex and Claude execution adapters, terminal, editable code workflows, persistence, signed installers, and end-to-end release validation remain outstanding.
+The current engineering preview includes the Electron desktop shell, secure context-isolated preload bridge, native project selection, bounded workspace file browsing and atomic text-file saves, a task composer, and a single-task Engineering Director pipeline connected to locally installed Codex CLI and the Claude Agent SDK. Provider events stream to the UI; workspace-write tasks require explicit approval; read-only and write modes use separate tool policies. CI runs lint/typecheck/tests/build and a high-severity dependency audit.
+
+This is **not a production release**. The VS Code OSS workbench and integrated terminal are not implemented. The Director does not yet provide real multi-agent delegation, planning/dependency graphs, isolated Git worktrees, persistent task/event storage, resumable execution, or conflict recovery. Verification is limited to a Git whitespace check; project tests, builds, security scans, and end-to-end acceptance are not run for each agent task. The cross-platform installer workflow is configured but unsigned and not yet verified on all operating systems. Code signing/notarization, secure credential setup, auto-update/rollback, full privacy and license review, and operational support remain release blockers.
 
 ## Development status
 
