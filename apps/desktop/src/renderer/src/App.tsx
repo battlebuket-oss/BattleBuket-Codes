@@ -151,7 +151,7 @@ export default function App() {
       setTerminalSessionId(id);
       setTerminalStatus("running");
     } catch (e) {
-      setTerminalSessionRef.current = null;
+      terminalSessionRef.current = null;
       setTerminalSessionId(null);
       setTerminalStatus("closed");
       setTerminalOutput(current => [...current, e instanceof Error ? e.message : "Could not start terminal session"].slice(-200));
