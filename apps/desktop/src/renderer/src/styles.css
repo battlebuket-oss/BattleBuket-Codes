@@ -94,7 +94,16 @@ h1 em{color:#9b8aff;font-style:normal}
 .file-entry span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .file-list>small{display:block;color:#8290a7;font-size:9px;padding:10px 5px}
 .workspace-error{font-size:9px;color:#ff9b9b;line-height:1.5;overflow-wrap:anywhere}
-.editor-preview{height:calc(100% - 64px);min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#0b1018}
+.editor-tabs{height:32px;min-height:32px;display:flex;align-items:stretch;overflow-x:auto;overflow-y:hidden;background:#0c111a;border-bottom:1px solid #202a3a}
+.editor-tab{display:flex;align-items:center;gap:0;max-width:240px;min-width:120px;border-right:1px solid #202a3a;background:#0e1420}
+.editor-tab.active{background:#141d2c;border-top:2px solid #9b8aff}
+.editor-tab-name{display:flex;align-items:center;gap:7px;flex:1;min-width:0;height:100%;padding:0 9px;border:0;background:transparent;color:#98a5bb;text-align:left;font:9px 'DM Mono';cursor:pointer}
+.editor-tab.active .editor-tab-name{color:#e1e8f5}
+.editor-tab-name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.editor-tab-name i{width:6px;height:6px;flex:none;border-radius:50%;background:#d6ad6e}
+.editor-tab-close{width:25px;height:24px;flex:none;border:0;border-radius:3px;background:transparent;color:#74829a;font:16px/1 'DM Mono';cursor:pointer}
+.editor-tab-close:hover{background:#273149;color:#f0edff}
+.editor-preview{height:calc(100% - 96px);min-height:0;display:flex;flex-direction:column;overflow:hidden;background:#0b1018}
 .editor-toolbar{height:38px;min-height:38px;display:flex;align-items:center;gap:12px;padding:0 14px;background:#101722;border-bottom:1px solid #253044;color:#bdc8da;font:10px 'DM Mono'}
 .editor-toolbar .editor-file-path{min-width:0;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bdc8da;margin-right:auto}
 .editor-toolbar span:not(.editor-file-path){color:#d6ad6e;white-space:nowrap}
