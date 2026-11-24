@@ -21,6 +21,8 @@ let mainWindow: BrowserWindow | null = null;
 let activeDirector: EngineeringDirector | null = null;
 let taskStartPending = false;
 let activeTerminalSessionId: string | null = null;
+let shutdownInProgress = false;
+let shutdownComplete = false;
 
 // Only the trusted top-level renderer may invoke privileged main-process IPC.
 function handleTrustedIpc(
@@ -303,5 +305,14 @@ app.whenReady().then(() => {
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
-app.on("before-quit", () => { void terminalSessions.closeAll(); });
+app.on("before-quit", event => {
+  if (shutdownComplete) return;
+  event.preventDefault();
+  if (shutdownInProgress) return;
+  shutdownInProgress = true;
+  void terminalSessions.closeAll().finally(() => {
+    shutdownComplete = true;
+    app.quit();
+  });
+});
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
