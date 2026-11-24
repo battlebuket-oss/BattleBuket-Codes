@@ -1,7 +1,7 @@
 import type { VirtualRoleId, VirtualAgentRole } from "@battlebuket/agent-contracts";
 export type WorkPriority = "critical" | "high" | "normal" | "low";
 export type WorkSkill = "planning" | "architecture" | "implementation" | "review" | "testing" | "security" | "documentation" | "devops";
-export interface WorkItem { id: string; title: string; description: string; priority: WorkPriority; skill: WorkSkill; estimatedEffort: number; dependsOn: string[]; }
+export interface WorkItem { id: string; title: string; description: string; priority: WorkPriority; skill: WorkSkill; estimatedEffort: number; dependsOn: string[]; eligibleRoles?: VirtualRoleId[]; }
 export interface AssignedWork extends WorkItem { assignedRole: VirtualRoleId; priorityWeight: number; weightedEffort: number; }
 export interface RoleWorkload { role: VirtualAgentRole; items: AssignedWork[]; totalEffort: number; weightedEffort: number; }
 export interface TeamPlan { assignments: AssignedWork[]; workloads: RoleWorkload[]; executionOrder: string[]; notes: string[]; }
@@ -15,6 +15,7 @@ export const VIRTUAL_ROLES: VirtualAgentRole[] = [
 ];
 const priorityWeight: Record<WorkPriority, number> = { critical: 8, high: 4, normal: 2, low: 1 };
 const skillRole: Record<WorkSkill, VirtualRoleId> = { planning: "planner", architecture: "architect", implementation: "implementer", review: "reviewer", testing: "tester", security: "security-auditor", documentation: "implementer", devops: "implementer" };
+const qualifiedRoles: Record<WorkSkill, VirtualRoleId[]> = { planning: ["planner"], architecture: ["architect"], implementation: ["implementer"], review: ["reviewer"], testing: ["tester"], security: ["security-auditor"], documentation: ["implementer", "reviewer"], devops: ["implementer", "security-auditor"] };
 function orderedItems(items: WorkItem[]): WorkItem[] {
   const byId = new Map(items.map(item => [item.id, item]));
   if (byId.size !== items.length) throw new Error("Work item IDs must be unique");
@@ -33,15 +34,17 @@ export function buildTeamPlan(items: WorkItem[]): TeamPlan {
   for (const item of ordered) {
     if (!Number.isFinite(item.estimatedEffort) || item.estimatedEffort <= 0) throw new Error("Estimated effort must be a positive number for " + item.id);
     const preferred = skillRole[item.skill];
-    const candidates = workloads.filter(load => load.role.id === preferred);
-    const target = candidates[0];
+    const allowed = item.eligibleRoles ?? qualifiedRoles[item.skill];
+    const candidates = workloads.filter(load => allowed.includes(load.role.id));
+    if (!candidates.length || !allowed.includes(preferred)) throw new Error("No qualified role for work item " + item.id);
+    const target = candidates.sort((a,b) => a.weightedEffort-b.weightedEffort || (a.role.id === preferred ? -1 : b.role.id === preferred ? 1 : a.role.id.localeCompare(b.role.id)))[0];
     const weight = priorityWeight[item.priority];
     const assigned: AssignedWork = { ...item, assignedRole: target.role.id, priorityWeight: weight, weightedEffort: item.estimatedEffort * weight };
     target.items.push(assigned); target.totalEffort += item.estimatedEffort; target.weightedEffort += assigned.weightedEffort; assignments.push(assigned);
   }
   const active = workloads.filter(load => load.items.length > 0);
   const average = active.length ? active.reduce((sum,load) => sum + load.weightedEffort,0) / active.length : 0;
-  const notes = ["One shared provider/runtime executes the role passes; roles are workflow specializations, not separately billed model instances.", "Work is assigned by skill ownership, then ordered by priority and dependencies.", "Weighted workload is estimated effort multiplied by priority; the Director should rebalance only across roles qualified to own the work.", "Current allocation average weighted effort across active roles: " + average.toFixed(2)];
+  const notes = ["One shared provider/runtime executes the role passes; roles are workflow specializations, not separately billed model instances.", "Work is assigned only to skill-qualified roles; flexible work goes to the qualified role with the lowest accumulated priority-weighted effort.", "Weighted workload is estimated effort multiplied by priority; the Director should rebalance only across roles qualified to own the work.", "Current allocation average weighted effort across active roles: " + average.toFixed(2)];
   return { assignments, workloads, executionOrder: ordered.map(item => item.id), notes };
 }
 export function rolePrompt(roleId: VirtualRoleId, objective: string, context: string): string {
