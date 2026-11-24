@@ -413,6 +413,7 @@ export default function App() {
           <div className="monaco-editor-host">
             <Editor
               height="100%"
+              path={selectedFile.path}
               language={editorLanguageForPath(selectedFile.path)}
               theme="vs-dark"
               onMount={(editor, monaco) => {
