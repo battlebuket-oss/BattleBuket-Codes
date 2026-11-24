@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import { Activity, Bot, Braces, CheckCircle2, ChevronDown, Command, FileCode2, Folder, FolderOpen, GitBranch, LayoutDashboard, Loader2, Plus, Search, Settings2, ShieldCheck, Sparkles, Square, Workflow, XCircle } from "lucide-react";
 
 type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
+type WorkspaceContentMatch = { path: string; lineNumber: number; preview: string };
 type EditorTab = { path: string; content: string; mtimeMs: number; draft: string };
 type EditorDiagnostic = { message: string; line: number; column: number; severity: number };
 type AgentProvider = "codex" | "claude";
@@ -49,6 +50,7 @@ declare global {
       selectWorkspace: () => Promise<string | null>;
       listWorkspace: (path?: string) => Promise<WorkspaceEntry[]>;
       searchWorkspaceFiles: (query: string) => Promise<WorkspaceEntry[]>;
+      searchWorkspaceContent: (query: string) => Promise<WorkspaceContentMatch[]>;
       readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;
       saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
       getAgentAvailability: () => Promise<Record<AgentProvider, boolean>>;
@@ -106,9 +108,10 @@ export default function App() {
   const [taskHistory, setTaskHistory] = useState<TaskHistoryItem[]>([]);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteMode, setPaletteMode] = useState<"files" | "commands">("files");
+  const [paletteMode, setPaletteMode] = useState<"files" | "content" | "commands">("files");
   const [paletteQuery, setPaletteQuery] = useState("");
   const [quickOpenResults, setQuickOpenResults] = useState<WorkspaceEntry[]>([]);
+  const [contentSearchResults, setContentSearchResults] = useState<WorkspaceContentMatch[]>([]);
   const [paletteLoading, setPaletteLoading] = useState(false);
   const [paletteIndex, setPaletteIndex] = useState(0);
   const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null);
@@ -197,10 +200,11 @@ export default function App() {
     } catch (e) { setError(e instanceof Error ? e.message : "Save failed"); }
     finally { setSaving(false); }
   };
-  const openPalette = (mode: "files" | "commands") => {
+  const openPalette = (mode: "files" | "content" | "commands") => {
     setPaletteMode(mode);
     setPaletteQuery("");
     setQuickOpenResults([]);
+    setContentSearchResults([]);
     setPaletteIndex(0);
     setPaletteOpen(true);
   };
@@ -209,6 +213,7 @@ export default function App() {
     switch (id) {
       case "open-project": void openWorkspace(); break;
       case "quick-open": openPalette("files"); break;
+      case "find-in-files": openPalette("content"); break;
       case "toggle-terminal":
         if (terminalOpen) setTerminalOpen(false);
         else void openTerminal();
@@ -321,22 +326,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!paletteOpen || paletteMode !== "files" || !workspace || !paletteQuery.trim()) {
+    if (!paletteOpen || (paletteMode !== "files" && paletteMode !== "content") || !workspace || !paletteQuery.trim()) {
       setQuickOpenResults([]);
+      setContentSearchResults([]);
       setPaletteLoading(false);
       return;
     }
     let cancelled = false;
     setQuickOpenResults([]);
+    setContentSearchResults([]);
     const timer = window.setTimeout(() => {
       setPaletteLoading(true);
-      void window.battleBuket?.searchWorkspaceFiles(paletteQuery).then(results => {
-        if (!cancelled) {
-          setQuickOpenResults(results);
-          setPaletteIndex(0);
-        }
+      const search = paletteMode === "files"
+        ? window.battleBuket?.searchWorkspaceFiles(paletteQuery)
+        : window.battleBuket?.searchWorkspaceContent(paletteQuery);
+      void search?.then(results => {
+        if (cancelled) return;
+        if (paletteMode === "files") setQuickOpenResults(results as WorkspaceEntry[]);
+        else setContentSearchResults(results as WorkspaceContentMatch[]);
+        setPaletteIndex(0);
       }).catch(error => {
-        if (!cancelled) setError(error instanceof Error ? error.message : "Quick Open search failed");
+        if (!cancelled) setError(error instanceof Error ? error.message : "Workspace search failed");
       }).finally(() => {
         if (!cancelled) setPaletteLoading(false);
       });
