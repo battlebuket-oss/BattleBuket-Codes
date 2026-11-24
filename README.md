@@ -7,7 +7,7 @@ BattleBuket Codes brings a project workspace, local coding-engine integrations, 
 ## Product principles
 
 - One cohesive dark developer interface.
-- The Engineering Director supervises provider execution and requires verification before a task is reported as successful.
+- The Engineering Director runs the selected provider, follows it with a separate read-only review pass using the same provider runtime, and requires verification before a task is reported as successful. The second pass can consume additional provider usage.
 - Codex and Claude are execution providers behind the same application experience.
 - Provider access uses explicit permission modes; unrestricted/full-access mode is disabled.
 - Workspace content and terminal commands are untrusted input. Agent changes and command execution require user review.
@@ -22,7 +22,7 @@ The repository currently includes:
 - Claude Agent SDK adapter with sandbox-required startup, restricted built-in tool allowlists, bounded turns and cancellation.
 - Single-task Engineering Director lifecycle, explicit provider selection, risk-based approval and task status events.
 - Local JSONL task history with interrupted-run recovery and size compaction. History stores status metadata and generic provider labels—not prompts, source files or model output.
-- Persistent **pipe-based** workspace shell sessions with bounded input/output and lifecycle controls.
+- Native **PTY-based** interactive workspace terminal using node-pty and xterm.js, including input/output streaming, session lifecycle, terminal resize and bounded IO.
 - Consent-gated project test/lint/typecheck/build script checks and supported npm/pnpm high-severity dependency audits, with bounded output and per-command timeouts.
 - CI workflows for audit, lint, typecheck, unit tests, build, CodeQL, secret scanning and Windows/macOS/Linux desktop bundles.
 - A tag-triggered signed-release workflow with platform signing checks, app launch smoke mode, clean-install/uninstall steps and draft-release assembly.
@@ -32,7 +32,7 @@ The repository currently includes:
 
 The full Code - OSS / VS Code workbench is **not embedded**. The current editor is a lightweight textarea preview/editor, not VS Code.
 
-The current terminal is **not a PTY**. It preserves one shell session between commands, but does not provide xterm rendering, terminal resizing, raw mode or full-screen TTY applications.
+The PTY implementation is currently on the draft `feature/pty-terminal` pull request. It is not a verified production feature until the native Electron ABI and Windows/macOS/Linux workflow passes.
 
 Project verification asks before executing project-defined scripts, but those scripts run with the user's operating-system permissions. They are not isolated in a dedicated execution sandbox. The current verification gate does not yet provide full SAST, independent diff review, license/provenance analysis or a complete adversarial prompt-injection test suite.
 
