@@ -80,4 +80,39 @@ describe("EngineeringDirector", () => {
     assert.equal(result.status, "failed");
     assert.equal(result.verification.some(check => check.name === "Read-only provider review" && !check.passed), true);
   });
+  it("fails closed when a selected reviewer is unavailable or not configured", async () => {
+    const director = new EngineeringDirector([adapter({ taskId: task.id, status: "succeeded", summary: "Implemented", changedFiles: [], verification: [] })], {
+      decide: async () => ({ primary: "codex", reviewer: "claude", rationale: "Unavailable reviewer", requiresHumanApproval: false }),
+      verify: async () => [{ name: "typecheck", passed: true }],
+      emit: () => {}
+    });
+    const result = await director.execute(task);
+    assert.equal(result.status, "failed");
+    assert.equal(result.verification.some(check => check.name === "Read-only provider review" && !check.passed), true);
+  });
+
+  it("preserves cancellation requested during the reviewer pass", async () => {
+    let cancelCalled = false;
+    const cancellable: AgentAdapter = {
+      provider: "codex",
+      isAvailable: async () => true,
+      run: async request => ({ taskId: request.task.id, status: "succeeded", summary: "Implemented", changedFiles: [], verification: [] }),
+      cancel: async taskId => { assert.equal(taskId, task.id); cancelCalled = true; }
+    };
+    let director!: EngineeringDirector;
+    director = new EngineeringDirector([cancellable], {
+      decide: async () => ({ primary: "codex", reviewer: "codex", rationale: "Cancellation test", requiresHumanApproval: false }),
+      review: async () => {
+        await director.cancel();
+        return { name: "Read-only provider review", passed: false, output: "Cancelled" };
+      },
+      verify: async () => [{ name: "typecheck", passed: true }],
+      emit: () => {}
+    });
+    const result = await director.execute(task);
+    assert.equal(cancelCalled, true);
+    assert.equal(result.status, "cancelled");
+    assert.equal(director.state.status, "cancelled");
+  });
+
 });
