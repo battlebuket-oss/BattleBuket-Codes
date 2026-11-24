@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { codexArguments } from "../src/index";
+import { claudeAllowedTools, codexArguments } from "../src/index";
 
 const request = (approvalMode: "read-only" | "workspace-write" | "full-access") => ({
   provider: "codex" as const,
@@ -24,4 +24,10 @@ test("Codex workspace-write mode uses the CLI's approval review and never full a
 
 test("Codex adapter rejects full-access execution", () => {
   assert.throws(() => codexArguments(request("full-access")), /Full-access/);
+});
+
+test("Claude read-only and edit modes expose only their approved workspace tools", () => {
+  assert.deepEqual(claudeAllowedTools("read-only"), ["Read", "Glob", "Grep"]);
+  assert.deepEqual(claudeAllowedTools("workspace-write"), ["Read", "Edit", "Write", "Glob", "Grep"]);
+  assert.throws(() => claudeAllowedTools("full-access"), /Full-access/);
 });
