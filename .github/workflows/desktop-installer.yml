@@ -2,6 +2,14 @@ name: Desktop installer previews
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/**"
+      - "packages/provider-adapters/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/desktop-installer.yml"
 
 permissions:
   contents: read
