@@ -19,11 +19,13 @@ Do not submit passwords, access tokens, private keys, regulated personal data, c
 
 - Codex and Claude are restricted to the adapter's configured permission modes. Provider sandbox behavior is provider-specific and must not be treated as a guarantee against every host escape.
 - Project verification may execute scripts defined by the selected project's package manifest. These scripts can run arbitrary code and may access the network using the user's account. The app asks for explicit approval before running them; they run with a reduced environment, bounded output and a per-command timeout, but are not currently isolated in a dedicated sandbox.
-- The integrated shell is a persistent pipe-based shell, not a PTY. Shell commands run with the user's operating-system permissions. Run only commands from sources the user trusts.
+- The integrated shell uses a native PTY and xterm.js terminal emulator. Shell commands run with the user's operating-system permissions. Run only commands from sources the user trusts.
 
 ## Diagnostics and retention
 
 Crash reporting, automatic diagnostics upload, remote backups and telemetry are not currently enabled. The app does not upload task history. Provider runtimes may maintain their own local caches or account-side records under their own terms.
+
+Each task may use a second read-only review pass through the same selected provider runtime; prompts and workspace content required for that review may be sent to that provider again, and this can consume additional provider quota or incur charges.
 
 Task history is compacted to retain the most recent 50 tasks when its local file grows beyond the configured size limit. Users can remove this local application data through the operating system's application-data controls after closing the app. A user-facing retention and deletion screen is not yet implemented.
 
