@@ -61,6 +61,7 @@ export default function App() {
   const [risk, setRisk] = useState<TaskRisk>("low");
   const [availability, setAvailability] = useState<Record<AgentProvider, boolean>>({ codex: false, claude: false });
   const [running, setRunning] = useState(false);
+  const [dataConsent, setDataConsent] = useState(false);
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([]);
   const [taskResult, setTaskResult] = useState<AgentResult | null>(null);
   const [taskHistory, setTaskHistory] = useState<TaskHistoryItem[]>([]);
@@ -107,6 +108,7 @@ export default function App() {
   };
   const startTask = async () => {
     if (!window.battleBuket || !workspace) { setError("Open a project folder before starting a task."); return; }
+    if (!dataConsent) { setError("Confirm the provider data-sharing notice before starting a task."); return; }
     if (prompt.trim().length < 3) { setError("Describe the task you want the agent to complete."); return; }
     if (!availability[provider]) { setError(provider === "codex" ? "Codex CLI 0.171.0 or newer is required. Install or update it and sign in on this computer." : "Claude Agent SDK is unavailable. Check sandbox support, runtime installation, and account authentication."); return; }
     try {
@@ -175,7 +177,7 @@ export default function App() {
             <textarea value={prompt} onChange={event => setPrompt(event.target.value)} placeholder="Describe what you want to build, fix, or investigate…" disabled={running}/>
             <div className="composer-controls">
               <label>ENGINE</label>
-              <select value={provider} onChange={event => setProvider(event.target.value as AgentProvider)} disabled={running}>
+              <select value={provider} onChange={event => { setProvider(event.target.value as AgentProvider); setDataConsent(false); }} disabled={running}>
                 <option value="codex">Codex {availability.codex ? "· Ready" : "· Unavailable"}</option>
                 <option value="claude">Claude {availability.claude ? "· Ready" : "· Unavailable"}</option>
               </select>
@@ -187,9 +189,13 @@ export default function App() {
               </select>
               {running
                 ? <button className="run-button cancel" onClick={cancelTask}><Square size={14}/> Cancel task</button>
-                : <button className="run-button" onClick={startTask} disabled={!workspace || !availability[provider]}><Sparkles size={15}/> Run task</button>}
+                : <button className="run-button" onClick={startTask} disabled={!workspace || !availability[provider] || !dataConsent}><Sparkles size={15}/> Run task</button>}
             </div>
-            <div className="composer-hint">{!workspace ? "Open a project folder to enable engineering tasks." : availability[provider] ? "Runtime detected · authentication is checked when the task starts; access stays restricted to the workspace." : "Selected provider runtime is not detected on this computer."}</div>
+            <label className="data-consent">
+              <input type="checkbox" checked={dataConsent} onChange={event => setDataConsent(event.target.checked)} disabled={running}/>
+              <span>I understand that my task prompt and relevant project files the agent reads are sent to the selected provider for processing. Provider usage may incur charges; I will not submit secrets or data I am not authorized to share.</span>
+            </label>
+            <div className="composer-hint">{!workspace ? "Open a project folder to enable engineering tasks." : !dataConsent ? "Confirm the provider data-sharing notice to enable Run task." : availability[provider] ? "Runtime detected · authentication is checked when the task starts; access stays restricted to the workspace." : "Selected provider runtime is not detected on this computer."}</div>
           </div>
           {running && <div className="run-panel"><div className="run-heading"><Loader2 className="spin"/><b>Engineering Director is supervising {activeProviderName}</b><span>RUNNING</span></div>
             <div className="event-feed">{agentEvents.slice(-8).map((event, index) => <p key={event.taskId + event.timestamp + index}><span>{new Date(event.timestamp).toLocaleTimeString()}</span>{event.message}</p>)}</div>
