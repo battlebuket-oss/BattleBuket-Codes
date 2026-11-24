@@ -79,3 +79,23 @@ test("reserves the single terminal slot across concurrent asynchronous starts", 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("closeAll waits for an in-flight PTY start and prevents new sessions during shutdown", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-pty-shutdown-race-"));
+  const sessions = new WorkspaceTerminalSessions();
+  const sessionId = randomUUID();
+  try {
+    const starting = sessions.start(sessionId, root, () => {});
+    const closing = sessions.closeAll();
+    await assert.rejects(
+      () => sessions.start(randomUUID(), root, () => {}),
+      /shutting down/
+    );
+    await Promise.all([starting, closing]);
+    assert.equal(sessions.hasActiveSession(), false);
+    assert.equal(await sessions.close(sessionId), true);
+  } finally {
+    await sessions.closeAll();
+    await rm(root, { recursive: true, force: true });
+  }
+});
