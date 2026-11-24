@@ -15,7 +15,6 @@ fi
 
 workdir="$(mktemp -d "${TMPDIR:-/tmp}/battlebuket-appimage-smoke.XXXXXX")"
 cleanup() {
-  sudo chown -R "$(id -u):$(id -g)" "$workdir" 2>/dev/null || true
   rm -rf "$workdir"
 }
 trap cleanup EXIT INT TERM
