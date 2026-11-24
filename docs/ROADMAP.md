@@ -4,7 +4,7 @@ This roadmap distinguishes committed foundation from work that is not yet implem
 
 ## Phase 0 — Repository and engineering foundation
 - [x] Initialize repository structure and document architecture/security boundaries.
-- [ ] Add CI for install, lint, typecheck, tests, and build (expanded lint gate awaiting its first green run).
+- [x] Add CI for install, lint, typecheck, tests, and build (verified green on commit 00aacb4).
 - [ ] Add contribution rules, code owners, issue templates, and release conventions.
 - [ ] Pin dependency versions and establish automated dependency/license scanning.
 
