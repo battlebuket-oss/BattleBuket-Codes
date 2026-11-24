@@ -60,3 +60,22 @@ test("PTY session preserves shell state, streams output, resizes and exits", asy
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("reserves the single terminal slot across concurrent asynchronous starts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-pty-concurrent-start-"));
+  const sessions = new WorkspaceTerminalSessions();
+  try {
+    const results = await Promise.allSettled([
+      sessions.start(randomUUID(), root, () => {}),
+      sessions.start(randomUUID(), root, () => {})
+    ]);
+    assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
+    assert.equal(results.filter(result => result.status === "rejected").length, 1);
+    assert.equal(sessions.hasActiveSession(), true);
+    await sessions.closeAll();
+    assert.equal(sessions.hasActiveSession(), false);
+  } finally {
+    await sessions.closeAll();
+    await rm(root, { recursive: true, force: true });
+  }
+});
