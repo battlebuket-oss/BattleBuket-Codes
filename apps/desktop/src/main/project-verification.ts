@@ -80,7 +80,7 @@ export async function runProjectQualityChecks(
   if (!project) return [{ name: "Project quality scripts", passed: true, output: "Skipped: no root package.json was found." }];
   if (project.scripts.length === 0) return [{ name: "Project quality scripts", passed: true, output: "Skipped: package.json defines none of test, lint, typecheck, or build." }];
   const approved = await approve(project.scripts, project.manager);
-  if (!approved) return project.scripts.map(script => ({ name: `Project ${script}`, passed: false, output: "Not run: the user did not approve execution of repository-defined scripts." }));
+  if (!approved) return project.scripts.map(script => ({ name: script === "audit" ? "Dependency audit" : `Project ${script}`, passed: false, output: "Not run: the user did not approve execution of repository-defined scripts." }));
   const root = await fs.realpath(workspacePath);
   const results: VerificationResult[] = [];
   for (const script of project.scripts) results.push(await runScript(project.manager, script, root));
