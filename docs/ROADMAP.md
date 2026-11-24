@@ -18,7 +18,8 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [ ] Integrate a supported VS Code OSS workbench revision with all upstream notices and reproducible build instructions.
 - [ ] Add a true code editor experience, tabs, diagnostics, command palette, project search, and recent projects.
 - [x] Add a bounded one-command workspace shell panel with output limits and explicit OS-permission disclosure.\n- [ ] Replace the command runner with a persistent PTY terminal, interactive TTY support, resize handling, session lifecycle, and a permission broker.
-- [ ] Run and verify installers on Windows, macOS, and Linux; the current workflow only defines unsigned preview builds.
+- [x] Add a tag-triggered signed installer build and draft-release workflow with required Windows/macOS signing secrets.
+- [ ] Configure real signing secrets and verify signed installers on Windows, macOS, and Linux; no production release has been published.
 
 ## Phase 2 — Platform contracts and persistence
 - [x] Define initial task, agent, provider, event, verification, risk, and approval contracts.
