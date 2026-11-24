@@ -374,7 +374,7 @@ export default function App() {
             <div><Bot/><b>Engineering Director</b><p>Routes one active task to the selected provider and applies a verification gate.</p><small>● Execution pipeline connected</small></div>
             <div><Activity/><b>Provider runtimes</b><p>Uses locally installed Codex CLI or Claude Agent SDK runtime and your own authentication.</p><small className={availability.codex || availability.claude ? "" : "pending"}>● {availability.codex || availability.claude ? "At least one provider detected" : "No provider detected"}</small></div>
             <div><ShieldCheck/><b>Workspace safety</b><p>Scoped file access, bounded previews, stale-save protection, and no full-access agent mode.</p><small>● Restricted workspace access</small></div>
-            <div><Workflow/><b>Quality gate</b><p>Per-task verification currently checks Git diff whitespace. CI separately runs tests, audit, typecheck, and builds.</p><small className="pending">Partial verification only</small></div>
+            <div><Workflow/><b>Quality gate</b><p>Per-task verification runs approved project test/lint/typecheck/build scripts and supported dependency audits, then checks staged and unstaged Git diffs. Scripts still run with OS-user permissions, not in a dedicated sandbox.</p><small className="pending">Partial verification only</small></div>
           </div>
           <p className="prototype-note">Engineering preview only. The integrated terminal uses a native PTY with xterm.js. The embedded VS Code OSS workbench, authenticated provider tests and installed signed-release verification remain open.</p>
         </article>}
@@ -390,7 +390,7 @@ export default function App() {
           <div ref={terminalHostRef} className="terminal-canvas" role="application" aria-label="Project terminal. Type commands here."/>
           <div className="terminal-footnote">Native PTY · Interactive shell · Runs with your OS account permissions</div>
         </section>}
-      <footer className="status"><span><GitBranch size={12}/> main</span><span><ShieldCheck size={12}/> Restricted workspace access</span><span>BattleBuket Codes · Engineering preview</span></footer>
+      <footer className="status"><span><GitBranch size={12}/> main</span><span><ShieldCheck size={12}/> Guarded workspace file access · PTY runs with OS-user permissions</span><span>BattleBuket Codes · Engineering preview</span></footer>
       </section>
       <aside className="director">
         <label>● CONTROL PLANE</label><h3>Engineering Director</h3>
