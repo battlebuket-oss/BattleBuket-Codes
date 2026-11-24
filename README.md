@@ -25,6 +25,10 @@ BattleBuket Codes brings a branded developer workspace together with multiple co
 | Shared services | Workspace isolation, Git/worktrees, permissions, project memory, event log |
 | Quality gate | Build/test/lint/security checks and human approval gates |
 
+## Data handling
+
+Engineering tasks run through the provider you select. Task prompts and project files the agent reads are sent to that provider for processing under the provider account and terms you configured. The desktop app does not include model credits and does not persist task prompts or provider output; it stores only minimal local task-status metadata. Do not submit credentials, secrets, regulated data, or third-party code unless you are authorized to share it. The in-app checkbox is an acknowledgement, not a substitute for a privacy policy or legal review.
+
 ## Repository status
 
 The current engineering preview includes the Electron desktop shell, secure context-isolated preload bridge, native project selection, bounded workspace file browsing and atomic text-file saves, a task composer, and a single-task Engineering Director pipeline connected to locally installed Codex CLI and the Claude Agent SDK. Provider events stream to the UI; workspace-write tasks require explicit approval; read-only and write modes use separate tool policies. CI runs lint/typecheck/tests/build and a high-severity dependency audit.
