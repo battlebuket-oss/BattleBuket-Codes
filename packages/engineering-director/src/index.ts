@@ -53,12 +53,16 @@ export class EngineeringDirector {
             output: "A reviewer provider was selected but no review hook is configured."
           });
         } else {
+          this.activeAdapter = this.adapters.find(item => item.provider === decision.reviewer);
+          this.activeTaskId = task.id;
           reviewChecks.push(await this.hooks.review(task, result, decision));
+          this.activeAdapter = adapter;
         }
       }
       const checks = await this.hooks.verify(task, result);
-      const reviewed = { ...result, verification: [...result.verification, ...reviewChecks, ...checks] };
-      if (checks.some(check => !check.passed)) {
+      const allChecks = [...reviewChecks, ...checks];
+      const reviewed = { ...result, verification: [...result.verification, ...allChecks] };
+      if (allChecks.some(check => !check.passed)) {
         this.current = { status: "failed", task, reason: "One or more verification checks failed" };
         return { ...reviewed, status: "failed", summary: "Agent changes require fixes: verification failed" };
       }
