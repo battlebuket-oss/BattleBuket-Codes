@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createWorkspaceDirectory, createWorkspaceFile, deleteWorkspacePath, listWorkspace, readWorkspaceFile, renameWorkspacePath, searchWorkspaceContent, searchWorkspaceFiles, writeWorkspaceFile, writeWorkspaceFileSystemFile } from "../src/main/workspace-files";
+import { createWorkspaceDirectory, createWorkspaceFile, deleteWorkspacePath, listWorkspace, readWorkspaceFile, readWorkspaceFileSystemFile, renameWorkspacePath, searchWorkspaceContent, searchWorkspaceFiles, writeWorkspaceFile, writeWorkspaceFileSystemFile } from "../src/main/workspace-files";
 
 test("lists folders and regular files but skips symlinks and generated directories", async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-workspace-"));
@@ -111,22 +111,22 @@ test("workspace filesystem provider operations create, write, rename and delete 
   const root = await mkdtemp(join(tmpdir(), "bb-workspace-provider-"));
   try {
     await createWorkspaceDirectory(root, "src");
-    const created = await createWorkspaceFile(root, "src/app.ts", "export const value = 1;");
+    const created = await createWorkspaceFile(root, "src/app.ts", new TextEncoder().encode("export const value = 1;"));
     assert.equal(created.path, "src/app.ts");
     const opened = await readWorkspaceFile(root, "src/app.ts");
     assert.equal(opened.content, "export const value = 1;");
     assert.equal(typeof opened.mtimeMs, "number");
 
-    const overwritten = await writeWorkspaceFileSystemFile(root, "src/app.ts", "export const value = 2;", false, true);
+    const overwritten = await writeWorkspaceFileSystemFile(root, "src/app.ts", new TextEncoder().encode("export const value = 2;"), false, true);
     assert.equal(overwritten.path, "src/app.ts");
     assert.equal((await readWorkspaceFile(root, "src/app.ts")).content, "export const value = 2;");
     await assert.rejects(
-      () => writeWorkspaceFileSystemFile(root, "src/app.ts", "no overwrite", true, false),
+      () => writeWorkspaceFileSystemFile(root, "src/app.ts", new TextEncoder().encode("no overwrite"), true, false),
       /File already exists/
     );
 
     await createWorkspaceDirectory(root, "src/nested");
-    await createWorkspaceFile(root, "src/nested/new.ts", "export {};");
+    await createWorkspaceFile(root, "src/nested/new.ts", new TextEncoder().encode("export {};"));
     await renameWorkspacePath(root, "src/nested/new.ts", "src/nested/renamed.ts", false);
     assert.equal((await readWorkspaceFile(root, "src/nested/renamed.ts")).content, "export {};");
     await deleteWorkspacePath(root, "src/nested/renamed.ts", false);
@@ -149,7 +149,7 @@ test("workspace filesystem operations reject traversal, symlinks and root mutati
     await assert.rejects(() => createWorkspaceDirectory(root, "../escaped"), /outside the selected workspace/);
     await assert.rejects(() => createWorkspaceFile(root, "linked-dir/new.txt", "x"), /outside the selected workspace/);
     await assert.rejects(() => readWorkspaceFile(root, "linked-file.txt"), /outside the selected workspace/);
-    await assert.rejects(() => writeWorkspaceFileSystemFile(root, "linked-file.txt", "changed", false, true), /outside the selected workspace/);
+    await assert.rejects(() => writeWorkspaceFileSystemFile(root, "linked-file.txt", new TextEncoder().encode("changed"), false, true), /outside the selected workspace/);
     await assert.rejects(() => deleteWorkspacePath(root, "linked-file.txt", false), /outside the selected workspace/);
     await assert.rejects(() => renameWorkspacePath(root, "inside.txt", "linked-file.txt", true), /outside the selected workspace/);
     await assert.rejects(() => deleteWorkspacePath(root, ".", true), /workspace root cannot be deleted/);
@@ -170,6 +170,24 @@ test("workspace directory entries and Quick Open results expose modification tim
     const quickOpenEntry = await searchWorkspaceFiles(root, "entry.ts");
     assert.equal(typeof directoryEntry[0].mtimeMs, "number");
     assert.equal(typeof quickOpenEntry[0].mtimeMs, "number");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("workbench filesystem reads and atomically writes bounded binary files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-workspace-binary-"));
+  try {
+    const original = new Uint8Array([0, 1, 255, 65]);
+    const created = await createWorkspaceFile(root, "asset.bin", original);
+    assert.equal(created.path, "asset.bin");
+    const loaded = await readWorkspaceFileSystemFile(root, "asset.bin");
+    assert.deepEqual(Array.from(loaded.content), [0, 1, 255, 65]);
+    const updated = new Uint8Array([255, 0, 127, 66, 10]);
+    await writeWorkspaceFileSystemFile(root, "asset.bin", updated, false, true);
+    const saved = await readWorkspaceFileSystemFile(root, "asset.bin");
+    assert.deepEqual(Array.from(saved.content), [255, 0, 127, 66, 10]);
+    await assert.rejects(() => readWorkspaceFile(root, "asset.bin"), /Binary files/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

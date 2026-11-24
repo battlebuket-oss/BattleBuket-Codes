@@ -57,7 +57,8 @@ declare global {
       searchWorkspaceContent: (query: string) => Promise<WorkspaceContentMatch[]>;
       readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;
       saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
-      writeWorkspaceFileSystemFile: (payload: { path: string; content: string; create: boolean; overwrite: boolean }) => Promise<{ path: string; mtimeMs: number }>;
+      readWorkspaceFileSystemFile: (path: string) => Promise<{ path: string; content: Uint8Array; mtimeMs: number; size: number }>;
+      writeWorkspaceFileSystemFile: (payload: { path: string; content: Uint8Array; create: boolean; overwrite: boolean }) => Promise<{ path: string; mtimeMs: number }>;
       createWorkspaceDirectory: (path: string) => Promise<boolean>;
       deleteWorkspacePath: (path: string, recursive: boolean) => Promise<boolean>;
       renameWorkspacePath: (oldPath: string, newPath: string, overwrite: boolean) => Promise<boolean>;

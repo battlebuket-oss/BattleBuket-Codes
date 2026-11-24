@@ -5,6 +5,7 @@ import { isPathInside } from "./workspace-path";
 
 export type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number; mtimeMs: number };
 const MAX_FILE_BYTES = 1024 * 1024;
+export const MAX_WORKBENCH_FILE_BYTES = 64 * 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "out", ".next", ".cache", ".turbo", ".venv", "venv", "coverage", "vendor", ".dart_tool"]);
 
 async function resolveInside(rootPath: string, relativePath = ""): Promise<{ root: string; target: string }> {
@@ -118,15 +119,14 @@ export async function createWorkspaceDirectory(rootPath: string, relativePath: s
   await fs.mkdir(target);
 }
 
-export async function createWorkspaceFile(rootPath: string, relativePath: string, content: string): Promise<{ path: string; mtimeMs: number }> {
-  if (typeof content !== "string" || Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) {
-    throw new Error("File exceeds the 1 MB save limit");
-  }
+export async function createWorkspaceFile(rootPath: string, relativePath: string, content: string | Uint8Array): Promise<{ path: string; mtimeMs: number }> {
+  const bytes = typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content.buffer, content.byteOffset, content.byteLength);
+  if (bytes.byteLength > MAX_WORKBENCH_FILE_BYTES) throw new Error("File exceeds the 64 MB workspace write limit.");
   const { root, target } = await resolveWorkspacePath(rootPath, relativePath, true);
   if (target === root) throw new Error("Cannot create a file over the workspace root.");
   const handle = await fs.open(target, "wx", 0o600);
   try {
-    await handle.writeFile(content, "utf8");
+    await handle.writeFile(bytes);
     await handle.sync();
   } catch (error) {
     await handle.close();
@@ -137,22 +137,82 @@ export async function createWorkspaceFile(rootPath: string, relativePath: string
   return { path: relative(root, target), mtimeMs: (await fs.stat(target)).mtimeMs };
 }
 
+export async function readWorkspaceFileSystemFile(rootPath: string, relativePath: string): Promise<{ path: string; content: Uint8Array; mtimeMs: number; size: number }> {
+  const { root, target } = await resolveWorkspacePath(rootPath, relativePath);
+  const stat = await fs.lstat(target);
+  if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("Selected path is not a regular workspace file.");
+  if (stat.size > MAX_WORKBENCH_FILE_BYTES) throw new Error("File exceeds the 64 MB workspace read limit.");
+  const content = await fs.readFile(target);
+  return { path: relative(root, target), content: Uint8Array.from(content), mtimeMs: stat.mtimeMs, size: stat.size };
+}
+
 export async function writeWorkspaceFileSystemFile(
   rootPath: string,
   relativePath: string,
-  content: string,
+  content: Uint8Array,
   create: boolean,
   overwrite: boolean
 ): Promise<{ path: string; mtimeMs: number }> {
-  if (typeof create !== "boolean" || typeof overwrite !== "boolean") throw new Error("Invalid file write options.");
-  try {
-    const existing = await readWorkspaceFile(rootPath, relativePath);
-    if (!overwrite) throw new Error("File already exists.");
-    return writeWorkspaceFile(rootPath, relativePath, content, existing.mtimeMs);
-  } catch (error) {
+  if (!(content instanceof Uint8Array) || typeof create !== "boolean" || typeof overwrite !== "boolean") {
+    throw new Error("Invalid workspace file write options.");
+  }
+  if (content.byteLength > MAX_WORKBENCH_FILE_BYTES) throw new Error("File exceeds the 64 MB workspace write limit.");
+  const bytes = Buffer.from(content.buffer, content.byteOffset, content.byteLength);
+  const { root, target } = await resolveWorkspacePath(rootPath, relativePath, true);
+  if (target === root) throw new Error("The workspace root cannot be replaced.");
+  let original: Awaited<ReturnType<typeof fs.lstat>> | undefined;
+  try { original = await fs.lstat(target); }
+  catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    if (!create) throw error;
-    return createWorkspaceFile(rootPath, relativePath, content);
+  }
+  if (original) {
+    if (original.isSymbolicLink() || !original.isFile()) throw new Error("Selected path is not a regular workspace file.");
+    if (!overwrite) throw new Error("File already exists.");
+  } else if (!create) {
+    const error = new Error("File does not exist.") as NodeJS.ErrnoException;
+    error.code = "ENOENT";
+    throw error;
+  }
+
+  const parent = dirname(target);
+  const temporary = join(parent, "." + basename(target) + "." + randomUUID() + ".tmp");
+  const handle = await fs.open(temporary, "wx", original ? original.mode & 0o777 : 0o600);
+  try {
+    await handle.writeFile(bytes);
+    await handle.sync();
+  } catch (error) {
+    await handle.close();
+    await fs.unlink(temporary).catch(() => {});
+    throw error;
+  }
+  await handle.close();
+
+  try {
+    if (original) {
+      const latest = await fs.lstat(target);
+      if (latest.isSymbolicLink() || !latest.isFile() || latest.dev !== original.dev ||
+          latest.ino !== original.ino || latest.size !== original.size || latest.mtimeMs !== original.mtimeMs) {
+        throw new Error("File changed while the save was being prepared. Reopen it before trying again.");
+      }
+    } else {
+      try {
+        await fs.lstat(target);
+        throw new Error("File was created by another process while the save was being prepared.");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
+    await fs.rename(temporary, target);
+    let directoryHandle: Awaited<ReturnType<typeof fs.open>> | undefined;
+    try {
+      directoryHandle = await fs.open(parent, "r");
+      await directoryHandle.sync();
+    } catch { /* Directory fsync is not available on every platform. */ }
+    finally { await directoryHandle?.close().catch(() => {}); }
+    const result = await fs.stat(target);
+    return { path: relative(root, target), mtimeMs: result.mtimeMs };
+  } finally {
+    await fs.unlink(temporary).catch(() => {});
   }
 }
 

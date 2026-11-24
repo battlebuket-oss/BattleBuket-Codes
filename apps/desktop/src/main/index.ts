@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createWorkspaceDirectory, deleteWorkspacePath, listWorkspace, readWorkspaceFile, renameWorkspacePath, searchWorkspaceContent, searchWorkspaceFiles, writeWorkspaceFile, writeWorkspaceFileSystemFile } from "./workspace-files";
+import { createWorkspaceDirectory, deleteWorkspacePath, listWorkspace, readWorkspaceFile, readWorkspaceFileSystemFile, renameWorkspacePath, searchWorkspaceContent, searchWorkspaceFiles, writeWorkspaceFile, writeWorkspaceFileSystemFile } from "./workspace-files";
 import { appendTaskHistory, readTaskHistory } from "./task-history";
 import { WorkspaceTerminalSessions, type TerminalSessionEvent } from "./terminal-sessions";
 import { openRecentWorkspace, readRecentWorkspaces, recordRecentWorkspace } from "./recent-workspaces";
@@ -227,6 +227,11 @@ handleTrustedIpc("workspace:search-content", async (_event, query: string) => {
 handleTrustedIpc("workspace:read", async (_event, relativePath: string) => {
   if (typeof relativePath !== "string" || relativePath.length > 4096 || !activeWorkspace) throw new Error("Invalid file request");
   return readWorkspaceFile(activeWorkspace, relativePath);
+});
+
+handleTrustedIpc("workspace:read-file", async (_event, relativePath: string) => {
+  if (typeof relativePath !== "string" || relativePath.length > 4096 || !activeWorkspace) throw new Error("Invalid workspace filesystem read request.");
+  return readWorkspaceFileSystemFile(activeWorkspace, relativePath);
 });
 handleTrustedIpc("workspace:write", async (_event, payload: { path: string; content: string; expectedMtimeMs: number }) => {
   if (!payload || typeof payload.path !== "string" || payload.path.length > 4096 || !activeWorkspace) throw new Error("Invalid save request");
