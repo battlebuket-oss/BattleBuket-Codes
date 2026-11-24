@@ -102,8 +102,10 @@ describe("EngineeringDirector", () => {
     let director!: EngineeringDirector;
     director = new EngineeringDirector([cancellable], {
       decide: async () => ({ primary: "codex", reviewer: "codex", rationale: "Cancellation test", requiresHumanApproval: false }),
-      review: async () => {
+      review: async (_task, _result, _decision, signal) => {
+        assert.equal(signal?.aborted, false);
         await director.cancel();
+        assert.equal(signal?.aborted, true);
         return { name: "Read-only provider review", passed: false, output: "Cancelled" };
       },
       verify: async (_task, _result, signal) => {
