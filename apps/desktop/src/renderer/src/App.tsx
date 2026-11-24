@@ -48,6 +48,7 @@ declare global {
       selectWorkspace: () => Promise<string | null>;
       listWorkspace: (path?: string) => Promise<WorkspaceEntry[]>;
       searchWorkspaceFiles: (query: string) => Promise<WorkspaceEntry[]>;
+      searchWorkspaceFiles: (query: string) => Promise<WorkspaceEntry[]>;
       readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;
       saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
       getAgentAvailability: () => Promise<Record<AgentProvider, boolean>>;
@@ -321,6 +322,7 @@ export default function App() {
       return;
     }
     let cancelled = false;
+    setQuickOpenResults([]);
     const timer = window.setTimeout(() => {
       setPaletteLoading(true);
       void window.battleBuket?.searchWorkspaceFiles(paletteQuery).then(results => {
@@ -362,7 +364,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onGlobalShortcut, true);
     return () => window.removeEventListener("keydown", onGlobalShortcut, true);
-  }, [terminalOpen]);
+  }, [terminalOpen, workspace, terminalStatus]);
 
   useEffect(() => {
     const hasUnsavedChanges = editorTabs.some(tab => tab.draft !== tab.content);
