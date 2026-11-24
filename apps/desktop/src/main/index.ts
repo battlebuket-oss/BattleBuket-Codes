@@ -207,7 +207,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
         message: payload.risk === "high"
           ? "Run this task in read-only mode? The agent will not be allowed to edit files."
           : "Allow this agent to edit files and run routine local commands inside the selected project?",
-        detail: "The agent is sandboxed to this workspace. Full-system access and outbound network access are disabled. Codex permission escalations use automatic review, which may consume additional provider usage. Review all changes before using or releasing them.",
+        detail: "The selected provider runs in its restricted read-only or workspace-write mode and applies its own sandbox rules. Sandbox and network behavior differ by provider and are not a guarantee against every host escape. Unrestricted/full-access mode is disabled. Review all changes before using or releasing them.",
         buttons: ["Cancel task", "Approve and continue"],
         defaultId: 0,
         cancelId: 0,
@@ -222,7 +222,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
       const projectChecks = await runProjectQualityChecks(task.workspacePath, async (scripts, manager) => {
         const detail = [
           `Package manager: ${manager}`,
-          `Scripts to run: ${scripts.map(script => `${manager} run ${script}`).join(", ")}`,
+          `Commands to run: ${scripts.map(script => script === "audit" ? (manager === "pnpm" ? "pnpm audit --audit-level high" : "npm audit --audit-level=high") : `${manager} run ${script}`).join(", ")}`,
           "These repository-defined scripts can execute arbitrary code and may access the network using your user account.",
           "They run with a reduced environment, a five-minute timeout per script, and a bounded output buffer. Approve only if you trust this project."
         ].join("\n");
