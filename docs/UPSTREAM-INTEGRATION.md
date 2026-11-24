@@ -47,7 +47,7 @@ Implemented in BattleBuket-Codes:
 - A tag-triggered release workflow that requires Windows/macOS signing secrets, builds platform installers, checks signatures/notarization, performs installed-app launch smoke checks, and assembles a draft GitHub release. No tagged production release has run or been published.
 
 Still not implemented or not verified:
-- The full Code - OSS / VS Code workbench is not embedded in the BattleBuket desktop window. The current textarea editor is only a lightweight preview/editor and must not be represented as VS Code.
+- The full Code - OSS / VS Code workbench is not embedded in the BattleBuket desktop window. The current editor is Monaco with language workers and common code-editing features; Monaco is an editor component, not the full VS Code workbench or extension host.
 - Native PTY implementation is present in draft PR #11, awaiting CI verification against Electron's ABI on all supported operating systems.
 - Execution of the live provider smoke workflow on authenticated Codex and Claude runners, plus extended OS/model/version coverage. A harness exists but has not yet been run against live accounts.
 - Sandboxed project verification and broader quality gates (SAST, secret scanning, license/provenance checks). Current project scripts require approval and run with user permissions; supported lockfile audits are available, but there is no execution sandbox.
