@@ -3,12 +3,24 @@ const pty = require("node-pty");
 const isWindows = process.platform === "win32";
 const shell = isWindows ? (process.env.ComSpec || "cmd.exe") : (process.env.SHELL || "/bin/sh");
 const args = isWindows ? ["/D"] : ["-i"];
+const safeEnv = {};
+const allowedEnv = [
+  "PATH", "Path", "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+  "SHELL", "ComSpec", "SystemRoot", "WINDIR", "SystemDrive",
+  "TEMP", "TMP", "TMPDIR", "APPDATA", "LOCALAPPDATA",
+  "LANG", "LC_ALL", "USER", "LOGNAME", "USERNAME", "PATHEXT"
+];
+for (const key of allowedEnv) {
+  if (typeof process.env[key] === "string") safeEnv[key] = process.env[key];
+}
+safeEnv.TERM = "xterm-256color";
+safeEnv.COLORTERM = "truecolor";
 const child = pty.spawn(shell, args, {
   name: "xterm-256color",
   cols: 80,
   rows: 24,
   cwd: process.cwd(),
-  env: { ...process.env, TERM: "xterm-256color" },
+  env: safeEnv,
 });
 
 let output = "";
