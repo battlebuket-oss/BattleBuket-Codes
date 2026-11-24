@@ -795,8 +795,11 @@ export default function App() {
         </div>
         <h4>QUALITY GATES</h4>
         <p className="gate">◈ Workspace boundary <b>ENFORCED</b></p>
-        <p className="gate">◈ Git diff check <b>PARTIAL</b></p>
-        <p className="gate">◈ Automated test suite <b className="pending">PENDING</b></p>
+        {taskResult && taskResult.verification.length > 0
+          ? taskResult.verification.map((check, index) => <p className="gate" key={check.name + ":" + index} title={check.output || check.name}>
+              ◈ {check.name}<b className={check.passed ? "" : "failed"}>{check.passed ? "PASSED" : "FAILED"}</b>
+            </p>)
+          : <p className="no-tasks"><small>{running ? "Quality checks run after implementation and review." : "Verification results appear here after a task completes."}</small></p>}
         <div className="note">✧ The app uses your local provider login. No model access or API credits are included. Review agent changes before release.</div>
       </aside>
     </div>
