@@ -62,6 +62,9 @@ export class EngineeringDirector {
       const checks = await this.hooks.verify(task, result);
       const allChecks = [...reviewChecks, ...checks];
       const reviewed = { ...result, verification: [...result.verification, ...allChecks] };
+      if (this.current.status === "cancelled") {
+        return { ...reviewed, status: "cancelled", summary: "Task was cancelled during review or verification." };
+      }
       if (allChecks.some(check => !check.passed)) {
         this.current = { status: "failed", task, reason: "One or more verification checks failed" };
         return { ...reviewed, status: "failed", summary: "Agent changes require fixes: verification failed" };
