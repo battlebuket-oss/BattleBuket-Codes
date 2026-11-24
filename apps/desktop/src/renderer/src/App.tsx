@@ -48,7 +48,6 @@ declare global {
       selectWorkspace: () => Promise<string | null>;
       listWorkspace: (path?: string) => Promise<WorkspaceEntry[]>;
       searchWorkspaceFiles: (query: string) => Promise<WorkspaceEntry[]>;
-      searchWorkspaceFiles: (query: string) => Promise<WorkspaceEntry[]>;
       readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;
       saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
       getAgentAvailability: () => Promise<Record<AgentProvider, boolean>>;
