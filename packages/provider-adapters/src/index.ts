@@ -26,6 +26,18 @@ async function changedFiles(cwd: string): Promise<string[]> {
   return result.stdout.split(/\r?\n/).filter(Boolean).map(line => line.slice(3).trim()).filter(Boolean);
 }
 
+export function supportsCodexCli(output: string): boolean {
+  const match = output.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return false;
+  const actual = match.slice(1).map(Number);
+  const minimum = [0, 171, 0];
+  for (let index = 0; index < minimum.length; index++) {
+    if (actual[index] > minimum[index]) return true;
+    if (actual[index] < minimum[index]) return false;
+  }
+  return true;
+}
+
 export function codexArguments(request: AgentRunRequest): string[] {
   if (request.approvalMode === "full-access") throw new Error("Full-access agent execution is disabled");
   const base = ["exec", "--json", "--cd", request.workingDirectory];
@@ -43,8 +55,10 @@ export function codexArguments(request: AgentRunRequest): string[] {
 export class CodexCliAdapter implements AgentAdapter {
   readonly provider = "codex" as const;
   async isAvailable(): Promise<boolean> {
-    const result = await execa("codex", ["login", "status"], { reject: false, timeout: 8000, maxBuffer: 64 * 1024 });
-    return result.exitCode === 0;
+    const version = await execa("codex", ["--version"], { reject: false, timeout: 8000, maxBuffer: 64 * 1024 });
+    if (version.exitCode !== 0 || !supportsCodexCli(version.stdout)) return false;
+    const login = await execa("codex", ["login", "status"], { reject: false, timeout: 8000, maxBuffer: 64 * 1024 });
+    return login.exitCode === 0;
   }
   async run(request: AgentRunRequest, send: (event: AgentEvent) => void): Promise<AgentResult> {
     if (active.has(request.task.id)) throw new Error("Task is already running");
