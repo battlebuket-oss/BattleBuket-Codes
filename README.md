@@ -1,0 +1,38 @@
+# BattleBuket Codes
+
+**A unified, desktop-first AI software engineering platform.**
+
+BattleBuket Codes brings a branded developer workspace together with multiple coding engines coordinated by the **Engineering Director**. Users work in one application; engine selection, delegation, execution, review, and verification happen behind that unified experience.
+
+## Product principles
+
+- One cohesive, dark, keyboard-first developer interface.
+- The Engineering Director owns task planning, delegation, execution tracking, review, and acceptance.
+- Codex and Claude are internal execution providers, not separate user-facing products.
+- VS Code OSS is the intended editor/workbench foundation; Electron is its desktop runtime, not a second shell to wrap around it.
+- Agents operate with explicit permissions, scoped workspaces, and auditable tool execution.
+- A task is complete only after required checks and acceptance criteria pass—not because an agent says it is done.
+
+## Planned architecture
+
+| Layer | Responsibility |
+|---|---|
+| Desktop workbench | Branded VS Code OSS-based editor, activity surfaces, terminal, project explorer |
+| Desktop runtime | Electron-based desktop packaging and OS integration |
+| Engineering Director | Task graph, routing, context assembly, delegation, supervision, review, recovery |
+| Codex provider | OpenAI Codex CLI/App Server integration through a provider adapter |
+| Claude provider | Anthropic Claude Agent SDK integration through a provider adapter |
+| Shared services | Workspace isolation, Git/worktrees, permissions, project memory, event log |
+| Quality gate | Build/test/lint/security checks and human approval gates |
+
+## Repository status
+
+This repository is being initialized. The architecture and implementation plan are committed before provider integration so that engine adapters, permissions, and acceptance criteria have a stable contract.
+
+## Development status
+
+See [the implementation roadmap](docs/ROADMAP.md), [architecture](docs/ARCHITECTURE.md), and [security model](docs/SECURITY.md).
+
+## Important integration and distribution note
+
+Provider integrations must use supported interfaces and comply with the applicable licenses, SDK terms, trademarks, and distribution requirements. The application may keep provider internals out of the normal product UI, but it must not remove legally required notices or misrepresent ownership. Credentials must be supplied and stored securely; they must never be committed to this repository.
