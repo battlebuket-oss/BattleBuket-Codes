@@ -7,7 +7,6 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { listWorkspace, readWorkspaceFile, writeWorkspaceFile } from "./workspace-files";
 import { appendTaskHistory, readTaskHistory } from "./task-history";
-import { runWorkspaceCommand } from "./terminal";
 import { WorkspaceTerminalSessions, type TerminalSessionEvent } from "./terminal-sessions";
 import { runProjectQualityChecks } from "./project-verification";
 import { EngineeringDirector } from "../../../../packages/engineering-director/src/index";
