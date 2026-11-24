@@ -79,7 +79,7 @@ export default function App() {
       setError("");
       const selected = await window.battleBuket?.selectWorkspace();
       if (selected) {
-        setWorkspace(selected); setCurrentDirectory(""); setSelectedFile(null); setTaskResult(null);
+        setWorkspace(selected); setCurrentDirectory(""); setSelectedFile(null); setTaskResult(null); setDataConsent(false);
         await refreshFiles("");
       }
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open project folder"); }
