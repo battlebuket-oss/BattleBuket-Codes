@@ -103,8 +103,8 @@ ipcMain.handle("agents:run", async (_event, payload: { prompt: string; provider:
       requiresHumanApproval: payload.risk !== "low"
     }),
     approve: async () => {
-      const result = await dialog.showMessageBox(mainWindow ?? undefined, {
-        type: "warning",
+      const options = {
+        type: "warning" as const,
         title: "Approve engineering task",
         message: payload.risk === "high" ? "Run this task in read-only mode?" : "Allow this agent to edit files in the selected project?",
         detail: "The agent will be limited to the selected workspace. Full system access is disabled. Review its changes before using or releasing them.",
@@ -112,7 +112,10 @@ ipcMain.handle("agents:run", async (_event, payload: { prompt: string; provider:
         defaultId: 0,
         cancelId: 0,
         noLink: true
-      });
+      };
+      const result = mainWindow
+        ? await dialog.showMessageBox(mainWindow, options)
+        : await dialog.showMessageBox(options);
       return result.response === 1;
     },
     verify: async () => verifyWorkspaceDiff(task.workspacePath),
