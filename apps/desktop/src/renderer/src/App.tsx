@@ -326,7 +326,10 @@ export default function App() {
     const timer = window.setTimeout(() => {
       setPaletteLoading(true);
       void window.battleBuket?.searchWorkspaceFiles(paletteQuery).then(results => {
-        if (!cancelled) setQuickOpenResults(results);
+        if (!cancelled) {
+          setQuickOpenResults(results);
+          setPaletteIndex(0);
+        }
       }).catch(error => {
         if (!cancelled) setError(error instanceof Error ? error.message : "Quick Open search failed");
       }).finally(() => {
@@ -466,7 +469,9 @@ export default function App() {
     { id: "refresh-files", label: "Refresh Project Explorer", description: "Reload the workspace file tree" },
     { id: "cancel-task", label: "Cancel Active Task", description: "Stop provider execution or verification" }
   ].filter(command => command.id !== "save-file" || Boolean(selectedFile))
-   .filter(command => command.id !== "cancel-task" || running);
+   .filter(command => command.id !== "cancel-task" || running)
+   .filter(command => command.id !== "toggle-terminal" || Boolean(workspace))
+   .filter(command => command.id !== "refresh-files" || Boolean(workspace));
   const filteredCommands = quickCommands.filter(command =>
     (command.label + " " + command.description).toLowerCase().includes(paletteQuery.toLowerCase())
   );
@@ -541,7 +546,7 @@ export default function App() {
                     <Command size={13}/><span>{command.label}</span><small>{command.description}</small>
                   </button>)}
               {paletteLoading && <p>Searching workspace…</p>}
-              {!paletteLoading && paletteCount === 0 && <p>{paletteMode === "files" ? (paletteQuery.trim() ? "No matching files found." : "Type part of a file name to search the workspace.") : "No commands match your search."}</p>}
+              {!paletteLoading && paletteCount === 0 && <p>{paletteMode === "files" ? (!workspace ? "Open a project folder before searching files." : paletteQuery.trim() ? "No matching files found." : "Type part of a file name to search the workspace.") : "No commands match your search."}</p>}
             </div>
             <div className="palette-footer">{paletteMode === "files" ? "Ctrl/Cmd + P" : "Ctrl/Cmd + Shift + P"} · ↑ ↓ Navigate · Enter Open · Esc Close</div>
           </section>
