@@ -175,7 +175,7 @@ h1 em{color:#9b8aff;font-style:normal}
 .problems-heading small{color:#78869e;font:8px 'DM Mono';letter-spacing:0}
 .problems-empty{margin:0;padding:14px;color:#718099;font:9px 'DM Mono'}
 .problems-list{flex:1;min-height:0;overflow:auto;padding:3px 7px}
-.problem-item{min-height:25px;display:flex;align-items:center;gap:9px;padding:4px 7px;border-radius:3px;color:#b9c5d8;font:9px 'DM Mono'}
+.problem-item{width:100%;min-height:25px;display:flex;align-items:center;gap:9px;padding:4px 7px;border:0;border-radius:3px;background:transparent;color:#b9c5d8;text-align:left;font:9px 'DM Mono';cursor:pointer}
 .problem-item:hover{background:#161f30}
 .problem-item>span:first-child{width:52px;flex:none;font-size:7px;letter-spacing:.7px}
 .problem-error{color:#ff9b9b}
