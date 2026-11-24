@@ -192,8 +192,9 @@ handleTrustedIpc("workspace:select", async () => {
   if (activeDirector || taskStartPending || terminalSessions.hasActiveSession()) throw new Error("Close the active task and terminal session before changing projects.");
   const result = await dialog.showOpenDialog({ title: "Open project folder", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || result.filePaths.length === 0) return null;
-  activeWorkspace = await fs.realpath(result.filePaths[0]);
-  await recordRecentWorkspace(app.getPath("userData"), activeWorkspace);
+  const selectedWorkspace = await fs.realpath(result.filePaths[0]);
+  await recordRecentWorkspace(app.getPath("userData"), selectedWorkspace);
+  activeWorkspace = selectedWorkspace;
   return activeWorkspace;
 });
 
@@ -204,8 +205,9 @@ handleTrustedIpc("workspace:open-recent", async (_event, payload: { path: string
     throw new Error("Close the active task and terminal session before changing projects.");
   }
   if (!payload || typeof payload.path !== "string") throw new Error("Invalid recent workspace selection.");
-  activeWorkspace = await openRecentWorkspace(app.getPath("userData"), payload.path);
-  await recordRecentWorkspace(app.getPath("userData"), activeWorkspace);
+  const selectedWorkspace = await openRecentWorkspace(app.getPath("userData"), payload.path);
+  await recordRecentWorkspace(app.getPath("userData"), selectedWorkspace);
+  activeWorkspace = selectedWorkspace;
   return activeWorkspace;
 });
 handleTrustedIpc("workspace:list", async (_event, relativePath = "") => {
