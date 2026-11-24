@@ -152,7 +152,7 @@ jobs:
           installed_app="$RUNNER_TEMP/BattleBuket Codes.app"
           ditto "$source_app" "$installed_app"
           hdiutil detach /tmp/battlebuket-install-smoke
-          open -n -W -a "$installed_app" --args --smoke-test
+          "$installed_app/Contents/MacOS/battlebuket-codes" --smoke-test
           rm -rf "$installed_app"
           test ! -e "$installed_app"
       - name: Launch Linux AppImage and remove installed artifact
