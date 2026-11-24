@@ -45,7 +45,7 @@ function liveRequest(provider: AgentProvider, workspacePath: string): AgentRunRe
 for (const provider of ["codex", "claude"] as const) {
   const enabled = liveSmokeEnabled && selectedProviders.has(provider);
   test(
-    \`live \${provider} authentication and read-only execution\`,
+    `live ${provider} authentication and read-only execution`,
     { skip: !enabled, timeout: 5 * 60 * 1000 },
     async () => {
       const workspacePath = await mkdtemp(join(tmpdir(), "battlebuket-provider-smoke-"));
@@ -55,7 +55,7 @@ for (const provider of ["codex", "claude"] as const) {
         assert.equal(
           await adapter.isAvailable(),
           true,
-          \`\${provider} runtime must be installed, authenticated and available on this runner\`
+          `${provider} runtime must be installed, authenticated and available on this runner`
         );
 
         const result = await adapter.run(liveRequest(provider, workspacePath), event => {
@@ -65,7 +65,7 @@ for (const provider of ["codex", "claude"] as const) {
         assert.equal(result.status, "succeeded", result.summary);
         assert.ok(
           result.summary.includes("BATTLEBUKET_PROVIDER_SMOKE_OK"),
-          \`\${provider} did not return the required smoke marker: \${result.summary}\`
+          `${provider} did not return the required smoke marker: ${result.summary}`
         );
         assert.deepEqual(result.changedFiles, [], "read-only smoke must not report changed files");
         assert.deepEqual(await readdir(workspacePath), [], "read-only smoke must leave the temporary workspace empty");
