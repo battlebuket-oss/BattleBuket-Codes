@@ -133,11 +133,48 @@ function createWindow(): void {
         const expectedVersion = process.argv.find(argument => argument.startsWith("--smoke-expect-version="))
           ?.slice("--smoke-expect-version=".length);
         const smokeScript = `window.battleBuket && window.battleBuket.getVersion().then(version => { const expectedVersion = ${JSON.stringify(expectedVersion ?? null)}; let worker; try { const environment = globalThis.MonacoEnvironment; if (!environment || typeof environment.getWorker !== 'function') return false; worker = environment.getWorker('', 'typescript'); return typeof version === 'string' && version.length > 0 && (!expectedVersion || version === expectedVersion) && typeof worker.postMessage === 'function' && typeof worker.terminate === 'function'; } finally { worker && worker.terminate(); } })`;
-        const healthy = await window.webContents.executeJavaScript(smokeScript);
-        if (healthy !== true) {
+        const editorHealthy = await window.webContents.executeJavaScript(smokeScript);
+        if (editorHealthy !== true) {
           finish(false);
           return;
         }
+
+        const marker = "BB_TERMINAL_SMOKE_OK";
+        const sessionId = randomUUID();
+        const smokeWorkspace = await fs.mkdtemp(join(app.getPath("temp"), "battlebuket-pty-smoke-"));
+        let resolvePtyResult!: (passed: boolean) => void;
+        let ptySettled = false;
+        let ptyTimer: ReturnType<typeof setTimeout>;
+        const ptyResult = new Promise<boolean>(resolve => {
+          resolvePtyResult = passed => {
+            if (ptySettled) return;
+            ptySettled = true;
+            clearTimeout(ptyTimer);
+            resolve(passed);
+          };
+          ptyTimer = setTimeout(() => resolvePtyResult(false), 12_000);
+        });
+        try {
+          await terminalSessions.start(sessionId, smokeWorkspace, event => {
+            if (event.type === "output" && event.text?.includes(marker)) resolvePtyResult(true);
+            else if (event.type === "error" || event.type === "exit") resolvePtyResult(false);
+          });
+          const command = process.platform === "win32"
+            ? "set BB_SMOKE=BB_TERMINAL_\rset BB_SMOKE=%BB_SMOKE%SMOKE_OK\recho %BB_SMOKE%\r"
+            : "printf '%s%s\\n' 'BB_TERMINAL_' 'SMOKE_OK'\r";
+          terminalSessions.write(sessionId, command);
+          const outputHealthy = await ptyResult;
+          const processExited = await terminalSessions.close(sessionId);
+          if (!outputHealthy || !processExited) {
+            finish(false);
+            return;
+          }
+        } finally {
+          resolvePtyResult(false);
+          await terminalSessions.closeAll().catch(() => {});
+          await fs.rm(smokeWorkspace, { recursive: true, force: true }).catch(() => {});
+        }
+
         if (process.argv.includes("--smoke-clear-state")) await fs.unlink(statePath).catch(() => {});
         finish(true);
       })().catch(() => finish(false));
