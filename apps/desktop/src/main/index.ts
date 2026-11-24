@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { listWorkspace, readWorkspaceFile, writeWorkspaceFile } from "./workspace-files";
 import { appendTaskHistory, readTaskHistory } from "./task-history";
 import { runWorkspaceCommand } from "./terminal";
+import { WorkspaceTerminalSessions, type TerminalSessionEvent } from "./terminal-sessions";
 import { runProjectQualityChecks } from "./project-verification";
 import { EngineeringDirector } from "../../../../packages/engineering-director/src/index";
 import { ClaudeAgentSdkAdapter, CodexCliAdapter } from "../../../../packages/provider-adapters/src/index";
@@ -15,10 +16,12 @@ import type { AgentEvent, AgentProvider, AgentTask, RiskLevel, VerificationResul
 
 const execFile = promisify(execFileCallback);
 const adapters = [new CodexCliAdapter(), new ClaudeAgentSdkAdapter()];
+const terminalSessions = new WorkspaceTerminalSessions();
 let activeWorkspace: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 let activeDirector: EngineeringDirector | null = null;
 let taskStartPending = false;
+let activeTerminalSessionId: string | null = null;
 
 // Only the trusted top-level renderer may invoke privileged main-process IPC.
 function handleTrustedIpc(
@@ -85,7 +88,7 @@ function createWindow(): void {
     }
   });
   mainWindow = window;
-  window.on("closed", () => { if (mainWindow === window) mainWindow = null; });
+  window.on("closed", () => { if (mainWindow === window) mainWindow = null; void terminalSessions.closeAll(); activeTerminalSessionId = null; });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
   if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -94,7 +97,7 @@ function createWindow(): void {
 
 handleTrustedIpc("platform:version", () => app.getVersion());
 handleTrustedIpc("workspace:select", async () => {
-  if (activeDirector || taskStartPending) throw new Error("Finish or cancel the active engineering task before changing projects.");
+  if (activeDirector || taskStartPending || terminalSessions.hasActiveSession()) throw new Error("Close the active task and terminal session before changing projects.");
   const result = await dialog.showOpenDialog({ title: "Open project folder", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || result.filePaths.length === 0) return null;
   activeWorkspace = await fs.realpath(result.filePaths[0]);
@@ -115,10 +118,37 @@ handleTrustedIpc("workspace:write", async (_event, payload: { path: string; cont
 
 handleTrustedIpc("tasks:history", async () => readTaskHistory(app.getPath("userData")));
 
-handleTrustedIpc("terminal:run", async (_event, payload: { command: string }) => {
-  if (!activeWorkspace) throw new Error("Open a project folder before using the terminal.");
-  if (!payload || typeof payload.command !== "string") throw new Error("Invalid terminal command.");
-  return runWorkspaceCommand(activeWorkspace, payload.command);
+handleTrustedIpc("terminal:start", async () => {
+  if (!activeWorkspace) throw new Error("Open a project folder before starting the terminal.");
+  if (activeDirector || taskStartPending) throw new Error("Close or finish the engineering task before starting the terminal.");
+  if (terminalSessions.hasActiveSession()) throw new Error("A terminal session is already active.");
+  const sessionId = randomUUID();
+  activeTerminalSessionId = sessionId;
+  try {
+    await terminalSessions.start(sessionId, activeWorkspace, (event: TerminalSessionEvent) => {
+      if (event.type === "exit" && activeTerminalSessionId === sessionId) activeTerminalSessionId = null;
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("terminal:event", event);
+    });
+    return sessionId;
+  } catch (error) {
+    activeTerminalSessionId = null;
+    throw error;
+  }
+});
+
+handleTrustedIpc("terminal:write", async (_event, payload: { sessionId: string; input: string }) => {
+  if (!payload || payload.sessionId !== activeTerminalSessionId || typeof payload.input !== "string") {
+    throw new Error("Invalid or inactive terminal session.");
+  }
+  terminalSessions.write(payload.sessionId, payload.input);
+  return true;
+});
+
+handleTrustedIpc("terminal:close", async (_event, payload: { sessionId: string }) => {
+  if (!payload || payload.sessionId !== activeTerminalSessionId) return false;
+  const closed = await terminalSessions.close(payload.sessionId);
+  if (activeTerminalSessionId === payload.sessionId) activeTerminalSessionId = null;
+  return closed;
 });
 
 handleTrustedIpc("agents:availability", async () => {
@@ -137,6 +167,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
   if (payload.risk !== "low" && payload.risk !== "medium" && payload.risk !== "high") throw new Error("Invalid task risk.");
   if (!activeWorkspace) throw new Error("Open a project folder before starting an engineering task.");
   if (activeDirector || taskStartPending) throw new Error("An engineering task is already active.");
+  if (terminalSessions.hasActiveSession()) throw new Error("Close the integrated terminal before starting an engineering task.");
 
   const task: AgentTask = {
     id: randomUUID(),
@@ -256,4 +287,5 @@ app.whenReady().then(() => {
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
+app.on("before-quit", () => { void terminalSessions.closeAll(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
