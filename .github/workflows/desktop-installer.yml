@@ -1,4 +1,4 @@
-name: Desktop installer previews
+name: Desktop installer builds
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   installer:
-    name: Build ${{ matrix.label }} unsigned installer preview
+    name: Build ${{ matrix.label }} signed installer preview
     strategy:
       fail-fast: false
       matrix:
@@ -35,11 +35,51 @@ jobs:
       - name: Verify package identity and prevent implicit publishing
         run: |
           node -e "const p=require('./apps/desktop/package.json'); if (p.build.executableName !== 'battlebuket-codes') throw new Error('Unexpected executable name'); for (const key of ['dist:win','dist:mac','dist:linux']) if (!p.scripts[key].includes('--publish never')) throw new Error(key + ' must disable implicit publishing');"
-      - name: Build installer
-        run: pnpm --filter @battlebuket/desktop ${{ matrix.script }}
+      - name: Require Windows signing certificate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CSC_LINK: \${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: \${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+        run: |
+          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) { throw "Configure WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD before building a signed Windows installer." }
+      - name: Require Apple signing and notarization credentials
+        if: runner.os == 'macOS'
+        env:
+          CSC_LINK: \${{ secrets.MACOS_CSC_LINK }}
+          CSC_KEY_PASSWORD: \${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+          APPLE_ID: \${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: \${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: \${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD" && test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID" || { echo "Configure all macOS signing and notarization secrets."; exit 1; }
+      - name: Build signed installer
+        env:
+          CSC_LINK: \${{ runner.os == 'Windows' && secrets.WINDOWS_CSC_LINK || runner.os == 'macOS' && secrets.MACOS_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: \${{ runner.os == 'Windows' && secrets.WINDOWS_CSC_KEY_PASSWORD || runner.os == 'macOS' && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: \${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: \${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: \${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm --filter @battlebuket/desktop \${{ matrix.script }}
+      - name: Verify Windows Authenticode signature
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem "apps/desktop/release" -Filter "*.exe"
+          if (-not $files) { throw "No Windows installer was produced." }
+          foreach ($file in $files) {
+            if ((Get-AuthenticodeSignature $file.FullName).Status -ne "Valid") { throw "Unsigned or invalid installer: $($file.Name)" }
+          }
+      - name: Verify macOS notarization ticket
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          dmg="$(find apps/desktop/release -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          xcrun stapler validate "$dmg"
       - uses: actions/upload-artifact@v4
         with:
-          name: battlebuket-codes-${{ matrix.label }}-unsigned-preview
+          name: battlebuket-codes-${{ matrix.label }}-signed-preview
           path: apps/desktop/release/
           if-no-files-found: error
           retention-days: 14
