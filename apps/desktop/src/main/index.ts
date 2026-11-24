@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { promises as fs } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
 let activeWorkspace: string | null = null;
@@ -9,7 +9,7 @@ const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "out", ".ne
 
 function isInside(root: string, target: string): boolean {
   const rel = relative(root, target);
-  return rel === "" || (!rel.startsWith(".." + sep) && rel !== ".." && !resolve(rel).startsWith(sep));
+  return rel === "" || (rel !== ".." && !rel.startsWith(".." + sep) && !isAbsolute(rel));
 }
 async function resolveWorkspacePath(relativePath = ""): Promise<string> {
   if (!activeWorkspace) throw new Error("Open a project folder first");
