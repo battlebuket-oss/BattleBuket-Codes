@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { listWorkspace, readWorkspaceFile, writeWorkspaceFile } from "./workspace-files";
 import { appendTaskHistory, readTaskHistory } from "./task-history";
+import { runWorkspaceCommand } from "./terminal";
 import { EngineeringDirector } from "../../../../packages/engineering-director/src/index";
 import { ClaudeAgentSdkAdapter, CodexCliAdapter } from "../../../../packages/provider-adapters/src/index";
 import type { AgentEvent, AgentProvider, AgentTask, RiskLevel, VerificationResult } from "../../../../packages/agent-contracts/src/index";
@@ -99,6 +100,12 @@ handleTrustedIpc("workspace:write", async (_event, payload: { path: string; cont
 });
 
 handleTrustedIpc("tasks:history", async () => readTaskHistory(app.getPath("userData")));
+
+handleTrustedIpc("terminal:run", async (_event, payload: { command: string }) => {
+  if (!activeWorkspace) throw new Error("Open a project folder before using the terminal.");
+  if (!payload || typeof payload.command !== "string") throw new Error("Invalid terminal command.");
+  return runWorkspaceCommand(activeWorkspace, payload.command);
+});
 
 handleTrustedIpc("agents:availability", async () => {
   const availability = await Promise.all(adapters.map(async adapter => {
