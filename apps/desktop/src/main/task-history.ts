@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 export type TaskHistoryStatus = "running" | "succeeded" | "failed" | "cancelled";
 export type TaskHistoryEvent = {
@@ -35,14 +36,43 @@ function isHistoryEvent(value: unknown): value is TaskHistoryEvent {
     (item.verificationPassed === undefined || typeof item.verificationPassed === "boolean");
 }
 
+async function compactHistoryFile(file: string): Promise<void> {
+  const contents = await fs.readFile(file, "utf8");
+  const byTask = new Map<string, { first: TaskHistoryEvent; last: TaskHistoryEvent }>();
+  for (const line of contents.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (!isHistoryEvent(parsed)) continue;
+      const current = byTask.get(parsed.taskId);
+      if (current) current.last = parsed;
+      else byTask.set(parsed.taskId, { first: parsed, last: parsed });
+    } catch { /* Ignore malformed or incomplete records while compacting. */ }
+  }
+  const tasks = [...byTask.values()]
+    .sort((a, b) => b.first.at.localeCompare(a.first.at))
+    .slice(0, MAX_ITEMS);
+  const events = tasks.flatMap(task =>
+    task.first === task.last ? [task.first] : [task.first, task.last]
+  ).sort((a, b) => a.at.localeCompare(b.at));
+  const temporary = file + "." + randomUUID() + ".tmp";
+  try {
+    await fs.writeFile(temporary, events.map(item => JSON.stringify(item)).join("\n") + (events.length ? "\n" : ""), { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await fs.rename(temporary, file);
+  } finally {
+    await fs.unlink(temporary).catch(() => {});
+  }
+}
+
 export async function appendTaskHistory(userDataPath: string, event: TaskHistoryEvent): Promise<void> {
   if (!isHistoryEvent(event)) throw new Error("Invalid task history event");
   await fs.mkdir(userDataPath, { recursive: true, mode: 0o700 });
   const directory = await fs.realpath(userDataPath);
   const file = join(directory, FILE_NAME);
   try {
-    const stat = await fs.stat(file);
-    if (stat.size > MAX_FILE_BYTES) await fs.truncate(file, 0);
+    const stat = await fs.lstat(file);
+    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("Task history path is not a regular file.");
+    if (stat.size > MAX_FILE_BYTES) await compactHistoryFile(file);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
@@ -56,7 +86,15 @@ export async function appendTaskHistory(userDataPath: string, event: TaskHistory
     ...(event.changedFileCount === undefined ? {} : { changedFileCount: event.changedFileCount }),
     ...(event.verificationPassed === undefined ? {} : { verificationPassed: event.verificationPassed })
   };
-  await fs.appendFile(file, JSON.stringify(safeEvent) + "\n", { encoding: "utf8", mode: 0o600, flag: "a" });
+  const line = JSON.stringify(safeEvent) + "\n";
+  try {
+    const stat = await fs.lstat(file);
+    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("Task history path is not a regular file.");
+    if (stat.size + Buffer.byteLength(line, "utf8") > MAX_FILE_BYTES) await compactHistoryFile(file);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  await fs.appendFile(file, line, { encoding: "utf8", mode: 0o600, flag: "a" });
 }
 
 export async function readTaskHistory(userDataPath: string): Promise<TaskHistoryItem[]> {
