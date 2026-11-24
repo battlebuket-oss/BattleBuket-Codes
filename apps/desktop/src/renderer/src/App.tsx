@@ -2,7 +2,10 @@ import { useEffect,useState } from "react";
 import { Activity,Bot,Braces,ChevronDown,Command,FileCode2,FolderOpen,GitBranch,LayoutDashboard,Plus,Search,Settings2,ShieldCheck,Sparkles,Terminal,Workflow } from "lucide-react";
 declare global { interface Window { battleBuket?: { getVersion:()=>Promise<string>; selectWorkspace:()=>Promise<string|null> } } }
 export default function App(){
- const [version,setVersion]=useState("dev");\n const [workspace,setWorkspace]=useState<string|null>(null);\n const [workspaceError,setWorkspaceError]=useState("");\n const openWorkspace=async()=>{try{setWorkspaceError("");const selected=await window.battleBuket?.selectWorkspace();if(selected)setWorkspace(selected);}catch(error){setWorkspaceError(error instanceof Error?error.message:"Could not open project folder");}};
+ const [version,setVersion]=useState("dev");
+ const [workspace,setWorkspace]=useState<string|null>(null);
+ const [workspaceError,setWorkspaceError]=useState("");
+ const openWorkspace=async()=>{try{setWorkspaceError("");const selected=await window.battleBuket?.selectWorkspace();if(selected)setWorkspace(selected);}catch(error){setWorkspaceError(error instanceof Error?error.message:"Could not open project folder");}};
  useEffect(()=>{window.battleBuket?.getVersion().then(setVersion).catch(()=>{});},[]);
  return <main className="shell">
   <header className="top"><div className="brand"><span className="mark"><Braces size={17}/></span>BATTLEBUKET <b>CODES</b><small>ENGINEERING WORKSPACE</small></div><div className="workspace-name"><i/> Director workspace <ChevronDown size={13}/></div><div className="top-right">v{version}<Settings2 size={16}/></div></header>
