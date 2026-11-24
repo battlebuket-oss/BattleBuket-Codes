@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       providers:
-        description: Providers to exercise using the self-hosted runner's local sign-in
+        description: Providers to exercise using GitHub Actions API-key secrets
         type: choice
         required: true
         default: codex,claude
@@ -16,23 +16,53 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: provider-smoke-${{ github.ref }}-${{ inputs.providers }}
+  cancel-in-progress: false
+
 jobs:
   live-provider-smoke:
     name: Live provider conformance (${{ inputs.providers }})
-    runs-on: [self-hosted, battlebuket-provider-smoke]
-    timeout-minutes: 90
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       BATTLEBUKET_REAL_PROVIDER_SMOKE: "1"
       BATTLEBUKET_SMOKE_PROVIDERS: ${{ inputs.providers }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Enable pinned package manager
+      - name: Require credentials for the selected providers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$BATTLEBUKET_SMOKE_PROVIDERS" == *codex* && -z "$OPENAI_API_KEY" ]]; then
+            echo "::error::Add OPENAI_API_KEY to repository Actions secrets before selecting Codex."
+            exit 1
+          fi
+          if [[ "$BATTLEBUKET_SMOKE_PROVIDERS" == *claude* && -z "$ANTHROPIC_API_KEY" ]]; then
+            echo "::error::Add ANTHROPIC_API_KEY to repository Actions secrets before selecting Claude."
+            exit 1
+          fi
+      - name: Install OS sandbox prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+      - name: Install Codex CLI
+        if: contains(inputs.providers, 'codex')
+        run: npm install --global @openai/codex
+      - name: Verify Codex CLI authentication
+        if: contains(inputs.providers, 'codex')
+        run: |
+          codex --version
+          codex login status
+      - name: Configure pinned package manager
         run: |
           corepack enable
           corepack prepare pnpm@10.0.0 --activate
       - run: pnpm install --frozen-lockfile
-      - name: Verify installed and authenticated provider runtimes
+      - name: Run live provider read-only and workspace-write conformance tests
         run: pnpm --filter @battlebuket/provider-adapters test
