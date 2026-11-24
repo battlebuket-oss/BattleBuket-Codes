@@ -178,6 +178,11 @@ function safeEnvironment(): NodeJS.ProcessEnv {
   return env;
 }
 
+export function dotnetOutputHasVulnerabilities(output: string): boolean {
+  if (/no vulnerable packages found|no vulnerable packages/i.test(output)) return false;
+  return /has the following vulnerable packages|vulnerable package(?:s)? found|vulnerabilities found/i.test(output);
+}
+
 async function runScript(manager: PackageManager, script: string, cwd: string, signal?: AbortSignal): Promise<VerificationResult> {
   const started = Date.now();
   const spec = qualityCommand(manager, script);
@@ -198,9 +203,7 @@ async function runScript(manager: PackageManager, script: string, cwd: string, s
       ...(signal ? { signal } : {})
     });
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n").slice(-12000);
-    if (manager === "dotnet" && script === "security" &&
-        /has the following vulnerable packages|vulnerable package(?:s)? found/i.test(output) &&
-        !/no vulnerable packages found/i.test(output)) {
+    if (manager === "dotnet" && script === "security" && dotnetOutputHasVulnerabilities(output)) {
       return { name: label, passed: false, output: "Vulnerable packages were reported by dotnet.\n" + output };
     }
     return { name: label, passed: true, output: spec.display + " passed in " + (Date.now() - started) + " ms" + (output ? "\n" + output : "") };
