@@ -62,16 +62,18 @@ jobs:
           Start-Process -FilePath $baselineInstaller.FullName -ArgumentList @("/S", "/D=$installDir") -Wait
           $application = Join-Path $installDir "battlebuket-codes.exe"
           if (-not (Test-Path $application)) { throw "Baseline application was not installed." }
-          & $application --smoke-test --smoke-seed-state
+          $baselineVersion = $env:BASELINE_TAG.Substring(1)
+          & $application --smoke-test --smoke-seed-state "--smoke-expect-version=$baselineVersion"
           if ($LASTEXITCODE -ne 0) { throw "Baseline launch or state seeding failed." }
 
           Start-Process -FilePath $candidateInstaller.FullName -ArgumentList @("/S", "/D=$installDir") -Wait
           if (-not (Test-Path $application)) { throw "Candidate application is missing after upgrade." }
-          & $application --smoke-test --smoke-verify-state
+          $candidateVersion = $env:CANDIDATE_TAG.Substring(1)
+          & $application --smoke-test --smoke-verify-state "--smoke-expect-version=$candidateVersion"
           if ($LASTEXITCODE -ne 0) { throw "Upgrade failed to preserve app user data or launch the candidate." }
 
           Start-Process -FilePath $baselineInstaller.FullName -ArgumentList @("/S", "/D=$installDir") -Wait
-          & $application --smoke-test --smoke-verify-state --smoke-clear-state
+          & $application --smoke-test --smoke-verify-state --smoke-clear-state "--smoke-expect-version=$baselineVersion"
           if ($LASTEXITCODE -ne 0) { throw "Rollback failed to preserve app user data or launch the baseline." }
 
           $uninstaller = Join-Path $installDir "Uninstall BattleBuket Codes.exe"
@@ -115,13 +117,15 @@ jobs:
 
           app="$RUNNER_TEMP/BattleBuket Codes.app"
           mount_and_copy "$baseline_dmg" "$RUNNER_TEMP/baseline-mount"
-          open -n -W "$app" --args --smoke-test --smoke-seed-state
+          baseline_version="$(printf '%s' "$BASELINE_TAG" | cut -c 2-)"
+          open -n -W -a "$app" --args --smoke-test --smoke-seed-state "--smoke-expect-version=$baseline_version"
 
           mount_and_copy "$candidate_dmg" "$RUNNER_TEMP/candidate-mount"
-          open -n -W "$app" --args --smoke-test --smoke-verify-state
+          candidate_version="$(printf '%s' "$CANDIDATE_TAG" | cut -c 2-)"
+          open -n -W -a "$app" --args --smoke-test --smoke-verify-state "--smoke-expect-version=$candidate_version"
 
           mount_and_copy "$baseline_dmg" "$RUNNER_TEMP/rollback-mount"
-          open -n -W "$app" --args --smoke-test --smoke-verify-state --smoke-clear-state
+          open -n -W -a "$app" --args --smoke-test --smoke-verify-state --smoke-clear-state "--smoke-expect-version=$baseline_version"
 
           rm -rf "$app"
           test ! -e "$app"
@@ -151,15 +155,17 @@ jobs:
           installed="$RUNNER_TEMP/BattleBuket-Codes-upgrade-smoke.AppImage"
           cp "$baseline" "$installed"
           chmod +x "$installed"
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-seed-state
+          baseline_version="$(printf '%s' "$BASELINE_TAG" | cut -c 2-)"
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-seed-state "--smoke-expect-version=$baseline_version"
 
           cp "$candidate" "$installed"
           chmod +x "$installed"
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-verify-state
+          candidate_version="$(printf '%s' "$CANDIDATE_TAG" | cut -c 2-)"
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-verify-state "--smoke-expect-version=$candidate_version"
 
           cp "$baseline" "$installed"
           chmod +x "$installed"
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-verify-state --smoke-clear-state
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$installed" --smoke-test --smoke-verify-state --smoke-clear-state "--smoke-expect-version=$baseline_version"
 
           rm -f "$installed"
           test ! -e "$installed"
