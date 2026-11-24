@@ -11,5 +11,8 @@
     "build": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5"
   }
 }
