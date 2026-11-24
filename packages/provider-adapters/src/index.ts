@@ -1,5 +1,5 @@
 import { execa, type ResultPromise } from "execa";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, startup } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentAdapter, AgentEvent, AgentResult, AgentRunRequest } from "@battlebuket/agent-contracts";
 
 type ActiveRun = { abort: AbortController; process?: ResultPromise };
@@ -73,8 +73,18 @@ export class CodexCliAdapter implements AgentAdapter {
 export class ClaudeAgentSdkAdapter implements AgentAdapter {
   readonly provider = "claude" as const;
   async isAvailable(): Promise<boolean> {
-    const result = await execa("claude", ["--version"], { reject: false });
-    return result.exitCode === 0;
+    let warm: Awaited<ReturnType<typeof startup>> | undefined;
+    try {
+      warm = await startup({
+        options: { cwd: process.cwd(), settingSources: [], permissionMode: "plan", maxTurns: 1 },
+        initializeTimeoutMs: 8000
+      });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      warm?.close();
+    }
   }
   async run(request: AgentRunRequest, send: (event: AgentEvent) => void): Promise<AgentResult> {
     if (active.has(request.task.id)) throw new Error("Task is already running");
