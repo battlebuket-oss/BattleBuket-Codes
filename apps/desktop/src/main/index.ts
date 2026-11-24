@@ -73,7 +73,7 @@ async function verifyWorkspaceDiff(workspacePath: string, signal?: AbortSignal):
       cwd: workspacePath, timeout: 15000, windowsHide: true, maxBuffer: 256 * 1024, ...(signal ? { signal } : {})
     });
     await execFile("git", ["diff", "--cached", "--check"], {
-      cwd: workspacePath, timeout: 15000, windowsHide: true, maxBuffer: 256 * 1024
+      cwd: workspacePath, timeout: 15000, windowsHide: true, maxBuffer: 256 * 1024, ...(signal ? { signal } : {})
     });
     return [{ name: "Git diff whitespace check", passed: true, output: "No whitespace errors in unstaged or staged changes." }];
   } catch (error) {

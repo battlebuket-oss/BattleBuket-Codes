@@ -26,24 +26,25 @@ export class EngineeringDirector {
   get state(): DirectorState { return this.current; }
   async execute(task: AgentTask): Promise<AgentResult> {
     if (["planning", "running", "reviewing"].includes(this.current.status)) throw new Error("Director is already handling a task");
-    this.cancellation = new AbortController();
+    const cancellation = new AbortController();
+    this.cancellation = cancellation;
     this.current = { status: "planning", task };
     const cancelledResult = (): AgentResult => ({ taskId: task.id, status: "cancelled", summary: "Task was cancelled.", changedFiles: [], verification: [] });
     try {
       const decision = await this.hooks.decide(task);
-      if (this.cancellation.signal.aborted) { this.current = { status: "cancelled", task }; return cancelledResult(); }
+      if (cancellation.signal.aborted) { this.current = { status: "cancelled", task }; return cancelledResult(); }
       if (decision.requiresHumanApproval) {
         const approved = await this.hooks.approve?.(task, decision);
-        if (this.cancellation.signal.aborted || !approved) { this.current = { status: "cancelled", task }; return cancelledResult(); }
+        if (cancellation.signal.aborted || !approved) { this.current = { status: "cancelled", task }; return cancelledResult(); }
       }
       const adapter = this.adapters.find(item => item.provider === decision.primary);
       if (!adapter || !(await adapter.isAvailable())) throw new Error("Selected agent provider is unavailable");
-      if (this.cancellation.signal.aborted) { this.current = { status: "cancelled", task }; return cancelledResult(); }
+      if (cancellation.signal.aborted) { this.current = { status: "cancelled", task }; return cancelledResult(); }
       this.activeAdapter = adapter;
       this.activeTaskId = task.id;
       this.current = { status: "running", task, provider: adapter.provider };
-      const result = await adapter.run({ task, provider: adapter.provider, workingDirectory: task.workspacePath, approvalMode: task.risk === "medium" ? "workspace-write" : "read-only", abortSignal: this.cancellation.signal }, event => this.hooks.emit(event));
-      if (this.cancellation.signal.aborted || result.status === "cancelled") {
+      const result = await adapter.run({ task, provider: adapter.provider, workingDirectory: task.workspacePath, approvalMode: task.risk === "medium" ? "workspace-write" : "read-only", abortSignal: cancellation.signal }, event => this.hooks.emit(event));
+      if (cancellation.signal.aborted || result.status === "cancelled") {
         this.current = { status: "cancelled", task };
         return { ...result, status: "cancelled", summary: result.summary || "Task was cancelled." };
       }
@@ -68,10 +69,10 @@ export class EngineeringDirector {
           this.activeAdapter = adapter;
         }
       }
-      const checks = await this.hooks.verify(task, result, this.cancellation.signal);
+      const checks = await this.hooks.verify(task, result, cancellation.signal);
       const allChecks = [...reviewChecks, ...checks];
       const reviewed = { ...result, verification: [...result.verification, ...allChecks] };
-      if (this.cancellation.signal.aborted || this.current.status === "cancelled") {
+      if (cancellation.signal.aborted || this.current.status === "cancelled") {
         return { ...reviewed, status: "cancelled", summary: "Task was cancelled during review or verification." };
       }
       if (allChecks.some(check => !check.passed)) {
