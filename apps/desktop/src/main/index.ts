@@ -92,7 +92,7 @@ function createWindow(): void {
     }
   });
   mainWindow = window;
-  window.on("closed", () => { if (mainWindow === window) mainWindow = null; void terminalSessions.closeAll(); activeTerminalSessionId = null; });
+  window.on("closed", () => { if (mainWindow === window) mainWindow = null; activeTerminalSessionId = null; });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
   if (process.argv.includes("--smoke-test")) {
