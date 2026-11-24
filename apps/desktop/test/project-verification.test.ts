@@ -74,7 +74,7 @@ test("discovers Go, Rust, Python and .NET project verification commands", async 
     await writeFile(join(rustRoot, "Cargo.toml"), "[package]\nname='example'\nversion='0.1.0'\n");
     await writeFile(join(pythonRoot, "pyproject.toml"), "[tool.pytest.ini_options]\n[tool.ruff]\n[tool.mypy]\n[build-system]\nrequires=[]\nbuild-backend='setuptools.build_meta'\n");
     await mkdir(join(pythonRoot, "tests"));
-    await writeFile(join(pythonRoot, "requirements.txt"), "requests==2.32.0\\n");
+    await writeFile(join(pythonRoot, "requirements.txt"), "requests==2.32.0\n");
     await writeFile(join(dotnetRoot, "App.csproj"), "<Project />");
 
     assert.deepEqual(await discoverQualityScripts(goRoot), { manager: "go", scripts: ["test", "lint", "build", "security"] });
