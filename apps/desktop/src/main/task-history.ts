@@ -24,18 +24,20 @@ const MAX_ITEMS = 50;
 function isHistoryEvent(value: unknown): value is TaskHistoryEvent {
   if (!value || typeof value !== "object") return false;
   const item = value as Record<string, unknown>;
-  return typeof item.taskId === "string" &&
+  return typeof item.taskId === "string" && item.taskId.length > 0 && item.taskId.length <= 128 &&
     (item.provider === "codex" || item.provider === "claude") &&
     (item.risk === "low" || item.risk === "medium" || item.risk === "high") &&
     (item.status === "running" || item.status === "succeeded" || item.status === "failed" || item.status === "cancelled") &&
-    typeof item.at === "string";
+    typeof item.at === "string" && Number.isFinite(Date.parse(item.at)) &&
+    (item.changedFileCount === undefined || (typeof item.changedFileCount === "number" && Number.isSafeInteger(item.changedFileCount) && item.changedFileCount >= 0)) &&
+    (item.verificationPassed === undefined || typeof item.verificationPassed === "boolean");
 }
 
 export async function appendTaskHistory(userDataPath: string, event: TaskHistoryEvent): Promise<void> {
   if (!isHistoryEvent(event)) throw new Error("Invalid task history event");
+  await fs.mkdir(userDataPath, { recursive: true, mode: 0o700 });
   const directory = await fs.realpath(userDataPath);
   const file = join(directory, FILE_NAME);
-  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
   try {
     const stat = await fs.stat(file);
     if (stat.size > MAX_FILE_BYTES) await fs.truncate(file, 0);
