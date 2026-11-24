@@ -101,3 +101,14 @@ h1 em{color:#9b8aff;font-style:normal}
 .editor-toolbar button:disabled{opacity:.45;cursor:not-allowed}
 .code-editor{display:block;width:100%;height:calc(100% - 38px);resize:none;border:0;outline:0;background:#0b1018;color:#c8d3e5;padding:20px;font:12px/1.7 'DM Mono',monospace;tab-size:2;white-space:pre;overflow:auto}
 @media(max-height:780px){article{padding-top:28px}h1{font-size:38px}.cards{margin-top:16px}.director h4{padding-top:15px}.note{margin-top:16px}}
+
+.history-list{display:flex;flex-direction:column;gap:7px}
+.history-item{display:flex;flex-direction:column;gap:3px;border-bottom:1px solid #202a3a;padding:7px 0}
+.history-item b{font-size:9px;color:#bac5d7;font-weight:600}
+.history-item small{font:8px 'DM Mono';color:#73819a;line-height:1.5}
+.history-status{font:8px 'DM Mono';text-transform:uppercase;letter-spacing:.7px;color:#8793a9}
+.history-status.succeeded{color:#69d5a5}
+.history-status.failed,.history-status.interrupted{color:#e39b93}
+.history-status.cancelled{color:#d6ad6e}
+.history-status.running{color:#a99aff}
+.history-empty{font-size:9px;color:#78869c;line-height:1.6}
