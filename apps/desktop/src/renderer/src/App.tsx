@@ -7,6 +7,7 @@ import { Activity, Bot, Braces, CheckCircle2, ChevronDown, Command, FileCode2, F
 
 type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
 type WorkspaceContentMatch = { path: string; lineNumber: number; preview: string };
+type RecentWorkspace = { path: string; lastOpenedAt: string };
 type EditorTab = { path: string; content: string; mtimeMs: number; draft: string };
 type EditorDiagnostic = { message: string; line: number; column: number; severity: number };
 type EditorJump = { path: string; lineNumber: number };
@@ -49,6 +50,8 @@ declare global {
     battleBuket?: {
       getVersion: () => Promise<string>;
       selectWorkspace: () => Promise<string | null>;
+      getRecentWorkspaces: () => Promise<RecentWorkspace[]>;
+      openRecentWorkspace: (path: string) => Promise<string>;
       listWorkspace: (path?: string) => Promise<WorkspaceEntry[]>;
       searchWorkspaceFiles: (query: string) => Promise<WorkspaceEntry[]>;
       searchWorkspaceContent: (query: string) => Promise<WorkspaceContentMatch[]>;
@@ -88,6 +91,7 @@ function editorLanguageForPath(path: string): string {
 export default function App() {
   const [version, setVersion] = useState("dev");
   const [workspace, setWorkspace] = useState<string | null>(null);
+  const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspace[]>([]);
   const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
   const [currentDirectory, setCurrentDirectory] = useState("");
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string; mtimeMs: number } | null>(null);
@@ -142,6 +146,7 @@ export default function App() {
       if (selected) {
         setWorkspace(selected); setCurrentDirectory(""); setSelectedFile(null); setEditorTabs([]); setDraft(""); setEditorDiagnostics([]); setTaskResult(null); setDataConsent(false);
         await refreshFiles("");
+        await refreshRecentWorkspaces();
       }
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open project folder"); }
   };
@@ -150,6 +155,35 @@ export default function App() {
       const items = await window.battleBuket?.getTaskHistory();
       setTaskHistory(items ?? []);
     } catch { /* History is optional; a failed read must not block editing. */ }
+  };
+
+  const refreshRecentWorkspaces = async () => {
+    try {
+      const items = await window.battleBuket?.getRecentWorkspaces();
+      setRecentWorkspaces(items ?? []);
+    } catch { /* Recent projects are optional; opening a new folder must still work. */ }
+  };
+
+  const openRecentProject = async (path: string) => {
+    try {
+      if (editorTabs.some(tab => tab.draft !== tab.content) &&
+          !window.confirm("Discard unsaved changes before switching projects?")) return;
+      const selected = await window.battleBuket?.openRecentWorkspace(path);
+      if (!selected) return;
+      setWorkspace(selected);
+      setCurrentDirectory("");
+      setSelectedFile(null);
+      setEditorTabs([]);
+      setDraft("");
+      setEditorDiagnostics([]);
+      setTaskResult(null);
+      setDataConsent(false);
+      await refreshFiles("");
+      await refreshRecentWorkspaces();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not reopen recent project");
+      await refreshRecentWorkspaces();
+    }
   };
   const openFile = async (path: string) => {
     try {
@@ -326,6 +360,7 @@ export default function App() {
     window.battleBuket?.getVersion().then(setVersion).catch(() => {});
     window.battleBuket?.getAgentAvailability().then(setAvailability).catch(() => {});
     void refreshHistory();
+    void refreshRecentWorkspaces();
     const unsubscribe = window.battleBuket?.onAgentEvent(event => {
       setAgentEvents(current => [...current, event].slice(-80));
     });
@@ -557,6 +592,13 @@ export default function App() {
           {entries.length === 0 && !loading && <small>No visible files in this folder.</small>}
         </div>}
         {!workspace && <div className="empty"><FileCode2 size={26}/><b>Your workspace starts here</b><p>Open a project folder to browse files and preview source code.</p><button className="open" onClick={openWorkspace} disabled={running}><Plus size={14}/> Open project</button></div>}
+        {!workspace && recentWorkspaces.length > 0 && <div className="recent-projects">
+          <label>RECENT PROJECTS</label>
+          {recentWorkspaces.map(project => <button key={project.path} title={project.path} onClick={() => void openRecentProject(project.path)}>
+            <Folder size={13}/><span>{project.path.split(/[\\/]/).filter(Boolean).pop() || project.path}</span>
+            <small>{new Date(project.lastOpenedAt).toLocaleDateString()}</small>
+          </button>)}
+        </div>}
         {error && <p className="workspace-error" role="alert">{error}</p>}
         <footer>● Local workspace · {workspace ? "Connected" : "Ready"}</footer>
       </aside>
