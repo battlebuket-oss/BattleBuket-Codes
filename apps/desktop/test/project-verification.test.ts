@@ -46,6 +46,29 @@ test("enables high-severity dependency auditing when an npm lockfile exists", as
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("enables high-severity audits for pnpm, Yarn Classic, Yarn Berry and Bun lockfiles", async () => {
+  const cases = [
+    { manager: "pnpm", lock: "pnpm-lock.yaml", declared: "pnpm@10.0.0", expected: { manager: "pnpm", scripts: ["audit"] } },
+    { manager: "yarn", lock: "yarn.lock", declared: "yarn@1.22.22", expected: { manager: "yarn", scripts: ["audit"], yarnMajor: 1 } },
+    { manager: "yarn", lock: "yarn.lock", declared: "yarn@4.5.0", expected: { manager: "yarn", scripts: ["audit"], yarnMajor: 4 } },
+    { manager: "bun", lock: "bun.lock", declared: "bun@1.2.0", expected: { manager: "bun", scripts: ["audit"] } }
+  ] as const;
+  for (const item of cases) {
+    const root = await mkdtemp(join(tmpdir(), "bb-quality-audit-"));
+    try {
+      await writeFile(join(root, "package.json"), JSON.stringify({ packageManager: item.declared, scripts: {} }));
+      await writeFile(join(root, item.lock), "");
+      assert.deepEqual(await discoverQualityScripts(root), item.expected);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }
+});
+
+test("maps Yarn Classic, Yarn Berry and Bun audits to their supported high-severity commands", () => {
+  assert.equal(qualityCommand("yarn", "audit", 1).display, "yarn audit --level high");
+  assert.equal(qualityCommand("yarn", "audit", 4).display, "yarn npm audit --all --recursive --severity high");
+  assert.equal(qualityCommand("bun", "audit").display, "bun audit --audit-level=high");
+});
+
 
 test("aborts a running project script when the task is cancelled", async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-quality-abort-"));

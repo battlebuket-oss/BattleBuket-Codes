@@ -18,7 +18,7 @@ export type QualityCommand = {
   shellCommand?: boolean;
 };
 
-export function qualityCommand(manager: PackageManager, script: string): QualityCommand {
+export function qualityCommand(manager: PackageManager, script: string, yarnMajor = 2): QualityCommand {
   if (manager === "go") {
     const commands: Record<string, string[]> = {
       test: ["test", "./..."],
@@ -69,7 +69,10 @@ export function qualityCommand(manager: PackageManager, script: string): Quality
   }
 
   const args = script === "audit"
-    ? manager === "pnpm" ? ["audit", "--audit-level", "high"] : ["audit", "--audit-level=high"]
+    ? manager === "pnpm" ? ["audit", "--audit-level", "high"]
+      : manager === "bun" ? ["audit", "--audit-level=high"]
+      : manager === "yarn" ? yarnMajor < 2 ? ["audit", "--level", "high"] : ["npm", "audit", "--all", "--recursive", "--severity", "high"]
+      : ["audit", "--audit-level=high"]
     : ["run", script];
   return {
     executable: manager,
@@ -86,6 +89,11 @@ function packageManagerFrom(manifest: ProjectManifest, files: Set<string>): Pack
   if (files.has("yarn.lock")) return "yarn";
   if (files.has("bun.lock") || files.has("bun.lockb")) return "bun";
   return "npm";
+}
+
+function yarnMajorFrom(manifest: ProjectManifest): number {
+  const match = manifest.packageManager?.match(/^yarn@(\d+)/i);
+  return match ? Number(match[1]) : 1;
 }
 
 async function isRegularFile(path: string): Promise<boolean> {
@@ -142,7 +150,7 @@ async function discoverAlternativeProject(root: string, entries: string[]): Prom
   return null;
 }
 
-export async function discoverQualityScripts(workspacePath: string): Promise<{ manager: PackageManager; scripts: string[] } | null> {
+export async function discoverQualityScripts(workspacePath: string): Promise<{ manager: PackageManager; scripts: string[]; yarnMajor?: number } | null> {
   const root = await fs.realpath(workspacePath);
   const entries = await fs.readdir(root);
   const manifestPath = resolve(root, "package.json");
@@ -154,14 +162,19 @@ export async function discoverQualityScripts(workspacePath: string): Promise<{ m
     let manifest: ProjectManifest;
     try { manifest = JSON.parse(raw) as ProjectManifest; }
     catch { throw new Error("Workspace package.json contains invalid JSON."); }
-    const manager = packageManagerFrom(manifest, new Set(entries));
+    const entrySet = new Set(entries);
+    const manager = packageManagerFrom(manifest, entrySet);
+    const yarnMajor = manager === "yarn" ? yarnMajorFrom(manifest) : undefined;
     const scripts: string[] = QUALITY_SCRIPTS.filter(name =>
       typeof manifest.scripts?.[name] === "string" && (manifest.scripts[name] as string).trim().length > 0
     );
-    const hasSupportedAuditLock = (manager === "pnpm" && entries.includes("pnpm-lock.yaml")) ||
-      (manager === "npm" && entries.includes("package-lock.json"));
+    const hasSupportedAuditLock =
+      (manager === "pnpm" && entrySet.has("pnpm-lock.yaml")) ||
+      (manager === "npm" && entrySet.has("package-lock.json")) ||
+      (manager === "yarn" && entrySet.has("yarn.lock")) ||
+      (manager === "bun" && (entrySet.has("bun.lock") || entrySet.has("bun.lockb")));
     if (hasSupportedAuditLock) scripts.push("audit");
-    if (scripts.length > 0) return { manager, scripts };
+    if (scripts.length > 0) return { manager, scripts, ...(yarnMajor === undefined ? {} : { yarnMajor }) };
   }
 
   return discoverAlternativeProject(root, entries);
@@ -187,9 +200,9 @@ export function dotnetOutputHasVulnerabilities(output: string): boolean {
   return /has the following vulnerable packages|vulnerable package(?:s)? found|vulnerabilities found/i.test(output);
 }
 
-async function runScript(manager: PackageManager, script: string, cwd: string, signal?: AbortSignal): Promise<VerificationResult> {
+async function runScript(manager: PackageManager, script: string, cwd: string, signal?: AbortSignal, yarnMajor?: number): Promise<VerificationResult> {
   const started = Date.now();
-  const spec = qualityCommand(manager, script);
+  const spec = qualityCommand(manager, script, yarnMajor);
   const label = script === "audit" || script === "security" ? "Project dependency/security audit" : "Project " + script;
   const executable = process.platform === "win32" && spec.shellCommand ? "cmd.exe" : spec.executable;
   const args = process.platform === "win32" && spec.shellCommand
@@ -255,7 +268,7 @@ export async function runProjectQualityChecks(
   }
   for (const script of project.scripts) {
     if (signal?.aborted) break;
-    results.push(await runScript(project.manager, script, root, signal));
+    results.push(await runScript(project.manager, script, root, signal, project.yarnMajor));
   }
   if (signal?.aborted && results.length === 0) {
     results.push({ name: "Project quality checks", passed: false, output: "Cancelled by the user." });

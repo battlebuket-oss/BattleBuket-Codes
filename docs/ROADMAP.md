@@ -54,7 +54,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add a basic Git diff whitespace gate for Git workspaces.
 - [x] Add CI dependency vulnerability auditing for high-severity findings.
 - [x] Add CodeQL static analysis and full-history secret scanning.
-- [x] Add consent-gated, fail-closed project quality runners for Node.js, Go, Rust, Python and .NET, including ecosystem dependency-security checks, bounded timeouts/output and approval of the exact commands. These commands still run with the user account permissions and are not a sandbox.
+- [x] Add consent-gated, fail-closed project quality runners for Node.js, Go, Rust, Python and .NET, including npm, pnpm, Yarn Classic/Berry and Bun audits alongside Go, Rust, Python and .NET security checks, bounded timeouts/output and approval of the exact commands. These commands still run with the user account permissions and are not a sandbox.
 - [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
 - [x] Add opt-in live Codex/Claude read-only and single-file workspace-write boundary smoke tests, including an outside-workspace sentinel check, plus a manual self-hosted runner workflow. The tests require real sign-in and have not yet been executed on authenticated runners.
