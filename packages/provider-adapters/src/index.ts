@@ -10,6 +10,13 @@ function emit(request: AgentRunRequest, send: (event: AgentEvent) => void, type:
   send({ taskId: request.task.id, timestamp: now(), type, message, ...(data ? { data } : {}) });
 }
 
+export function claudeAllowedTools(mode: AgentRunRequest["approvalMode"]): string[] {
+  if (mode === "full-access") throw new Error("Full-access agent execution is disabled");
+  return mode === "read-only"
+    ? ["Read", "Glob", "Grep"]
+    : ["Read", "Edit", "Write", "Glob", "Grep"];
+}
+
 async function changedFiles(cwd: string): Promise<string[]> {
   const result = await execa("git", ["status", "--porcelain", "--untracked-files=all"], { cwd, reject: false });
   if (result.exitCode !== 0) return [];
@@ -35,33 +42,60 @@ export class CodexCliAdapter implements AgentAdapter {
     const run: ActiveRun = { abort: controller };
     active.set(request.task.id, run);
     emit(request, send, "progress", "Starting Codex CLI in the selected workspace");
-    let output = "";
+    let pendingLine = "";
+    let totalOutputBytes = 0;
+    let assistantSummary = "";
+    const processLine = (line: string) => {
+      if (!line.trim()) return;
+      try {
+        const event = JSON.parse(line) as {
+          type?: string;
+          msg?: string;
+          item?: { type?: string; text?: string; command?: string };
+          error?: { message?: string };
+        };
+        const item = event.item;
+        if (item?.type === "agent_message" && typeof item.text === "string") {
+          assistantSummary = item.text;
+          emit(request, send, "message", item.text.slice(0, 4000));
+        } else if (item?.type === "command_execution" && event.type === "item.started") {
+          emit(request, send, "command", "Running a project command inside the selected workspace");
+        } else if (event.type === "error") {
+          emit(request, send, "error", event.error?.message ?? "Codex reported an execution error");
+        } else if (event.type === "turn.started") {
+          emit(request, send, "progress", "Codex started the task");
+        } else if (event.type === "turn.completed") {
+          emit(request, send, "progress", "Codex completed its turn");
+        }
+      } catch {
+        emit(request, send, "warning", "Received an unparseable Codex progress event");
+      }
+    };
     try {
       const child = execa("codex", codexArguments(request), { cwd: request.workingDirectory, cancelSignal: controller.signal, reject: false });
       run.process = child;
       child.stdout?.on("data", chunk => {
-        output += String(chunk);
-        const lines = output.split(/\r?\n/);
-        output = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const event = JSON.parse(line) as Record<string, unknown>;
-            const message = typeof event.msg === "string" ? event.msg : typeof event.type === "string" ? event.type : "Codex event";
-            emit(request, send, "progress", message, { providerEvent: event });
-          } catch { emit(request, send, "message", line); }
+        const text = String(chunk);
+        totalOutputBytes += Buffer.byteLength(text, "utf8");
+        if (totalOutputBytes > 2 * 1024 * 1024) {
+          if (totalOutputBytes - Buffer.byteLength(text, "utf8") <= 2 * 1024 * 1024) {
+            emit(request, send, "warning", "Codex progress output exceeded the 2 MB display limit; later events are suppressed");
+          }
+          return;
         }
+        pendingLine += text;
+        const lines = pendingLine.split(/\r?\n/);
+        pendingLine = lines.pop() ?? "";
+        for (const line of lines) processLine(line);
       });
       const result = await child;
-      if (output.trim()) {
-        try { emit(request, send, "message", output.trim(), { provider: "codex" }); }
-        catch { /* stdout tail is informational */ }
-      }
+      if (pendingLine.trim()) processLine(pendingLine);
+
       if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled", changedFiles: [], verification: [] };
       if (result.exitCode !== 0) return { taskId: request.task.id, status: "failed", summary: (result.stderr || result.stdout || "Codex exited with code " + result.exitCode).slice(-4000), changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       const files = await changedFiles(request.workingDirectory);
       emit(request, send, "completed", "Codex finished; review the resulting workspace diff");
-      return { taskId: request.task.id, status: "succeeded", summary: (result.stdout || "Codex completed successfully").slice(-4000), changedFiles: files, verification: [] };
+      return { taskId: request.task.id, status: "succeeded", summary: (assistantSummary || "Codex completed successfully").slice(-4000), changedFiles: files, verification: [] };
     } catch (error) {
       if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled", changedFiles: [], verification: [] };
       throw error;
@@ -100,9 +134,7 @@ export class ClaudeAgentSdkAdapter implements AgentAdapter {
           cwd: request.workingDirectory,
           abortController: controller,
           permissionMode: request.approvalMode === "read-only" ? "plan" : "acceptEdits",
-          tools: request.approvalMode === "read-only"
-            ? ["Read", "Glob", "Grep"]
-            : ["Read", "Edit", "Write", "Glob", "Grep"],
+          tools: claudeAllowedTools(request.approvalMode),
           settingSources: [],
           strictMcpConfig: true,
           permissionPrompts: "none",
@@ -118,8 +150,18 @@ export class ClaudeAgentSdkAdapter implements AgentAdapter {
           if (resultMessage.subtype && resultMessage.subtype !== "success") {
             return { taskId: request.task.id, status: "failed", summary: summary || "Claude returned " + resultMessage.subtype, changedFiles: await changedFiles(request.workingDirectory), verification: [] };
           }
+        } else if (message.type === "assistant") {
+          const assistant = message as typeof message & { message?: { content?: Array<{ type?: string; text?: string }> } };
+          for (const block of assistant.message?.content ?? []) {
+            if (block.type === "text" && typeof block.text === "string") {
+              summary = block.text;
+              emit(request, send, "message", block.text.slice(0, 4000));
+            }
+          }
+        } else if (message.type === "system") {
+          emit(request, send, "progress", "Claude updated the session status");
         } else {
-          emit(request, send, "progress", "Claude SDK event: " + message.type, { providerEvent: message });
+          emit(request, send, "progress", "Claude is processing the task");
         }
       }
       if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled", changedFiles: [], verification: [] };
