@@ -141,3 +141,22 @@ h1 em{color:#9b8aff;font-style:normal}
 
 
 .terminal-panel-hidden{display:none}
+
+
+.rail-action{display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:6px;background:transparent;color:#78869d;cursor:pointer}
+.rail-action:hover{background:#1a2232;color:#c7d2e6}
+.palette-overlay{position:fixed;inset:0;z-index:80;display:flex;justify-content:center;align-items:flex-start;padding:12vh 18px 24px;background:#02050bcf;backdrop-filter:blur(5px)}
+.palette-dialog{width:min(680px,100%);overflow:hidden;border:1px solid #414d66;border-radius:10px;background:#0e1420;box-shadow:0 22px 90px #000b;color:#dce5f5}
+.palette-input-row{height:54px;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid #293449;color:#a99aff}
+.palette-input-row input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#eff3fb;font:13px 'DM Mono',monospace}
+.palette-input-row input::placeholder{color:#66738a}
+.palette-input-row kbd{padding:3px 6px;border:1px solid #344056;border-radius:4px;color:#8e9bb2;font:9px 'DM Mono'}
+.palette-caption{padding:10px 14px 6px;color:#75839c;font:8px 'DM Mono';letter-spacing:1.2px}
+.palette-results{max-height:48vh;min-height:80px;overflow:auto;padding:3px 7px 8px}
+.palette-results button{width:100%;min-height:38px;display:flex;align-items:center;gap:10px;padding:7px 9px;border:0;border-radius:5px;background:transparent;color:#bfcbe0;text-align:left;font:10px 'DM Mono';cursor:pointer}
+.palette-results button.selected,.palette-results button:hover{background:#252d45;color:#f1f4fb}
+.palette-results button svg{flex:none;color:#9b8aff}
+.palette-results button span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette-results button small{max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#76849c;font:8px 'DM Mono'}
+.palette-results p{margin:0;padding:24px 12px;text-align:center;color:#7c8aa2;font:10px 'DM Mono'}
+.palette-footer{height:29px;display:flex;align-items:center;padding:0 14px;border-top:1px solid #293449;color:#77849a;font:8px 'DM Mono';letter-spacing:.3px}
