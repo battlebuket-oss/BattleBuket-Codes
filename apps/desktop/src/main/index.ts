@@ -21,13 +21,20 @@ let mainWindow: BrowserWindow | null = null;
 let activeDirector: EngineeringDirector | null = null;
 let taskStartPending = false;
 let activeTerminalSessionId: string | null = null;
+let activeTaskExecution: Promise<AgentResult> | null = null;
 let shutdownInProgress = false;
 let shutdownComplete = false;
 
-let terminalCleanup: Promise<void> = Promise.resolve();
-function queueTerminalCleanup(): Promise<void> {
-  terminalCleanup = terminalCleanup.catch(() => {}).then(() => terminalSessions.closeAll());
-  return terminalCleanup;
+let runtimeCleanup: Promise<void> = Promise.resolve();
+function queueRuntimeCleanup(): Promise<void> {
+  runtimeCleanup = runtimeCleanup.catch(() => {}).then(async () => {
+    while (taskStartPending) await new Promise(resolve => setTimeout(resolve, 10));
+    if (activeDirector) await activeDirector.cancel().catch(() => {});
+    const runningTask = activeTaskExecution;
+    if (runningTask) await runningTask.catch(() => {});
+    await terminalSessions.closeAll();
+  });
+  return runtimeCleanup;
 }
 
 // Only the trusted top-level renderer may invoke privileged main-process IPC.
@@ -98,7 +105,7 @@ function createWindow(): void {
     }
   });
   mainWindow = window;
-  window.on("closed", () => { if (mainWindow === window) mainWindow = null; activeTerminalSessionId = null; void queueTerminalCleanup(); });
+  window.on("closed", () => { if (mainWindow === window) mainWindow = null; activeTerminalSessionId = null; void queueRuntimeCleanup(); });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
   if (process.argv.includes("--smoke-test")) {
@@ -143,7 +150,7 @@ handleTrustedIpc("workspace:write", async (_event, payload: { path: string; cont
 handleTrustedIpc("tasks:history", async () => readTaskHistory(app.getPath("userData")));
 
 handleTrustedIpc("terminal:start", async () => {
-  await terminalCleanup;
+  await runtimeCleanup;
   if (!activeWorkspace) throw new Error("Open a project folder before starting the terminal.");
   if (activeDirector || taskStartPending) throw new Error("Close or finish the engineering task before starting the terminal.");
   if (terminalSessions.hasActiveSession()) throw new Error("A terminal session is already active.");
@@ -193,6 +200,7 @@ handleTrustedIpc("agents:availability", async () => {
 });
 
 handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provider: AgentProvider; risk: RiskLevel }) => {
+  await runtimeCleanup;
   if (!payload || typeof payload.prompt !== "string" || payload.prompt.trim().length < 3 || payload.prompt.length > 12000) {
     throw new Error("Enter a task prompt between 3 and 12,000 characters.");
   }
@@ -327,6 +335,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
   });
   const userDataPath = app.getPath("userData");
   const startedAt = new Date().toISOString();
+  let taskExecution: Promise<AgentResult> | null = null;
   taskStartPending = true;
   try {
     await appendTaskHistory(userDataPath, {
@@ -334,7 +343,9 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
     });
     activeDirector = director;
     taskStartPending = false;
-    const result = await director.execute(task);
+    taskExecution = director.execute(task);
+    activeTaskExecution = taskExecution;
+    const result = await taskExecution;
     try {
       await appendTaskHistory(userDataPath, {
         taskId: task.id,
@@ -367,6 +378,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
   } finally {
     taskStartPending = false;
     if (activeDirector === director) activeDirector = null;
+    if (activeTaskExecution === taskExecution) activeTaskExecution = null;
   }
 });
 
@@ -385,7 +397,7 @@ app.on("before-quit", event => {
   event.preventDefault();
   if (shutdownInProgress) return;
   shutdownInProgress = true;
-  void queueTerminalCleanup().finally(() => {
+  void queueRuntimeCleanup().finally(() => {
     shutdownComplete = true;
     app.quit();
   });
