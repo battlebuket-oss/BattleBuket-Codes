@@ -26,6 +26,9 @@
       "electron",
       "esbuild",
       "node-pty"
-    ]
+    ],
+    "overrides": {
+      "monaco-editor": "npm:@codingame/monaco-vscode-editor-api@37.6.0"
+    }
   }
 }

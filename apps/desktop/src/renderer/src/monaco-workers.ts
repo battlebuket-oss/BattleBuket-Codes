@@ -11,21 +11,24 @@ type MonacoWorkerEnvironment = {
   getWorker(moduleId: string, label: string): Worker;
 };
 
-(globalThis as typeof globalThis & { MonacoEnvironment?: MonacoWorkerEnvironment }).MonacoEnvironment = {
-  getWorker(_moduleId, label) {
-    switch (label) {
-      case "json": return new JsonWorker();
-      case "css":
-      case "scss":
-      case "less": return new CssWorker();
-      case "html":
-      case "handlebars":
-      case "razor": return new HtmlWorker();
-      case "javascript":
-      case "typescript": return new TypeScriptWorker();
-      default: return new EditorWorker();
+export function configureMonacoWorkers(): void {
+  (globalThis as typeof globalThis & { MonacoEnvironment?: MonacoWorkerEnvironment }).MonacoEnvironment = {
+    getWorker(_moduleId, label) {
+      switch (label) {
+        case "json": return new JsonWorker();
+        case "css":
+        case "scss":
+        case "less": return new CssWorker();
+        case "html":
+        case "handlebars":
+        case "razor": return new HtmlWorker();
+        case "javascript":
+        case "typescript": return new TypeScriptWorker();
+        default: return new EditorWorker();
+      }
     }
-  }
-};
+  };
+}
 
+configureMonacoWorkers();
 loader.config({ monaco });
