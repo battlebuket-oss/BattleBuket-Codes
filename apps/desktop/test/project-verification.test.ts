@@ -27,7 +27,7 @@ test("does not execute project scripts without explicit user approval", async ()
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("runs approved project scripts through the declared package manager", async () => {
+test("runs approved project scripts through the declared package manager", { skip: process.platform === "win32" }, async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-quality-"));
   try {
     await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "echo quality-ok" } }));
@@ -36,6 +36,20 @@ test("runs approved project scripts through the declared package manager", async
     assert.equal(results[0].passed, true, results[0].output);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+test("fails closed on Windows until the AppContainer command broker is available", { skip: process.platform !== "win32" }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-quality-windows-block-"));
+  const marker = join(root, "must-not-exist.txt");
+  try {
+    await writeFile(join(root, "package.json"), JSON.stringify({
+      scripts: { test: "node -e \\"require('node:fs').writeFileSync('must-not-exist.txt','unsafe')\\"" }
+    }));
+    const results = await runProjectQualityChecks(root, async () => true);
+    assert.equal(results.some(result => result.passed), false);
+    assert.match(results.map(result => result.output ?? "").join("\\n"), /AppContainer/);
+    await assert.rejects(() => import("node:fs/promises").then(module => module.access(marker)));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("enables high-severity dependency auditing when an npm lockfile exists", async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-quality-"));
   try {
@@ -70,7 +84,7 @@ test("maps Yarn Classic, Yarn Berry and Bun audits to their supported high-sever
 });
 
 
-test("aborts a running project script when the task is cancelled", async () => {
+test("aborts a running project script when the task is cancelled", { skip: process.platform === "win32" }, async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-quality-abort-"));
   const controller = new AbortController();
   try {
