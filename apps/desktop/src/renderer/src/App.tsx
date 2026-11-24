@@ -47,6 +47,7 @@ declare global {
       getVersion: () => Promise<string>;
       selectWorkspace: () => Promise<string | null>;
       listWorkspace: (path?: string) => Promise<WorkspaceEntry[]>;
+      searchWorkspaceFiles: (query: string) => Promise<WorkspaceEntry[]>;
       readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;
       saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
       getAgentAvailability: () => Promise<Record<AgentProvider, boolean>>;
@@ -102,6 +103,12 @@ export default function App() {
   const [taskResult, setTaskResult] = useState<AgentResult | null>(null);
   const [taskHistory, setTaskHistory] = useState<TaskHistoryItem[]>([]);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteMode, setPaletteMode] = useState<"files" | "commands">("files");
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [quickOpenResults, setQuickOpenResults] = useState<WorkspaceEntry[]>([]);
+  const [paletteLoading, setPaletteLoading] = useState(false);
+  const [paletteIndex, setPaletteIndex] = useState(0);
   const [terminalSessionId, setTerminalSessionId] = useState<string | null>(null);
   const [terminalStatus, setTerminalStatus] = useState<"closed" | "starting" | "running" | "exited">("closed");
   const terminalSessionRef = useRef<string | null>(null);
@@ -184,6 +191,26 @@ export default function App() {
       setSaveMessage("Saved");
     } catch (e) { setError(e instanceof Error ? e.message : "Save failed"); }
     finally { setSaving(false); }
+  };
+  const openPalette = (mode: "files" | "commands") => {
+    setPaletteMode(mode);
+    setPaletteQuery("");
+    setQuickOpenResults([]);
+    setPaletteIndex(0);
+    setPaletteOpen(true);
+  };
+  const runPaletteCommand = (id: string) => {
+    setPaletteOpen(false);
+    switch (id) {
+      case "open-project": void openWorkspace(); break;
+      case "toggle-terminal":
+        if (terminalOpen) setTerminalOpen(false);
+        else void openTerminal();
+        break;
+      case "save-file": void saveFile(); break;
+      case "refresh-files": void refreshFiles(""); break;
+      case "cancel-task": void cancelTask(); break;
+    }
   };
   const startTask = async () => {
     if (!window.battleBuket || !workspace) { setError("Open a project folder before starting a task."); return; }
@@ -288,6 +315,56 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!paletteOpen || paletteMode !== "files" || !workspace || !paletteQuery.trim()) {
+      setQuickOpenResults([]);
+      setPaletteLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setPaletteLoading(true);
+      void window.battleBuket?.searchWorkspaceFiles(paletteQuery).then(results => {
+        if (!cancelled) setQuickOpenResults(results);
+      }).catch(error => {
+        if (!cancelled) setError(error instanceof Error ? error.message : "Quick Open search failed");
+      }).finally(() => {
+        if (!cancelled) setPaletteLoading(false);
+      });
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [paletteOpen, paletteMode, paletteQuery, workspace]);
+
+  useEffect(() => {
+    setPaletteIndex(0);
+  }, [paletteQuery, paletteMode]);
+
+  useEffect(() => {
+    const onGlobalShortcut = (event: KeyboardEvent) => {
+      const commandKey = event.ctrlKey || event.metaKey;
+      if (!commandKey) return;
+      if (event.shiftKey && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        event.stopPropagation();
+        openPalette("commands");
+      } else if (!event.shiftKey && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        event.stopPropagation();
+        openPalette("files");
+      } else if (!event.shiftKey && event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (terminalOpen) setTerminalOpen(false);
+        else void openTerminal();
+      }
+    };
+    window.addEventListener("keydown", onGlobalShortcut, true);
+    return () => window.removeEventListener("keydown", onGlobalShortcut, true);
+  }, [terminalOpen]);
+
+  useEffect(() => {
     const hasUnsavedChanges = editorTabs.some(tab => tab.draft !== tab.content);
     const warnBeforeClose = (event: BeforeUnloadEvent) => {
       if (!hasUnsavedChanges) return;
@@ -367,6 +444,30 @@ export default function App() {
   const workspaceName = workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : "Director workspace";
   const activeProviderName = provider === "codex" ? "Codex" : "Claude";
 
+  const quickCommands = [
+    { id: "open-project", label: "Open Project", description: "Choose a workspace folder" },
+    { id: "toggle-terminal", label: "Toggle Integrated Terminal", description: "Show or hide the PTY terminal" },
+    { id: "save-file", label: "Save Active File", description: "Write the current editor tab" },
+    { id: "refresh-files", label: "Refresh Project Explorer", description: "Reload the workspace file tree" },
+    { id: "cancel-task", label: "Cancel Active Task", description: "Stop provider execution or verification" }
+  ];
+  const filteredCommands = quickCommands.filter(command =>
+    (command.label + " " + command.description).toLowerCase().includes(paletteQuery.toLowerCase())
+  );
+  const paletteCount = paletteMode === "files" ? quickOpenResults.length : filteredCommands.length;
+  const activatePaletteSelection = () => {
+    if (paletteMode === "commands") {
+      const command = filteredCommands[paletteIndex];
+      if (command) runPaletteCommand(command.id);
+    } else {
+      const file = quickOpenResults[paletteIndex];
+      if (file) {
+        setPaletteOpen(false);
+        void openFile(file.path);
+      }
+    }
+  };
+
   return <main className="shell">
     <header className="top">
       <div className="brand"><span className="mark"><Braces size={17}/></span>BATTLEBUKET <b>CODES</b><small>ENGINEERING WORKSPACE</small></div>
@@ -374,7 +475,7 @@ export default function App() {
       <div className="top-right">v{version}<Settings2 size={16}/></div>
     </header>
     <div className="layout">
-      <nav className="rail"><LayoutDashboard/><FolderOpen/><Search/><GitBranch/><span/><ShieldCheck/></nav>
+      <nav className="rail"><LayoutDashboard/><FolderOpen/><button className="rail-action" title="Quick Open · Ctrl/Cmd+P" onClick={() => openPalette("files")}><Search/></button><button className="rail-action" title="Command Palette · Ctrl/Cmd+Shift+P" onClick={() => openPalette("commands")}><Command/></button><GitBranch/><span/><ShieldCheck/></nav>
       <aside className="projects">
         <label>PROJECT EXPLORER</label>
         <button onClick={openWorkspace} disabled={running}><FolderOpen size={15}/> {workspace ? "Change project" : "Open project"} <Plus size={13}/></button>
@@ -396,6 +497,39 @@ export default function App() {
       </aside>
       <section className="center">
         <div className="tab"><FileCode2 size={14}/> {selectedFile ? selectedFile.path : "Engineering command center"}<button className="terminal-toggle" onClick={() => { if (terminalOpen) setTerminalOpen(false); else void openTerminal(); }}>{terminalOpen ? "Hide terminal" : "Terminal"}</button></div>
+        {paletteOpen && <div className="palette-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setPaletteOpen(false); }}>
+          <section className="palette-dialog" role="dialog" aria-modal="true" aria-label={paletteMode === "files" ? "Quick Open" : "Command Palette"}>
+            <div className="palette-input-row">
+              {paletteMode === "files" ? <Search size={16}/> : <Command size={16}/>}
+              <input
+                autoFocus
+                value={paletteQuery}
+                onChange={event => setPaletteQuery(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === "Escape") { event.preventDefault(); setPaletteOpen(false); }
+                  else if (event.key === "ArrowDown") { event.preventDefault(); setPaletteIndex(index => paletteCount ? (index + 1) % paletteCount : 0); }
+                  else if (event.key === "ArrowUp") { event.preventDefault(); setPaletteIndex(index => paletteCount ? (index - 1 + paletteCount) % paletteCount : 0); }
+                  else if (event.key === "Enter") { event.preventDefault(); activatePaletteSelection(); }
+                }}
+                placeholder={paletteMode === "files" ? "Search files by name…" : "Type a command…"}
+              />
+              <kbd>ESC</kbd>
+            </div>
+            <div className="palette-caption">{paletteMode === "files" ? "QUICK OPEN · PROJECT FILES" : "COMMAND PALETTE · ACTIONS"}</div>
+            <div className="palette-results">
+              {paletteMode === "files"
+                ? quickOpenResults.map((file, index) => <button key={file.path} className={index === paletteIndex ? "selected" : ""} onMouseEnter={() => setPaletteIndex(index)} onClick={() => { setPaletteOpen(false); void openFile(file.path); }}>
+                    <FileCode2 size={13}/><span>{file.path}</span><small>{Math.ceil(file.size / 1024)} KB</small>
+                  </button>)
+                : filteredCommands.map((command, index) => <button key={command.id} className={index === paletteIndex ? "selected" : ""} onMouseEnter={() => setPaletteIndex(index)} onClick={() => runPaletteCommand(command.id)}>
+                    <Command size={13}/><span>{command.label}</span><small>{command.description}</small>
+                  </button>)}
+              {paletteLoading && <p>Searching workspace…</p>}
+              {!paletteLoading && paletteCount === 0 && <p>{paletteMode === "files" ? (paletteQuery.trim() ? "No matching files found." : "Type part of a file name to search the workspace.") : "No commands match your search."}</p>}
+            </div>
+            <div className="palette-footer">{paletteMode === "files" ? "Ctrl/Cmd + P" : "Ctrl/Cmd + Shift + P"} · ↑ ↓ Navigate · Enter Open · Esc Close</div>
+          </section>
+        </div>}
         {editorTabs.length > 0 && <div className="editor-tabs" role="tablist" aria-label="Open files">
           {editorTabs.map(tab => <div key={tab.path} className={"editor-tab" + (selectedFile?.path === tab.path ? " active" : "")}>
             <button className="editor-tab-name" role="tab" aria-selected={selectedFile?.path === tab.path} onClick={() => activateEditorTab(tab)}>
