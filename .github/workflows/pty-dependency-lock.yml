@@ -71,17 +71,17 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.0.0 --activate
       - run: pnpm install --frozen-lockfile
+      - name: Run unit tests with the Node ABI
+        run: pnpm test
+      - name: Typecheck and lint
+        run: |
+          pnpm lint
+          pnpm typecheck
       - name: Rebuild native dependencies for Electron
         run: pnpm --filter @battlebuket/desktop exec electron-builder install-app-deps
       - name: Verify node-pty against the bundled Electron runtime
         env:
           ELECTRON_RUN_AS_NODE: "1"
         run: pnpm --filter @battlebuket/desktop exec electron scripts/pty-smoke.cjs
-      - name: Run unit tests
-        run: pnpm test
-      - name: Typecheck and lint
-        run: |
-          pnpm lint
-          pnpm typecheck
       - name: Build desktop bundle
         run: pnpm --filter @battlebuket/desktop build
