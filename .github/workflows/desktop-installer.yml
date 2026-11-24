@@ -40,6 +40,9 @@ jobs:
       - run: corepack enable
       - run: corepack prepare pnpm@10.0.0 --activate
       - run: pnpm install --frozen-lockfile
+      - name: Verify package identity and prevent implicit publishing
+        run: |
+          node -e "const p=require('./apps/desktop/package.json'); if (p.build.executableName !== 'battlebuket-codes') throw new Error('Unexpected executable name'); for (const key of ['dist:win','dist:mac','dist:linux']) if (!p.scripts[key].includes('--publish never')) throw new Error(key + ' must disable implicit publishing');"
       - name: Build installer
         run: pnpm --filter @battlebuket/desktop ${{ matrix.script }}
       - uses: actions/upload-artifact@v4
