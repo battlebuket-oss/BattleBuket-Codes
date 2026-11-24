@@ -8,7 +8,7 @@ declare global {
       getVersion: () => Promise<string>;
       selectWorkspace: () => Promise<string | null>;
       listWorkspace: (path?: string) => Promise<WorkspaceEntry[]>;
-      readWorkspaceFile: (path: string) => Promise<{ path: string; content: string }>;
+      readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;\n      saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
     };
   }
 }
@@ -17,7 +17,7 @@ export default function App() {
   const [workspace, setWorkspace] = useState<string | null>(null);
   const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
   const [currentDirectory, setCurrentDirectory] = useState("");
-  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
+  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string; mtimeMs: number } | null>(null);\n  const [draft, setDraft] = useState("");\n  const [saving, setSaving] = useState(false);\n  const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -37,10 +37,10 @@ export default function App() {
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open project folder"); }
   };
   const openFile = async (path: string) => {
-    try { setError(""); const file = await window.battleBuket?.readWorkspaceFile(path); if (file) setSelectedFile(file); }
+    try { setError(""); const file = await window.battleBuket?.readWorkspaceFile(path); if (file) { setSelectedFile(file); setDraft(file.content); setSaveMessage(""); } }
     catch (e) { setError(e instanceof Error ? e.message : "Could not read file"); }
   };
-  useEffect(() => { window.battleBuket?.getVersion().then(setVersion).catch(() => {}); }, []);
+  const saveFile = async () => {\n    if (!selectedFile || !window.battleBuket) return;\n    try { setSaving(true); setError(""); const saved = await window.battleBuket.saveWorkspaceFile({ path: selectedFile.path, content: draft, expectedMtimeMs: selectedFile.mtimeMs }); setSelectedFile({ ...selectedFile, content: draft, mtimeMs: saved.mtimeMs }); setSaveMessage("Saved"); }\n    catch (e) { setError(e instanceof Error ? e.message : "Save failed"); } finally { setSaving(false); }\n  };\n  useEffect(() => { window.battleBuket?.getVersion().then(setVersion).catch(() => {}); }, []);
 
   return <main className="shell">
     <header className="top"><div className="brand"><span className="mark"><Braces size={17}/></span>BATTLEBUKET <b>CODES</b><small>ENGINEERING WORKSPACE</small></div><div className="workspace-name"><i/> {workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : "Director workspace"} <ChevronDown size={13}/></div><div className="top-right">v{version}<Settings2 size={16}/></div></header>
@@ -63,7 +63,7 @@ export default function App() {
       </aside>
       <section className="center">
         <div className="tab"><FileCode2 size={14}/> {selectedFile ? selectedFile.path : "Welcome"}</div>
-        {selectedFile ? <div className="editor-preview"><div className="editor-toolbar">{selectedFile.path}<span>Read-only preview · 1 MB limit</span></div><pre>{selectedFile.content}</pre></div> :
+        {selectedFile ? <div className="editor-preview"><div className="editor-toolbar">{selectedFile.path}<span>{saveMessage || (draft !== selectedFile.content ? "Unsaved changes" : "Editable text · 1 MB limit")}</span><button onClick={saveFile} disabled={saving || draft === selectedFile.content}>{saving ? "Saving…" : "Save"}</button></div><textarea className="code-editor" spellCheck={false} value={draft} onChange={event => { setDraft(event.target.value); setSaveMessage(""); }} /></div> :
           <article><label className="eyebrow">AUTONOMOUS ENGINEERING WORKSPACE</label><h1>Build something<br/><em>extraordinary.</em></h1><p className="sub">One command center. A team of AI engineers. Your direction.</p><div className="prompt"><Command size={16}/> Describe what you want to build... <kbd>⌘ ↵</kbd></div><div className="actions"><button onClick={openWorkspace}><FolderOpen/> Open a project</button><button disabled><GitBranch/> Clone repository · coming soon</button><button disabled><Workflow/> Engineering tasks · coming soon</button></div><div className="cards"><div><Bot/><b>Engineering Director</b><p>Planning and virtual specialist roles are implemented as a foundation.</p><small>● Control plane foundation</small></div><div><Activity/><b>Live execution</b><p>Provider runtimes are not connected yet.</p><small className="pending">Provider adapters pending</small></div><div><ShieldCheck/><b>Workspace safety</b><p>File access is limited to the selected folder, with bounded text previews.</p><small>● Scoped filesystem bridge</small></div><div><Sparkles/><b>Unified intelligence</b><p>Codex and Claude integration remains to be completed.</p><small className="pending">Integrations not connected</small></div></div></article>}
         <footer className="status"><span><GitBranch size={12}/> main</span><span><ShieldCheck size={12}/> Restricted workspace access</span><span>BattleBuket Codes · Preview</span></footer>
       </section>
