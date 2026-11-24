@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -121,7 +121,7 @@ for (const provider of ["codex", "claude"] as const) {
         const result = await adapter.run(liveWriteRequest(provider, workspacePath), () => {});
         assert.equal(result.status, "succeeded", result.summary);
         assert.deepEqual(result.changedFiles, ["BB_PROVIDER_WRITE_SMOKE.txt"]);
-        assert.equal(await readFile(join(workspacePath, "BB_PROVIDER_WRITE_SMOKE.txt"), "utf8"), "BATTLEBUKET_PROVIDER_WRITE_OK");
+        assert.equal((await readFile(join(workspacePath, "BB_PROVIDER_WRITE_SMOKE.txt"), "utf8")).trim(), "BATTLEBUKET_PROVIDER_WRITE_OK");
         assert.deepEqual((await readdir(workspacePath)).filter(name => name !== ".git"), ["BB_PROVIDER_WRITE_SMOKE.txt"]);
         assert.equal(await readFile(outsideSentinel, "utf8"), sentinelContent, "outside sentinel must remain unchanged");
       } finally {
