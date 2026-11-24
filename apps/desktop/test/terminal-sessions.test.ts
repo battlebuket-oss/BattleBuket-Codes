@@ -1,4 +1,5 @@
 import test from "node:test";
+import { accessSync, constants as fsConstants } from "node:fs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,7 +10,7 @@ import { resolvePosixShell, validateTerminalInput, validateTerminalSize, Workspa
 test("resolves a verified executable POSIX shell", { skip: process.platform === "win32" }, async () => {
   const shell = await resolvePosixShell();
   assert.equal(shell.startsWith("/"), true);
-  assert.doesNotThrow(() => require("node:fs").accessSync(shell, require("node:fs").constants.X_OK));
+  assert.doesNotThrow(() => accessSync(shell, fsConstants.X_OK));
 });
 
 test("validates PTY input and resize bounds", () => {
