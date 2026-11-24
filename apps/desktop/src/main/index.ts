@@ -117,8 +117,8 @@ function createWindow(): void {
     window.webContents.once("did-fail-load", () => finish(false));
     window.webContents.once("did-finish-load", () => {
       void window.webContents.executeJavaScript(
-        "window.battleBuket && window.battleBuket.getVersion()"
-      ).then((version: unknown) => finish(typeof version === "string" && version.length > 0))
+        "window.battleBuket && window.battleBuket.getVersion().then(version => { let worker; try { const environment = globalThis.MonacoEnvironment; if (!environment || typeof environment.getWorker !== 'function') return false; worker = environment.getWorker('', 'typescript'); return typeof version === 'string' && version.length > 0 && typeof worker.postMessage === 'function' && typeof worker.terminate === 'function'; } finally { worker && worker.terminate(); } })"
+      ).then((healthy: unknown) => finish(healthy === true))
         .catch(() => finish(false));
     });
   }
