@@ -15,11 +15,12 @@ test("Codex read-only mode explicitly disables command approvals and writes", ()
   assert.equal(args.at(-1), "Review source");
 });
 
-test("Codex workspace-write mode uses the CLI's approval review and never full access", () => {
+test("Codex workspace-write mode is sandboxed and routes permission escalations to automatic review", () => {
   const args = codexArguments(request("workspace-write"));
-  assert.ok(args.includes("--approve-for-me"));
+  assert.deepEqual(args.slice(4, 10), ["--sandbox", "workspace-write", "--ask-for-approval", "on-request", "--config", "approvals_reviewer=auto_review"]);
+  assert.ok(!args.includes("--dangerously-bypass-approvals-and-sandbox"));
+  assert.ok(!args.includes("--full-auto"));
   assert.ok(!args.includes("--yolo"));
-  assert.ok(!args.includes("danger-full-access"));
 });
 
 test("Codex adapter rejects full-access execution", () => {
