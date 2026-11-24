@@ -1,59 +1,78 @@
 # BattleBuket Codes
 
-**A unified, desktop-first AI software engineering platform.**
+**A desktop-first AI software engineering workspace from BattleBuket Studios.**
 
-BattleBuket Codes brings a branded developer workspace together with multiple coding engines coordinated by the **Engineering Director**. Users work in one application; engine selection, delegation, execution, review, and verification happen behind that unified experience.
+BattleBuket Codes brings a project workspace, local coding-engine integrations, and an Engineering Director into one desktop application. Codex and Claude run through their supported local runtimes and the user's own accounts; the application does not include model credits or provider credentials.
 
 ## Product principles
 
-- One cohesive, dark, keyboard-first developer interface.
-- The Engineering Director owns task planning, delegation, execution tracking, review, and acceptance.
-- Codex and Claude are internal execution providers, not separate user-facing products.
-- VS Code OSS is the intended editor/workbench foundation; Electron is its desktop runtime, not a second shell to wrap around it.
-- Agents operate with explicit permissions, scoped workspaces, and auditable tool execution.
-- A task is complete only after required checks and acceptance criteria pass—not because an agent says it is done.
+- One cohesive dark developer interface.
+- The Engineering Director supervises provider execution and requires verification before a task is reported as successful.
+- Codex and Claude are execution providers behind the same application experience.
+- Provider access uses explicit permission modes; unrestricted/full-access mode is disabled.
+- Workspace content and terminal commands are untrusted input. Agent changes and command execution require user review.
 
-## Planned architecture
+## Current implementation
 
-| Layer | Responsibility |
-|---|---|
-| Desktop workbench | Branded VS Code OSS-based editor, activity surfaces, terminal, project explorer |
-| Desktop runtime | Electron-based desktop packaging and OS integration |
-| Engineering Director | Task graph, routing, context assembly, delegation, supervision, review, recovery |
-| Codex provider | OpenAI Codex CLI/App Server integration through a provider adapter |
-| Claude provider | Anthropic Claude Agent SDK integration through a provider adapter |
-| Shared services | Workspace isolation, Git/worktrees, permissions, project memory, event log |
-| Quality gate | Build/test/lint/security checks and human approval gates |
+The repository currently includes:
+
+- Electron desktop shell with a context-isolated preload bridge, navigation blocking and trusted-renderer IPC checks.
+- Native project-folder selection, bounded workspace browsing, text-file preview/editing, atomic saves, stale-write protection and path/symlink checks.
+- Codex CLI adapter with version/login preflight, structured event streaming, cancellation, bounded runtime, read-only and workspace-write modes.
+- Claude Agent SDK adapter with sandbox-required startup, restricted built-in tool allowlists, bounded turns and cancellation.
+- Single-task Engineering Director lifecycle, explicit provider selection, risk-based approval and task status events.
+- Local JSONL task history with interrupted-run recovery and size compaction. History stores status metadata and generic provider labels—not prompts, source files or model output.
+- Persistent **pipe-based** workspace shell sessions with bounded input/output and lifecycle controls.
+- Consent-gated project test/lint/typecheck/build script checks and supported npm/pnpm high-severity dependency audits, with bounded output and per-command timeouts.
+- CI workflows for audit, lint, typecheck, unit tests, build, CodeQL, secret scanning and Windows/macOS/Linux desktop bundles.
+- A tag-triggered signed-release workflow with platform signing checks, app launch smoke mode, clean-install/uninstall steps and draft-release assembly.
+- Opt-in live Codex/Claude adapter conformance tests and a manual self-hosted runner workflow.
+
+## Important limitations — not a production release
+
+The full Code - OSS / VS Code workbench is **not embedded**. The current editor is a lightweight textarea preview/editor, not VS Code.
+
+The current terminal is **not a PTY**. It preserves one shell session between commands, but does not provide xterm rendering, terminal resizing, raw mode or full-screen TTY applications.
+
+Project verification asks before executing project-defined scripts, but those scripts run with the user's operating-system permissions. They are not isolated in a dedicated execution sandbox. The current verification gate does not yet provide full SAST, independent diff review, license/provenance analysis or a complete adversarial prompt-injection test suite.
+
+The live provider tests are opt-in and have not been run until an authenticated self-hosted runner is configured and the workflow succeeds. The signed installer workflow has not produced a production release; Windows and Apple signing credentials must be configured, and the actual tag build/install smoke tests must pass. Upgrade/rollback, broader crash recovery, auto-update integrity, and cross-version migration tests also remain.
+
+**Do not describe the current repository as production-ready.** See [the verified implementation status](docs/UPSTREAM-INTEGRATION.md) and [the production roadmap](docs/ROADMAP.md).
 
 ## Local preview setup
 
 Requirements: Node.js 22.12 or newer, pnpm 10.0.0, and Git.
 
-```bash
+```sh
 pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-For Codex tasks, install the Codex CLI, ensure `codex` is on `PATH`, use `codex login`, and update to version 0.171.0 or newer. The app checks the CLI version and login state before enabling it.
+For Codex tasks, install the Codex CLI, sign in using its supported local login flow, and use version 0.171.0 or newer. The app checks the CLI version and login state before enabling the provider.
 
-The Claude Agent SDK runtime is packaged as a platform-specific optional dependency. It still requires valid Anthropic/Claude authentication and a supported local OS sandbox. The app fails closed when it cannot initialize the sandbox; the Claude tool allowlist excludes shell and web tools.
+For Claude tasks, the Claude Agent SDK runtime must be installed and authenticated on the machine, and its sandbox must be available. The app fails closed if required sandbox initialization fails.
 
-The desktop installer workflow produces unsigned preview packages. It does not publish releases or sign/notarize applications.
+## Provider conformance tests
+
+Default CI does not sign in or spend model usage. Live provider tests are opt-in and require authenticated local runtimes. See [Provider testing](docs/PROVIDER-TESTING.md) for local commands and the dedicated self-hosted Actions runner instructions.
+
+## Installer builds and releases
+
+- `.github/workflows/desktop-installer.yml` builds signed installer previews. Windows/macOS signing secrets are required for those platforms.
+- `.github/workflows/release.yml` runs the full source validation suite, builds platform installers on a version tag, validates signatures/notarization, performs installed-app smoke checks and creates a draft release.
+- Required secrets and the release procedure are documented in [Release operations](docs/RELEASE.md).
+
+Never commit signing certificates, passwords, provider credentials or API keys.
 
 ## Data handling
 
-Engineering tasks run through the provider you select. Task prompts and project files the agent reads are sent to that provider for processing under the provider account and terms you configured. The desktop app does not include model credits and does not persist task prompts or provider output; it stores only minimal local task-status metadata. Do not submit credentials, secrets, regulated data, or third-party code unless you are authorized to share it. The in-app checkbox is an acknowledgement, not a substitute for a privacy policy or legal review.
+Agent prompts and project files read by an agent may be sent to the selected provider for processing. Project verification may execute repository-defined code after explicit approval. The integrated terminal runs with the user's OS account permissions. Task history remains local and omits prompts and model output. See [Privacy and data handling](docs/PRIVACY.md) before testing with non-public code or data.
 
-## Repository status
+## Architecture and security
 
-The current engineering preview includes the Electron desktop shell, secure context-isolated preload bridge, native project selection, bounded workspace file browsing and atomic text-file saves, a task composer, and a single-task Engineering Director pipeline connected to locally installed Codex CLI and the Claude Agent SDK. Provider events stream to the UI; workspace-write tasks require explicit approval; read-only and write modes use separate tool policies. CI runs lint/typecheck/tests/build and a high-severity dependency audit.
-
-This is **not a production release**. The VS Code OSS workbench and integrated terminal are not implemented. The Director does not yet provide real multi-agent delegation, planning/dependency graphs, isolated Git worktrees, a durable event/recovery database, resumable execution, or conflict recovery. It currently stores only minimal task-status metadata locally; prompts and model output are not persisted. Verification is limited to a Git whitespace check; project tests, builds, security scans, and end-to-end acceptance are not run for each agent task. The cross-platform installer workflow is configured but unsigned and not yet verified on all operating systems. Code signing/notarization, secure credential setup, auto-update/rollback, full privacy and license review, and operational support remain release blockers.
-
-## Development status
-
-See [the implementation roadmap](docs/ROADMAP.md), [architecture](docs/ARCHITECTURE.md), and [security model](docs/SECURITY.md).
-
-## Important integration and distribution note
-
-Provider integrations must use supported interfaces and comply with the applicable licenses, SDK terms, trademarks, and distribution requirements. The application may keep provider internals out of the normal product UI, but it must not remove legally required notices or misrepresent ownership. Credentials must be supplied and stored securely; they must never be committed to this repository.
+- [Architecture](docs/ARCHITECTURE.md)
+- [Security model](docs/SECURITY.md)
+- [Upstream integration status](docs/UPSTREAM-INTEGRATION.md)
+- [Production roadmap](docs/ROADMAP.md)
+- [Privacy and data handling](docs/PRIVACY.md)
