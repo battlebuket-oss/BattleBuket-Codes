@@ -9,7 +9,6 @@ const child = pty.spawn(shell, args, {
   rows: 24,
   cwd: process.cwd(),
   env: { ...process.env, TERM: "xterm-256color" },
-  useConpty: isWindows
 });
 
 let output = "";
