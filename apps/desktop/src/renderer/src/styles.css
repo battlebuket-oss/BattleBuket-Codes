@@ -119,14 +119,12 @@ h1 em{color:#9b8aff;font-style:normal}
 
 
 .terminal-toggle{margin-left:auto;background:#171d2b;border:1px solid #35415a;color:#bfcbe0;border-radius:4px;padding:5px 10px;font:9px 'DM Mono';cursor:pointer}
-.terminal-panel{height:245px;display:flex;flex-direction:column;border-top:1px solid #343052;background:#080b10}
+.terminal-panel{height:310px;min-height:180px;display:flex;flex-direction:column;border-top:1px solid #343052;background:#080b10}
 .terminal-title{height:31px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #202a3a;color:#8996ad;font:8px 'DM Mono';letter-spacing:1px}
+.terminal-title>div{display:flex;align-items:center;gap:10px}
 .terminal-title button{background:transparent;border:0;color:#9b8aff;font:9px 'DM Mono';cursor:pointer}
-.terminal-output{flex:1;min-height:0;overflow:auto;padding:8px 12px;color:#c3cde0;font:10px/1.6 'DM Mono',monospace}
-.terminal-output pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 8px;color:#c3cde0}
-.terminal-output p{color:#718099}
-.terminal-input{height:38px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;border-top:1px solid #202a3a}
-.terminal-input span{color:#9b8aff;font:11px 'DM Mono'}
-.terminal-input input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#e8edf7;font:10px 'DM Mono'}
-.terminal-input button{background:#30285a;border:1px solid #6252a0;color:#f0edff;border-radius:4px;padding:5px 12px;font:9px 'DM Mono'}
-.terminal-input button:disabled{opacity:.45;cursor:not-allowed}
+.terminal-canvas{flex:1;min-height:0;overflow:hidden;padding:7px 10px}
+.terminal-canvas .xterm{height:100%}
+.terminal-canvas .xterm-viewport{overscroll-behavior:contain}
+.terminal-footnote{height:22px;flex:none;padding:4px 12px;border-top:1px solid #202a3a;color:#73819a;font:8px 'DM Mono';letter-spacing:.3px}
+
