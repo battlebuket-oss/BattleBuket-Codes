@@ -8,6 +8,10 @@ const MAX_FILE_BYTES = 1024 * 1024;
 export const MAX_WORKBENCH_FILE_BYTES = 64 * 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "out", ".next", ".cache", ".turbo", ".venv", "venv", "coverage", "vendor", ".dart_tool"]);
 
+function workspaceRelativePath(root: string, target: string): string {
+  return relative(root, target).split(sep).join("/");
+}
+
 async function resolveInside(rootPath: string, relativePath = ""): Promise<{ root: string; target: string }> {
   const root = await fs.realpath(rootPath);
   const target = await fs.realpath(resolve(root, relativePath));
@@ -55,7 +59,7 @@ export async function listWorkspace(rootPath: string, relativePath = ""): Promis
     const fullPath = join(target, entry.name);
     const stat = await fs.lstat(fullPath);
     if (stat.isSymbolicLink()) continue;
-    result.push({ name: entry.name, path: relative(root, fullPath), kind: entry.isDirectory() ? "directory" : "file", size: stat.size, mtimeMs: stat.mtimeMs });
+    result.push({ name: entry.name, path: workspaceRelativePath(root, fullPath), kind: entry.isDirectory() ? "directory" : "file", size: stat.size, mtimeMs: stat.mtimeMs });
   }
   return result.sort((a,b) => a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "directory" ? -1 : 1).slice(0,300);
 }
@@ -67,7 +71,7 @@ export async function readWorkspaceFile(rootPath: string, relativePath: string) 
   if (stat.size > MAX_FILE_BYTES) throw new Error("File is larger than the 1 MB preview limit");
   const content = await fs.readFile(target);
   if (content.includes(0)) throw new Error("Binary files cannot be previewed as text");
-  return { path: relative(root, target), content: content.toString("utf8"), mtimeMs: stat.mtimeMs };
+  return { path: workspaceRelativePath(root, target), content: content.toString("utf8"), mtimeMs: stat.mtimeMs };
 }
 
 export async function writeWorkspaceFile(rootPath: string, relativePath: string, content: string, expectedMtimeMs: number) {
@@ -106,7 +110,7 @@ export async function writeWorkspaceFile(rootPath: string, relativePath: string,
     } finally {
       await directoryHandle?.close().catch(() => {});
     }
-    return { path: relative(root, target), mtimeMs: (await fs.stat(target)).mtimeMs };
+    return { path: workspaceRelativePath(root, target), mtimeMs: (await fs.stat(target)).mtimeMs };
   } finally {
     await fs.unlink(temporary).catch(() => {});
   }
@@ -134,7 +138,7 @@ export async function createWorkspaceFile(rootPath: string, relativePath: string
     throw error;
   }
   await handle.close();
-  return { path: relative(root, target), mtimeMs: (await fs.stat(target)).mtimeMs };
+  return { path: workspaceRelativePath(root, target), mtimeMs: (await fs.stat(target)).mtimeMs };
 }
 
 export async function readWorkspaceFileSystemFile(rootPath: string, relativePath: string): Promise<{ path: string; content: Uint8Array; mtimeMs: number; size: number }> {
@@ -143,7 +147,7 @@ export async function readWorkspaceFileSystemFile(rootPath: string, relativePath
   if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("Selected path is not a regular workspace file.");
   if (stat.size > MAX_WORKBENCH_FILE_BYTES) throw new Error("File exceeds the 64 MB workspace read limit.");
   const content = await fs.readFile(target);
-  return { path: relative(root, target), content: Uint8Array.from(content), mtimeMs: stat.mtimeMs, size: stat.size };
+  return { path: workspaceRelativePath(root, target), content: Uint8Array.from(content), mtimeMs: stat.mtimeMs, size: stat.size };
 }
 
 export async function writeWorkspaceFileSystemFile(
@@ -210,7 +214,7 @@ export async function writeWorkspaceFileSystemFile(
     } catch { /* Directory fsync is not available on every platform. */ }
     finally { await directoryHandle?.close().catch(() => {}); }
     const result = await fs.stat(target);
-    return { path: relative(root, target), mtimeMs: result.mtimeMs };
+    return { path: workspaceRelativePath(root, target), mtimeMs: result.mtimeMs };
   } finally {
     await fs.unlink(temporary).catch(() => {});
   }
@@ -282,7 +286,7 @@ export async function searchWorkspaceFiles(rootPath: string, query: string): Pro
         continue;
       }
       if (!entry.isFile()) continue;
-      const relativePath = relative(root, fullPath);
+      const relativePath = workspaceRelativePath(root, fullPath);
       if (!relativePath.toLocaleLowerCase().includes(needle)) continue;
       try {
         const real = await fs.realpath(fullPath);
@@ -359,7 +363,7 @@ export async function searchWorkspaceContent(rootPath: string, query: string): P
           const line = lines[index];
           if (!line.toLocaleLowerCase().includes(needle)) continue;
           matches.push({
-            path: relative(root, real),
+            path: workspaceRelativePath(root, real),
             lineNumber: index + 1,
             preview: line.trim().slice(0, 280)
           });
