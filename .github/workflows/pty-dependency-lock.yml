@@ -6,6 +6,9 @@ on:
       - feature/pty-terminal
   workflow_dispatch:
 
+concurrency:
+  group: pty-terminal
+  cancel-in-progress: true
 permissions:
   contents: read
 
