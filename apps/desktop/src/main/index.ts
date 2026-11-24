@@ -184,6 +184,38 @@ function createWindow(): void {
           return;
         }
 
+        await window.webContents.executeJavaScript("window.dispatchEvent(new Event('battlebuket:toggle-terminal')); true");
+        const workbenchTerminalSessionId = await window.webContents.executeJavaScript(
+          "new Promise(resolve => { const deadline = Date.now() + 15000; const check = () => { const id = window.__battleBuketTerminalSessionId; if (window.__battleBuketNativeTerminalReady === true && typeof id === 'string') resolve(id); else if (Date.now() >= deadline) resolve(null); else setTimeout(check, 100); }; check(); })"
+        ) as string | null;
+        if (!workbenchTerminalSessionId) {
+          finish(false);
+          return;
+        }
+        const workbenchTerminalCommand = process.platform === "win32"
+          ? "echo BB_WORKBENCH_TERMINAL_SMOKE_OK\\r"
+          : "printf 'BB_WORKBENCH_TERMINAL_SMOKE_OK\\n'\\r";
+        await window.webContents.executeJavaScript(
+          "window.battleBuket.writeTerminal(" + JSON.stringify(workbenchTerminalSessionId) + ", " + JSON.stringify(workbenchTerminalCommand) + ")"
+        );
+        const workbenchTerminalOutputSeen = await window.webContents.executeJavaScript(
+          "new Promise(resolve => { const deadline = Date.now() + 10000; const check = () => { if (window.__battleBuketTerminalOutputSeen === true) resolve(true); else if (Date.now() >= deadline) resolve(false); else setTimeout(check, 100); }; check(); })"
+        );
+        if (workbenchTerminalOutputSeen !== true) {
+          finish(false);
+          return;
+        }
+        await window.webContents.executeJavaScript(
+          "window.battleBuket.writeTerminal(" + JSON.stringify(workbenchTerminalSessionId) + ", " + JSON.stringify("exit\\r") + ")"
+        );
+        const workbenchTerminalExited = await window.webContents.executeJavaScript(
+          "new Promise(resolve => { const deadline = Date.now() + 10000; const check = () => { if (window.__battleBuketNativeTerminalExited === true) resolve(true); else if (Date.now() >= deadline) resolve(false); else setTimeout(check, 100); }; check(); })"
+        );
+        if (workbenchTerminalExited !== true) {
+          finish(false);
+          return;
+        }
+
         const marker = "BB_TERMINAL_SMOKE_OK";
         const sessionId = randomUUID();
         const smokeWorkspace = await fs.mkdtemp(join(app.getPath("temp"), "battlebuket-pty-smoke-"));

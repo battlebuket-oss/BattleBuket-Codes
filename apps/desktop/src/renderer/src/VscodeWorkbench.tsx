@@ -97,6 +97,10 @@ function openNativeTerminal(runtime: Runtime): void {
       try {
         const started = await bridge.startTerminal();
         sessionId = started;
+        window.__battleBuketTerminalSessionId = started;
+        window.__battleBuketNativeTerminalReady = true;
+        window.__battleBuketNativeTerminalExited = false;
+        window.__battleBuketTerminalOutputSeen = false;
         if (closed) {
           await bridge.closeTerminal(started);
           return;
@@ -105,6 +109,8 @@ function openNativeTerminal(runtime: Runtime): void {
         pendingEvents = [];
         if (dimensions) await bridge.resizeTerminal(started, dimensions.columns, dimensions.rows);
       } catch (error) {
+        window.__battleBuketNativeTerminalReady = false;
+        window.__battleBuketNativeTerminalExited = true;
         output.fire("\r\n\x1b[31m[terminal startup failed] " + String(error) + "\x1b[0m\r\n");
         close.fire(1);
       }
@@ -116,6 +122,8 @@ function openNativeTerminal(runtime: Runtime): void {
       const active = sessionId;
       sessionId = null;
       if (active) await bridge.closeTerminal(active).catch(() => {});
+      window.__battleBuketNativeTerminalReady = false;
+      window.__battleBuketTerminalSessionId = null;
       if (runtime.terminal === createdTerminal) runtime.terminal = undefined;
     },
     handleInput: data => {
@@ -211,6 +219,10 @@ async function getRuntime(container: HTMLElement): Promise<Runtime> {
 declare global {
   interface Window {
     __battleBuketWorkbenchReady?: boolean;
+    __battleBuketNativeTerminalReady?: boolean;
+    __battleBuketNativeTerminalExited?: boolean;
+    __battleBuketTerminalOutputSeen?: boolean;
+    __battleBuketTerminalSessionId?: string | null;
   }
 }
 
