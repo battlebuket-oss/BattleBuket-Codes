@@ -16,7 +16,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add bounded text-file preview, atomic saves, stale-write detection, and path/symlink safety tests.
 - [x] Add the task composer, provider selection, risk/permission selection, streamed task status, and cancellation controls.
 - [ ] Integrate a supported VS Code OSS workbench revision with all upstream notices and reproducible build instructions.
-- [ ] Add a true code editor experience, tabs, diagnostics, command palette, project search, and recent projects.
+- [ ] Embed a tested Code - OSS workbench and complete the full editor experience: tabs, diagnostics, command palette, project search, and recent projects. The current editor remains a lightweight textarea preview.
 - [x] Add a bounded one-command workspace shell panel with output limits and explicit OS-permission disclosure.\n- [ ] Replace the command runner with a persistent PTY terminal, interactive TTY support, resize handling, session lifecycle, and a permission broker.
 - [x] Add a tag-triggered signed installer build and draft-release workflow with required Windows/macOS signing secrets.
 - [ ] Configure real signing secrets and verify signed installers on Windows, macOS, and Linux; no production release has been published.
@@ -24,7 +24,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 ## Phase 2 — Platform contracts and persistence
 - [x] Define initial task, agent, provider, event, verification, risk, and approval contracts.
 - [ ] Complete task-plan, dependency, tool-call, audit-event, and recovery contracts.
-- [x] Add local JSONL task-status history with task titles, interrupted-run recovery, provider/risk, timestamps, changed-file count, and verification status; prompts and provider output are omitted.
+- [x] Add local JSONL task-status history with non-prompt-derived task labels, interrupted-run recovery, provider/risk, timestamps, changed-file count, verification status, and bounded compaction; prompts and provider output are omitted.
 - [ ] Replace the JSONL history with a transactional task/event store, schema migrations, corruption recovery, retention controls, searchable history, and structured redacted logs.
 - [ ] Add workspace registry, Git status, and isolated worktree lifecycle.
 
@@ -58,7 +58,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 
 ## Phase 6 — Production release operations
 - [ ] Add telemetry with opt-in/privacy controls, crash reporting, diagnostics export, and support logs.
-- [ ] Obtain signing certificates; configure Windows code signing and macOS Developer ID signing/notarization.
+- [x] Add the tag-triggered signed-release workflow, signing requirements, Windows/macOS signature checks, macOS notarization validation, and platform install/launch/uninstall smoke steps.\n- [ ] Obtain signing certificates; configure secrets and execute a tagged signed release on real runners.
 - [ ] Add a signed update channel, update integrity checks, staged rollout, rollback, and release provenance.
 - [ ] Add backup/restore, data migration, offline/reconnect behavior, and a tested incident recovery plan.
 - [ ] Publish privacy disclosures, provider/third-party notices, license inventory, support policy, and a release checklist.
