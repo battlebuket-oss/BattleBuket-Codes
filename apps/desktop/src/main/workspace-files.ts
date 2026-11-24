@@ -65,12 +65,14 @@ export async function writeWorkspaceFile(rootPath: string, relativePath: string,
       throw new Error("File changed while the save was being prepared. Reopen it before trying again.");
     }
     await fs.rename(temporary, target);
+    let directoryHandle: Awaited<ReturnType<typeof fs.open>> | undefined;
     try {
-      const directoryHandle = await fs.open(parent, "r");
+      directoryHandle = await fs.open(parent, "r");
       await directoryHandle.sync();
-      await directoryHandle.close();
     } catch {
       // Directory fsync is not supported on every platform; the file itself was synced before rename.
+    } finally {
+      await directoryHandle?.close().catch(() => {});
     }
     return { path: relative(root, target), mtimeMs: (await fs.stat(target)).mtimeMs };
   } finally {
