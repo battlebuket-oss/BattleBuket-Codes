@@ -46,38 +46,6 @@ type AgentResult = {
   changedFiles: string[];
   verification: { name: string; passed: boolean; output?: string }[];
 };
-declare global {
-  interface Window {
-    battleBuket?: {
-      getVersion: () => Promise<string>;
-      getActiveWorkspace: () => Promise<string | null>;
-      selectWorkspace: () => Promise<string | null>;
-      getRecentWorkspaces: () => Promise<RecentWorkspace[]>;
-      openRecentWorkspace: (path: string) => Promise<string>;
-      listWorkspace: (path?: string) => Promise<WorkspaceEntry[]>;
-      searchWorkspaceFiles: (query: string) => Promise<WorkspaceEntry[]>;
-      searchWorkspaceContent: (query: string) => Promise<WorkspaceContentMatch[]>;
-      readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;
-      saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
-      readWorkspaceFileSystemFile: (path: string) => Promise<{ path: string; content: Uint8Array; mtimeMs: number; size: number }>;
-      writeWorkspaceFileSystemFile: (payload: { path: string; content: Uint8Array; create: boolean; overwrite: boolean }) => Promise<{ path: string; mtimeMs: number }>;
-      createWorkspaceDirectory: (path: string) => Promise<boolean>;
-      deleteWorkspacePath: (path: string, recursive: boolean) => Promise<boolean>;
-      renameWorkspacePath: (oldPath: string, newPath: string, overwrite: boolean) => Promise<boolean>;
-      getAgentAvailability: () => Promise<Record<AgentProvider, boolean>>;
-      getTaskHistory: () => Promise<TaskHistoryItem[]>;
-      startTerminal: () => Promise<string>;
-      writeTerminal: (sessionId: string, input: string) => Promise<boolean>;
-      closeTerminal: (sessionId: string) => Promise<boolean>;
-      resizeTerminal: (sessionId: string, columns: number, rows: number) => Promise<boolean>;
-      onTerminalEvent: (listener: (event: TerminalSessionEvent) => void) => () => void;
-      runAgent: (payload: { prompt: string; provider: AgentProvider; risk: TaskRisk }) => Promise<AgentResult>;
-      cancelAgent: () => Promise<boolean>;
-      onAgentEvent: (listener: (event: AgentEvent) => void) => () => void;
-      onWorkspaceFileSystemChange: (listener: (event: { path: string; eventType: string }) => void) => () => void;
-    };
-  }
-}
 
 function editorLanguageForPath(path: string): string {
   const extension = path.toLowerCase().split(".").pop() ?? "";
