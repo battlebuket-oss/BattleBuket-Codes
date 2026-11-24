@@ -50,3 +50,7 @@ export interface DirectorDecision {
   rationale: string;
   requiresHumanApproval: boolean;
 }
+
+export type VirtualRoleId = "planner" | "architect" | "implementer" | "reviewer" | "tester" | "security-auditor";
+export interface VirtualAgentRole { id: VirtualRoleId; name: string; responsibility: string; deliverable: string; }
+export interface VirtualTeamConfig { enabled: boolean; roles: VirtualRoleId[]; executionMode: "single-provider-single-run"; discloseSimulation: true; }
