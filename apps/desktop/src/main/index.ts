@@ -272,6 +272,7 @@ function createWindow(): void {
 }
 
 handleTrustedIpc("platform:version", () => app.getVersion());
+handleTrustedIpc("platform:is-smoke-test", () => process.argv.includes("--smoke-test"));
 handleTrustedIpc("workspace:active", () => activeWorkspace);
 handleTrustedIpc("workspace:select", async () => {
   if (activeDirector || taskStartPending || terminalSessions.hasActiveSession()) throw new Error("Close the active task and terminal session before changing projects.");
