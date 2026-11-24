@@ -26,15 +26,16 @@ test("maintains one shell session across multiple commands and closes it", async
     await sessions.start(sessionId, root, event => {
       if (event.type === "output" && event.text) {
         if (event.text.includes("BB_SESSION_FIRST")) seen.add("first");
+        if (event.text.includes("SESSION_STATE_OK")) seen.add("state");
         if (event.text.includes("BB_SESSION_SECOND")) seen.add("second");
       }
     });
     const first = process.platform === "win32"
-      ? "set BB_SESSION_MARKER=SESSION_STATE_OK\\r\\necho BB_SESSION_FIRST\\r\\n"
-      : "export BB_SESSION_MARKER=SESSION_STATE_OK; printf 'BB_SESSION_FIRST\\\\n'\\n";
+      ? "set BB_SESSION_MARKER=SESSION_STATE_OK\r\necho BB_SESSION_FIRST\r\n"
+      : "export BB_SESSION_MARKER=SESSION_STATE_OK; printf 'BB_SESSION_FIRST\\n'\n";
     const second = process.platform === "win32"
-      ? "echo %BB_SESSION_MARKER% & echo BB_SESSION_SECOND\\r\\n"
-      : "printf '%s\\\\n' \"$BB_SESSION_MARKER\"; printf 'BB_SESSION_SECOND\\\\n'\\n";
+      ? "echo %BB_SESSION_MARKER% & echo BB_SESSION_SECOND\r\n"
+      : "printf '%s\\n' \"$BB_SESSION_MARKER\"; printf 'BB_SESSION_SECOND\\n'\n";
     sessions.write(sessionId, first);
     await waitFor("first");
     sessions.write(sessionId, second);
