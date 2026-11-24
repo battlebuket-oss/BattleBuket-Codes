@@ -41,11 +41,11 @@ test("fails closed on Windows until the AppContainer command broker is available
   const marker = join(root, "must-not-exist.txt");
   try {
     await writeFile(join(root, "package.json"), JSON.stringify({
-      scripts: { test: "node -e \\"require('node:fs').writeFileSync('must-not-exist.txt','unsafe')\\"" }
+      scripts: { test: `node -e "require('node:fs').writeFileSync('must-not-exist.txt','unsafe')"` }
     }));
     const results = await runProjectQualityChecks(root, async () => true);
     assert.equal(results.some(result => result.passed), false);
-    assert.match(results.map(result => result.output ?? "").join("\\n"), /AppContainer/);
+    assert.match(results.map(result => result.output ?? "").join("\n"), /AppContainer/);
     await assert.rejects(() => import("node:fs/promises").then(module => module.access(marker)));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
