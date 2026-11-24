@@ -357,7 +357,7 @@ export default function App() {
             </div>
             <label className="data-consent">
               <input type="checkbox" checked={dataConsent} onChange={event => setDataConsent(event.target.checked)} disabled={running}/>
-              <span>I understand that my task prompt and relevant project files the agent reads are sent to the selected provider for processing. Provider usage may incur charges; I will not submit secrets or data I am not authorized to share.</span>
+              <span>I understand that my task prompt and relevant project files may be sent to the selected provider for implementation and a second read-only review pass. The extra pass may consume additional provider usage or incur charges. I will not submit secrets or data I am not authorized to share.</span>
             </label>
             <div className="composer-hint">{!workspace ? "Open a project folder to enable engineering tasks." : !dataConsent ? "Confirm the provider data-sharing notice to enable Run task." : availability[provider] ? "Runtime detected · authentication is checked when the task starts; access stays restricted to the workspace." : "Selected provider runtime is not detected on this computer."}</div>
           </div>
@@ -376,9 +376,9 @@ export default function App() {
             <div><ShieldCheck/><b>Workspace safety</b><p>Scoped file access, bounded previews, stale-save protection, and no full-access agent mode.</p><small>● Restricted workspace access</small></div>
             <div><Workflow/><b>Quality gate</b><p>Per-task verification runs approved project test/lint/typecheck/build scripts and supported dependency audits, then checks staged and unstaged Git diffs. Scripts still run with OS-user permissions, not in a dedicated sandbox.</p><small className="pending">Partial verification only</small></div>
           </div>
-          <p className="prototype-note">Engineering preview only. The integrated terminal uses a native PTY with xterm.js. The embedded VS Code OSS workbench, authenticated provider tests and installed signed-release verification remain open.</p>
+          <p className="prototype-note">Engineering preview only. Tasks include a separate read-only review pass using the same provider runtime, which may consume additional usage. The integrated terminal uses a native PTY with xterm.js. The embedded VS Code OSS workbench, authenticated provider tests and installed signed-release verification remain open.</p>
         </article>}
-        {terminalOpen && <section className="terminal-panel">
+        {(terminalOpen || terminalSessionId) && <section className={terminalOpen ? "terminal-panel" : "terminal-panel terminal-panel-hidden"}>
           <div className="terminal-title">
             <span>INTEGRATED TERMINAL · {workspaceName} · {terminalStatus.toUpperCase()}</span>
             <div>
