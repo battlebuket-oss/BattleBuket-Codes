@@ -36,6 +36,9 @@ test("rejects outside paths and stale saves", async () => {
   try {
     await writeFile(join(root, "a.txt"), "original");
     await writeFile(join(outside, "secret.txt"), "secret");
+    await symlink(join(outside, "secret.txt"), join(root, "leak.txt"));
+    await assert.rejects(() => readWorkspaceFile(root, "leak.txt"), /outside the selected workspace/);
+    await assert.rejects(() => writeWorkspaceFile(root, "leak.txt", "tamper", 0), /outside the selected workspace/);
     const opened = await readWorkspaceFile(root, "a.txt");
     await writeFile(join(root, "a.txt"), "external edit");
     await assert.rejects(() => readWorkspaceFile(root, "../" + outside.split("/").pop() + "/secret.txt"));
@@ -45,4 +48,16 @@ test("rejects outside paths and stale saves", async () => {
     await rm(root, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
   }
+});
+
+test("rejects binary and oversized previews without altering the source", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-workspace-"));
+  try {
+    await writeFile(join(root, "binary.bin"), Buffer.from([0, 1, 2, 3]));
+    await writeFile(join(root, "large.txt"), "x".repeat(1024 * 1024 + 1));
+    await assert.rejects(() => readWorkspaceFile(root, "binary.bin"), /Binary files/);
+    await assert.rejects(() => readWorkspaceFile(root, "large.txt"), /1 MB preview limit/);
+    await assert.rejects(() => writeWorkspaceFile(root, "large.txt", "y".repeat(1024 * 1024 + 1), 0), /1 MB save limit/);
+    assert.equal((await readFile(join(root, "large.txt"), "utf8")).length, 1024 * 1024 + 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
