@@ -27,7 +27,13 @@ export function codexArguments(request: AgentRunRequest): string[] {
   if (request.approvalMode === "full-access") throw new Error("Full-access agent execution is disabled");
   const base = ["exec", "--json", "--cd", request.workingDirectory];
   if (request.approvalMode === "read-only") return [...base, "--sandbox", "read-only", "--ask-for-approval", "never", request.task.prompt];
-  return [...base, "--approve-for-me", request.task.prompt];
+  return [
+    ...base,
+    "--sandbox", "workspace-write",
+    "--ask-for-approval", "on-request",
+    "--config", "approvals_reviewer=auto_review",
+    request.task.prompt
+  ];
 }
 
 export class CodexCliAdapter implements AgentAdapter {
