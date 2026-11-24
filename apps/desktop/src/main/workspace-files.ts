@@ -5,7 +5,7 @@ import { isPathInside } from "./workspace-path";
 
 export type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
 const MAX_FILE_BYTES = 1024 * 1024;
-const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "out", ".next"]);
+const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "out", ".next", ".cache", ".turbo", ".venv", "venv", "coverage", "vendor", ".dart_tool"]);
 
 async function resolveInside(rootPath: string, relativePath = ""): Promise<{ root: string; target: string }> {
   const root = await fs.realpath(rootPath);
