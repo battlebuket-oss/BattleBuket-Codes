@@ -5,7 +5,6 @@ import { LogLevel } from "@codingame/monaco-vscode-api";
 import { MonacoVscodeApiWrapper } from "monaco-languageclient/vscodeApiWrapper";
 import getBaseServiceOverride from "@codingame/monaco-vscode-base-service-override";
 import getExtensionsServiceOverride from "@codingame/monaco-vscode-extensions-service-override";
-import type { WorkerConfig } from "@codingame/monaco-vscode-extensions-service-override";
 import getHostServiceOverride from "@codingame/monaco-vscode-host-service-override";
 import getQuickAccessServiceOverride from "@codingame/monaco-vscode-quickaccess-service-override";
 import getExplorerServiceOverride from "@codingame/monaco-vscode-explorer-service-override";
@@ -37,11 +36,6 @@ type Runtime = {
 };
 
 let runtimePromise: Promise<Runtime> | null = null;
-
-const extensionHostWorkerConfig: WorkerConfig = {
-  url: new URL("@codingame/monaco-vscode-api/workers/extensionHost.worker", import.meta.url).toString(),
-  options: { type: "module", name: "battlebuket-extension-host" }
-};
 
 function openNativeTerminal(runtime: Runtime): void {
   if (runtime.terminal) {
@@ -145,7 +139,7 @@ async function createRuntime(container: HTMLElement): Promise<Runtime> {
     serviceOverrides: {
       ...getBaseServiceOverride(),
       ...getHostServiceOverride(),
-      ...getExtensionsServiceOverride(extensionHostWorkerConfig),
+      ...getExtensionsServiceOverride({ enableWorkerExtensionHost: true }),
       ...getQuickAccessServiceOverride(),
       ...getKeybindingsServiceOverride(),
       ...getFilesServiceOverride(),
@@ -248,7 +242,11 @@ async function runWorkspaceFilesystemSmoke(): Promise<boolean> {
   } catch {
     return false;
   } finally {
-    await vscode.workspace.fs.delete(directory, { recursive: true, useTrash: false }).catch(() => {});
+    try {
+      await vscode.workspace.fs.delete(directory, { recursive: true, useTrash: false });
+    } catch {
+      // The packaged smoke workspace is temporary and is removed by the main-process cleanup.
+    }
   }
 }
 
