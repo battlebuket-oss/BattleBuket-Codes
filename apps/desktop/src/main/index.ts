@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { promises as fs } from "node:fs";
+import { watch as watchFs, type FSWatcher } from "node:fs";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
@@ -18,6 +19,7 @@ const execFile = promisify(execFileCallback);
 const adapters = [new CodexCliAdapter(), new ClaudeAgentSdkAdapter()];
 const terminalSessions = new WorkspaceTerminalSessions();
 let activeWorkspace: string | null = null;
+let workspaceWatcher: FSWatcher | null = null;
 let mainWindow: BrowserWindow | null = null;
 let activeDirector: EngineeringDirector | null = null;
 let taskStartPending = false;
@@ -25,6 +27,29 @@ let activeTerminalSessionId: string | null = null;
 let activeTaskExecution: Promise<AgentResult> | null = null;
 let shutdownInProgress = false;
 let shutdownComplete = false;
+
+function attachWorkspaceWatcher(rootPath: string): void {
+  workspaceWatcher?.close();
+  workspaceWatcher = null;
+  try {
+    const watcher = watchFs(rootPath, { recursive: true }, (eventType, filename) => {
+      const relativePath = (filename?.toString() ?? "").replace(/\\/g, "/").replace(/^\\/+/, "");
+      const segments = relativePath.split("/").filter(Boolean);
+      const ignored = new Set([".git", "node_modules", "dist", "out", ".next", ".cache", ".turbo", ".venv", "venv", "coverage", "vendor", ".dart_tool"]);
+      if (segments.some(segment => ignored.has(segment))) return;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("workspace:fs-event", { path: relativePath, eventType });
+      }
+    });
+    workspaceWatcher = watcher;
+    watcher.on("error", error => {
+      console.error("Workspace file watcher stopped:", error);
+      if (workspaceWatcher === watcher) workspaceWatcher = null;
+    });
+  } catch (error) {
+    console.error("Workspace file watcher could not start:", error);
+  }
+}
 
 let runtimeCleanup: Promise<void> = Promise.resolve();
 function queueRuntimeCleanup(): Promise<void> {
@@ -34,6 +59,8 @@ function queueRuntimeCleanup(): Promise<void> {
     const runningTask = activeTaskExecution;
     if (runningTask) await runningTask.catch(() => {});
     await terminalSessions.closeAll();
+    workspaceWatcher?.close();
+    workspaceWatcher = null;
   });
   return runtimeCleanup;
 }
@@ -106,6 +133,7 @@ function createWindow(): void {
     }
   });
   mainWindow = window;
+  if (activeWorkspace) attachWorkspaceWatcher(activeWorkspace);
   window.on("closed", () => { if (mainWindow === window) mainWindow = null; activeTerminalSessionId = null; void queueRuntimeCleanup().catch(error => console.error("Workspace cleanup after window close failed:", error)); });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
@@ -195,6 +223,7 @@ handleTrustedIpc("workspace:select", async () => {
   const selectedWorkspace = await fs.realpath(result.filePaths[0]);
   await recordRecentWorkspace(app.getPath("userData"), selectedWorkspace);
   activeWorkspace = selectedWorkspace;
+  attachWorkspaceWatcher(activeWorkspace);
   return activeWorkspace;
 });
 
@@ -208,6 +237,7 @@ handleTrustedIpc("workspace:open-recent", async (_event, payload: { path: string
   const selectedWorkspace = await openRecentWorkspace(app.getPath("userData"), payload.path);
   await recordRecentWorkspace(app.getPath("userData"), selectedWorkspace);
   activeWorkspace = selectedWorkspace;
+  attachWorkspaceWatcher(activeWorkspace);
   return activeWorkspace;
 });
 handleTrustedIpc("workspace:list", async (_event, relativePath = "") => {

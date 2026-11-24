@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { LogLevel } from "@codingame/monaco-vscode-api";
 import { MonacoVscodeApiWrapper } from "monaco-languageclient/vscodeApiWrapper";
 import getExplorerServiceOverride from "@codingame/monaco-vscode-explorer-service-override";
+import getFilesServiceOverride from "@codingame/monaco-vscode-files-service-override";
 import getKeybindingsServiceOverride from "@codingame/monaco-vscode-keybindings-service-override";
 import getLifecycleServiceOverride from "@codingame/monaco-vscode-lifecycle-service-override";
 import getMarkersServiceOverride from "@codingame/monaco-vscode-markers-service-override";
@@ -131,6 +132,7 @@ async function createRuntime(container: HTMLElement): Promise<Runtime> {
     monacoWorkerFactory: configureMonacoWorkers,
     serviceOverrides: {
       ...getKeybindingsServiceOverride(),
+      ...getFilesServiceOverride(),
       ...getLifecycleServiceOverride(),
       ...getExplorerServiceOverride(),
       ...getMarkersServiceOverride(),
@@ -187,10 +189,7 @@ async function createRuntime(container: HTMLElement): Promise<Runtime> {
 
 async function getRuntime(container: HTMLElement): Promise<Runtime> {
   if (!runtimePromise) {
-    runtimePromise = createRuntime(container).catch(error => {
-      runtimePromise = null;
-      throw error;
-    });
+    runtimePromise = createRuntime(container);
   }
   return runtimePromise;
 }

@@ -45,7 +45,8 @@
     "@codingame/monaco-vscode-theme-service-override": "37.6.0",
     "@codingame/monaco-vscode-workbench-service-override": "37.6.0",
     "monaco-languageclient": "11.0.3",
-    "vscode": "npm:@codingame/monaco-vscode-extension-api@37.6.0"
+    "vscode": "npm:@codingame/monaco-vscode-extension-api@37.6.0",
+    "@codingame/monaco-vscode-files-service-override": "37.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

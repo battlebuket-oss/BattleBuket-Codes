@@ -59,6 +59,11 @@ contextBridge.exposeInMainWorld("battleBuket", {
   writeTerminal: (sessionId: string, input: string): Promise<boolean> => ipcRenderer.invoke("terminal:write", { sessionId, input }),
   closeTerminal: (sessionId: string): Promise<boolean> => ipcRenderer.invoke("terminal:close", { sessionId }),
   resizeTerminal: (sessionId: string, columns: number, rows: number): Promise<boolean> => ipcRenderer.invoke("terminal:resize", { sessionId, columns, rows }),
+  onWorkspaceFileSystemChange: (listener: (event: { path: string; eventType: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { path: string; eventType: string }) => listener(payload);
+    ipcRenderer.on("workspace:fs-event", handler);
+    return () => ipcRenderer.removeListener("workspace:fs-event", handler);
+  },
   onTerminalEvent: (listener: (event: TerminalSessionEvent) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: TerminalSessionEvent) => listener(payload);
     ipcRenderer.on("terminal:event", handler);

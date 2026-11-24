@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import Editor from "@monaco-editor/react";
+import { VscodeWorkbench } from "./VscodeWorkbench";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Activity, Bot, Braces, CheckCircle2, ChevronDown, Command, FileCode2, Folder, FolderOpen, GitBranch, LayoutDashboard, Loader2, Plus, Search, Settings2, ShieldCheck, Sparkles, Square, Workflow, XCircle } from "lucide-react";
@@ -72,6 +73,7 @@ declare global {
       runAgent: (payload: { prompt: string; provider: AgentProvider; risk: TaskRisk }) => Promise<AgentResult>;
       cancelAgent: () => Promise<boolean>;
       onAgentEvent: (listener: (event: AgentEvent) => void) => () => void;
+      onWorkspaceFileSystemChange: (listener: (event: { path: string; eventType: string }) => void) => () => void;
     };
   }
 }
@@ -108,6 +110,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
+  const handleWorkbenchError = useCallback((message: string) => setError(message), []);
   const [loading, setLoading] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [provider, setProvider] = useState<AgentProvider>("codex");
@@ -419,6 +422,14 @@ export default function App() {
       }
       const commandKey = event.ctrlKey || event.metaKey;
       if (!commandKey) return;
+      if (workspace) {
+        if (!event.shiftKey && event.key.toLowerCase() === "j") {
+          event.preventDefault();
+          event.stopPropagation();
+          window.dispatchEvent(new Event("battlebuket:toggle-terminal"));
+        }
+        return;
+      }
       if (!event.shiftKey && event.key.toLowerCase() === "s") {
         event.preventDefault();
         event.stopPropagation();
@@ -576,12 +587,12 @@ export default function App() {
   return <main className="shell">
     <header className="top">
       <div className="brand"><span className="mark"><Braces size={17}/></span>BATTLEBUKET <b>CODES</b><small>ENGINEERING WORKSPACE</small></div>
-      <div className="workspace-name"><i/> {workspaceName} <ChevronDown size={13}/></div>
+      <button className="workspace-name" onClick={openWorkspace} disabled={running} title="Choose or switch project"><i/> {workspaceName} <ChevronDown size={13}/></button>
       <div className="top-right">v{version}<Settings2 size={16}/></div>
     </header>
     <div className="layout">
-      <nav className="rail"><LayoutDashboard/><FolderOpen/><button className="rail-action" title="Find in Files · Ctrl/Cmd+Shift+F" onClick={() => openPalette("content")}><Search/></button><button className="rail-action" title="Command Palette · Ctrl/Cmd+Shift+P" onClick={() => openPalette("commands")}><Command/></button><GitBranch/><span/><ShieldCheck/></nav>
-      <aside className="projects">
+      <nav className={workspace ? "rail rail-hidden" : "rail"}><LayoutDashboard/><FolderOpen/><button className="rail-action" title="Find in Files · Ctrl/Cmd+Shift+F" onClick={() => openPalette("content")}><Search/></button><button className="rail-action" title="Command Palette · Ctrl/Cmd+Shift+P" onClick={() => openPalette("commands")}><Command/></button><GitBranch/><span/><ShieldCheck/></nav>
+      <aside className={workspace ? "projects projects-hidden" : "projects"}>
         <label>PROJECT EXPLORER</label>
         <button onClick={openWorkspace} disabled={running}><FolderOpen size={15}/> {workspace ? "Change project" : "Open project"} <Plus size={13}/></button>
         {workspace && <div className="file-list">
@@ -608,7 +619,10 @@ export default function App() {
         <footer>● Local workspace · {workspace ? "Connected" : "Ready"}</footer>
       </aside>
       <section className="center">
-        <div className="tab"><FileCode2 size={14}/> {selectedFile ? selectedFile.path : "Engineering command center"}<button className="terminal-toggle" onClick={() => { if (terminalOpen) setTerminalOpen(false); else void openTerminal(); }}>{terminalOpen ? "Hide terminal" : "Terminal"}</button></div>
+        <div className="tab"><FileCode2 size={14}/> {workspace ? workspaceName + " · VS Code Workbench" : selectedFile ? selectedFile.path : "Engineering command center"}<button className="terminal-toggle" onClick={() => { if (workspace) window.dispatchEvent(new Event("battlebuket:toggle-terminal")); else if (terminalOpen) setTerminalOpen(false); else void openTerminal(); }}>{workspace ? "Terminal" : terminalOpen ? "Hide terminal" : "Terminal"}</button></div>
+        {workspace
+          ? <VscodeWorkbench workspacePath={workspace} onError={handleWorkbenchError}/>
+          : <>
         {paletteOpen && <div className="palette-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setPaletteOpen(false); }}>
           <section className="palette-dialog" role="dialog" aria-modal="true" aria-label={paletteMode === "files" ? "Quick Open" : paletteMode === "content" ? "Find in Files" : "Command Palette"}>
             <div className="palette-input-row">
@@ -767,7 +781,8 @@ export default function App() {
           </div>
           <p className="prototype-note">Engineering preview only. Tasks include a separate read-only review pass using the same provider runtime, which may consume additional usage. The integrated terminal uses a native PTY with xterm.js. The embedded VS Code OSS workbench, authenticated provider tests and installed signed-release verification remain open.</p>
         </article>}
-        {(terminalOpen || terminalSessionId) && <section className={terminalOpen ? "terminal-panel" : "terminal-panel terminal-panel-hidden"}>
+          </>}
+        {!workspace && (terminalOpen || terminalSessionId) && <section className={terminalOpen ? "terminal-panel" : "terminal-panel terminal-panel-hidden"}>
           <div className="terminal-title">
             <span>INTEGRATED TERMINAL · {workspaceName} · {terminalStatus.toUpperCase()}</span>
             <div>
@@ -784,6 +799,31 @@ export default function App() {
       <aside className="director">
         <label>● CONTROL PLANE</label><h3>Engineering Director</h3>
         <div className="director-card"><Bot/><div><b>{running ? "Supervising active task" : "Ready for a task"}</b><p>{workspace ? "Workspace: " + workspaceName : "Open a project to begin."}</p></div></div>
+        {workspace && <section className="director-task-composer" aria-label="Engineering task composer">
+          <label>ENGINEERING TASK</label>
+          <textarea value={prompt} onChange={event => setPrompt(event.target.value)} placeholder="Describe the feature, fix or investigation…" disabled={running}/>
+          <label>ENGINE</label>
+          <select value={provider} onChange={event => { setProvider(event.target.value as AgentProvider); setDataConsent(false); }} disabled={running}>
+            <option value="codex">Codex {availability.codex ? "· Ready" : "· Unavailable"}</option>
+            <option value="claude">Claude {availability.claude ? "· Ready" : "· Unavailable"}</option>
+          </select>
+          <label>PERMISSION</label>
+          <select value={risk} onChange={event => setRisk(event.target.value as TaskRisk)} disabled={running}>
+            <option value="low">Low · read-only</option>
+            <option value="medium">Medium · workspace edits</option>
+            <option value="high">High · approval required</option>
+          </select>
+          <label className="director-consent">
+            <input type="checkbox" checked={dataConsent} onChange={event => setDataConsent(event.target.checked)} disabled={running}/>
+            <span>Provider may receive the task and relevant project context. Additional review may consume usage. Do not share secrets.</span>
+          </label>
+          {running
+            ? <button className="run-button cancel" onClick={cancelTask}><Square size={13}/> Cancel task</button>
+            : <button className="run-button" onClick={startTask} disabled={!availability[provider] || !dataConsent || prompt.trim().length < 3}><Sparkles size={13}/> Run task</button>}
+          {error && <p className="workspace-error" role="alert">{error}</p>}
+          {running && <div className="event-feed">{agentEvents.slice(-4).map((event,index)=><p key={event.taskId+event.timestamp+index}><span>{new Date(event.timestamp).toLocaleTimeString()}</span>{event.message}</p>)}</div>}
+          {taskResult && <div className="director-task-result"><b>Task {taskResult.status}</b><p>{taskResult.summary}</p><small>{taskResult.changedFiles.length} changed files · {taskResult.verification.filter(item=>item.passed).length}/{taskResult.verification.length} checks passed</small></div>}
+        </section>}
         <h4>PROVIDER HEALTH</h4>
         <p className="gate">◈ Codex CLI <b className={availability.codex ? "" : "pending"}>{availability.codex ? "DETECTED" : "NOT FOUND"}</b></p>
         <p className="gate">◈ Claude runtime <b className={availability.claude ? "" : "pending"}>{availability.claude ? "DETECTED" : "NOT FOUND"}</b></p>

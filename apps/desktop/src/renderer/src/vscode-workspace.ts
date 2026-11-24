@@ -2,6 +2,14 @@ import * as vscode from "vscode";
 
 const WORKSPACE_SCHEME = "battlebuket-workspace";
 
+declare global {
+  interface Window {
+    battleBuket?: {
+      onWorkspaceFileSystemChange: (listener: (event: { path: string; eventType: string }) => void) => () => void;
+    };
+  }
+}
+
 type WorkspaceEntry = {
   name: string;
   path: string;
@@ -17,6 +25,20 @@ function relativePath(uri: vscode.Uri): string {
 export class BattleBuketFileSystemProvider implements vscode.FileSystemProvider {
   private readonly changes = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
   readonly onDidChangeFile = this.changes.event;
+  private readonly unsubscribeNativeWatcher: (() => void) | undefined;
+
+  constructor() {
+    this.unsubscribeNativeWatcher = window.battleBuket?.onWorkspaceFileSystemChange(event => {
+      const relative = event.path.replace(/\\\\/g, "/").replace(/^\\/+|\\/+$/g, "");
+      const fileUri = vscode.Uri.from({ scheme: WORKSPACE_SCHEME, authority: this.authority, path: relative ? "/" + relative : "/" });
+      const parent = relative.includes("/") ? relative.slice(0, relative.lastIndexOf("/")) : "";
+      const parentUri = vscode.Uri.from({ scheme: WORKSPACE_SCHEME, authority: this.authority, path: parent ? "/" + parent : "/" });
+      this.changes.fire([
+        { type: vscode.FileChangeType.Changed, uri: fileUri },
+        { type: vscode.FileChangeType.Changed, uri: parentUri }
+      ]);
+    });
+  }
   private authority = "unbound";
   private authoritySequence = 0;
 
@@ -164,6 +186,7 @@ export class BattleBuketFileSystemProvider implements vscode.FileSystemProvider 
   }
 
   dispose(): void {
+    this.unsubscribeNativeWatcher?.();
     this.changes.dispose();
   }
 }
