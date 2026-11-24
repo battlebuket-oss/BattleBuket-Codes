@@ -152,7 +152,13 @@ function createWindow(): void {
         app.exit(success ? 0 : 1);
       }
     };
-    window.webContents.once("did-fail-load", () => finish(false));
+    const failSmoke = (stage: string, error?: unknown) => {
+      console.error("[smoke-test] " + stage + " failed", error ?? "");
+      finish(false);
+    };
+    window.webContents.once("did-fail-load", (_event, errorCode, errorDescription) => {
+      failSmoke("renderer load", { errorCode, errorDescription });
+    });
     window.webContents.once("did-finish-load", () => {
       void (async () => {
         const stateMarker = "battlebuket-upgrade-smoke-v1";
@@ -164,7 +170,7 @@ function createWindow(): void {
         if (process.argv.includes("--smoke-verify-state")) {
           const state = JSON.parse(await fs.readFile(statePath, "utf8")) as { marker?: unknown; schemaVersion?: unknown };
           if (state.marker !== stateMarker || state.schemaVersion !== 1) {
-            finish(false);
+            failSmoke("upgrade state verification", state);
             return;
           }
         }
@@ -173,14 +179,14 @@ function createWindow(): void {
         const smokeScript = `window.battleBuket && window.battleBuket.getVersion().then(async version => { const expectedVersion = ${JSON.stringify(expectedVersion ?? null)}; let worker; try { const environment = globalThis.MonacoEnvironment; if (!environment || typeof environment.getWorker !== 'function') return false; worker = environment.getWorker('', 'typescript'); if (typeof worker.postMessage !== 'function' || typeof worker.terminate !== 'function') return false; const workerHealthy = await new Promise(resolve => { const timer = setTimeout(() => resolve(true), 1000); worker.addEventListener('error', () => { clearTimeout(timer); resolve(false); }, { once: true }); }); return typeof version === 'string' && version.length > 0 && (!expectedVersion || version === expectedVersion) && workerHealthy; } finally { worker && worker.terminate(); } })`;
         const editorHealthy = await window.webContents.executeJavaScript(smokeScript);
         if (editorHealthy !== true) {
-          finish(false);
+          failSmoke("Monaco TypeScript worker or platform version", editorHealthy);
           return;
         }
         const workbenchHealthy = await window.webContents.executeJavaScript(
           "new Promise(resolve => { const deadline = Date.now() + 45000; const check = () => { if (window.__battleBuketWorkbenchReady === true) resolve(true); else if (Date.now() >= deadline) resolve(false); else setTimeout(check, 100); }; check(); })"
         );
         if (workbenchHealthy !== true) {
-          finish(false);
+          failSmoke("VS Code workbench and extension-host readiness");
           return;
         }
 
@@ -188,7 +194,7 @@ function createWindow(): void {
           "window.__battleBuketWorkbenchSmoke ? window.__battleBuketWorkbenchSmoke() : false"
         );
         if (workspaceFilesystemHealthy !== true) {
-          finish(false);
+          failSmoke("workbench filesystem create/read/save/rename/delete");
           return;
         }
 
@@ -197,7 +203,7 @@ function createWindow(): void {
           "new Promise(resolve => { const deadline = Date.now() + 15000; const check = () => { const id = window.__battleBuketTerminalSessionId; if (window.__battleBuketNativeTerminalReady === true && typeof id === 'string') resolve(id); else if (Date.now() >= deadline) resolve(null); else setTimeout(check, 100); }; check(); })"
         ) as string | null;
         if (!workbenchTerminalSessionId) {
-          finish(false);
+          failSmoke("workbench terminal startup");
           return;
         }
         const workbenchTerminalCommand = process.platform === "win32"
@@ -210,7 +216,7 @@ function createWindow(): void {
           "new Promise(resolve => { const deadline = Date.now() + 10000; const check = () => { if (window.__battleBuketTerminalOutputSeen === true) resolve(true); else if (Date.now() >= deadline) resolve(false); else setTimeout(check, 100); }; check(); })"
         );
         if (workbenchTerminalOutputSeen !== true) {
-          finish(false);
+          failSmoke("workbench terminal output");
           return;
         }
         await window.webContents.executeJavaScript(
@@ -220,7 +226,7 @@ function createWindow(): void {
           "new Promise(resolve => { const deadline = Date.now() + 10000; const check = () => { if (window.__battleBuketNativeTerminalExited === true) resolve(true); else if (Date.now() >= deadline) resolve(false); else setTimeout(check, 100); }; check(); })"
         );
         if (workbenchTerminalExited !== true) {
-          finish(false);
+          failSmoke("workbench terminal process exit");
           return;
         }
 
@@ -259,12 +265,12 @@ function createWindow(): void {
         }
 
         if (!ptyHealthy) {
-          finish(false);
+          failSmoke("native PTY round trip");
           return;
         }
         if (process.argv.includes("--smoke-clear-state")) await fs.unlink(statePath).catch(() => {});
         finish(true);
-      })().catch(() => finish(false));
+      })().catch(error => failSmoke("unexpected packaged-app smoke exception", error));
     });
   }
   if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
