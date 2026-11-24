@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendTaskHistory, readTaskHistory } from "../src/main/task-history";
@@ -63,4 +63,28 @@ test("compacts oversized history while retaining the latest task records", async
     const contents = await readFile(join(directory, "task-history.jsonl"), "utf8");
     assert.ok(Buffer.byteLength(contents, "utf8") < 512 * 1024);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("serializes concurrent task-history appends without dropping events", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "bb-task-history-concurrent-"));
+  try {
+    const events = Array.from({ length: 24 }, (_, index) => ({
+      taskId: "concurrent-" + index,
+      provider: index % 2 === 0 ? "codex" as const : "claude" as const,
+      risk: "low" as const,
+      title: "Concurrent task " + index,
+      status: "succeeded" as const,
+      at: new Date(index * 1000).toISOString(),
+      changedFileCount: index,
+      verificationPassed: true
+    }));
+    await Promise.all(events.map(event => appendTaskHistory(directory, event)));
+    const history = await readTaskHistory(directory);
+    assert.equal(history.length, events.length);
+    assert.deepEqual(new Set(history.map(item => item.taskId)), new Set(events.map(item => item.taskId)));
+    const stored = await readFile(join(directory, "task-history.jsonl"), "utf8");
+    assert.equal(stored.trim().split(/\r?\n/).length, events.length);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
