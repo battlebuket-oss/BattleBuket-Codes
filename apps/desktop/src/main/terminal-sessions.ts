@@ -59,6 +59,7 @@ export function validateTerminalSize(columns: unknown, rows: unknown): asserts c
 
 export class WorkspaceTerminalSessions {
   private readonly sessions = new Map<string, Session>();
+  private readonly closing = new Map<string, Promise<boolean>>();
 
   async start(
     sessionId: string,
@@ -122,28 +123,37 @@ export class WorkspaceTerminalSessions {
     session.terminal.resize(columns as number, rows as number);
   }
 
-  async close(sessionId: string): Promise<boolean> {
+  close(sessionId: string): Promise<boolean> {
+    const pending = this.closing.get(sessionId);
+    if (pending) return pending;
     const session = this.sessions.get(sessionId);
-    if (!session) return false;
-    this.sessions.delete(sessionId);
+    if (!session) return Promise.resolve(true);
 
-    try { session.terminal.kill(); } catch { /* The shell may have exited concurrently. */ }
-    const gracefulExit = await Promise.race([
-      session.exited.then(() => true),
-      delay(1500).then(() => false)
-    ]);
-    if (!gracefulExit) {
-      try { session.terminal.kill("SIGKILL"); } catch { /* The process may already be gone. */ }
-    }
-    const exited = await Promise.race([
-      session.exited.then(() => true),
-      delay(1500).then(() => false)
-    ]);
-    return exited;
+    this.sessions.delete(sessionId);
+    const closing = (async () => {
+      try { session.terminal.kill(); } catch { /* The shell may have exited concurrently. */ }
+      const gracefulExit = await Promise.race([
+        session.exited.then(() => true),
+        delay(1500).then(() => false)
+      ]);
+      if (!gracefulExit) {
+        try { session.terminal.kill("SIGKILL"); } catch { /* The process may already be gone. */ }
+      }
+      return Promise.race([
+        session.exited.then(() => true),
+        delay(1500).then(() => false)
+      ]);
+    })();
+    this.closing.set(sessionId, closing);
+    void closing.finally(() => {
+      if (this.closing.get(sessionId) === closing) this.closing.delete(sessionId);
+    });
+    return closing;
   }
 
   async closeAll(): Promise<void> {
-    const results = await Promise.all([...this.sessions.keys()].map(id => this.close(id)));
+    const ids = new Set([...this.sessions.keys(), ...this.closing.keys()]);
+    const results = await Promise.all([...ids].map(id => this.close(id)));
     if (results.some(result => !result)) {
       throw new Error("One or more terminal processes did not confirm exit after termination.");
     }
