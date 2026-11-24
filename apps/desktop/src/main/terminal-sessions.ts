@@ -70,10 +70,12 @@ export class WorkspaceTerminalSessions {
   ): Promise<void> {
     if (!/^[a-f0-9-]{36}$/i.test(sessionId)) throw new Error("Invalid terminal session identifier.");
     if (this.sessions.has(sessionId)) throw new Error("Terminal session already exists.");
-    if (this.sessions.size >= 1) throw new Error("Only one workspace terminal session can be active.");
+    if (this.hasActiveSession()) throw new Error("A workspace terminal session is already active or closing.");
     validateTerminalSize(columns, rows);
 
     const cwd = await fs.realpath(workspacePath);
+    const cwdStat = await fs.stat(cwd);
+    if (!cwdStat.isDirectory()) throw new Error("Workspace terminal working directory must be a directory.");
     const isWindows = process.platform === "win32";
     const shell = isWindows ? (process.env.ComSpec || "cmd.exe") : (process.env.SHELL || "/bin/sh");
     const args = isWindows ? ["/D"] : ["-i"];
@@ -160,6 +162,6 @@ export class WorkspaceTerminalSessions {
   }
 
   hasActiveSession(): boolean {
-    return this.sessions.size > 0;
+    return this.sessions.size > 0 || this.closing.size > 0;
   }
 }
