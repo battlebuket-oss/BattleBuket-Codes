@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as vscode from "vscode";
+import "vscode/localExtensionHost";
 import { LogLevel } from "@codingame/monaco-vscode-api";
 import { MonacoVscodeApiWrapper } from "monaco-languageclient/vscodeApiWrapper";
 import getBaseServiceOverride from "@codingame/monaco-vscode-base-service-override";
@@ -49,7 +50,7 @@ type Runtime = {
 let runtimePromise: Promise<Runtime> | null = null;
 
 const extensionHostWorkerConfig: WorkerConfig = {
-  url: new URL("vscode/workers/extensionHost.worker", import.meta.url).toString(),
+  url: new URL("@codingame/monaco-vscode-api/workers/extensionHost.worker", import.meta.url).toString(),
   options: { type: "module", name: "battlebuket-extension-host" }
 };
 
