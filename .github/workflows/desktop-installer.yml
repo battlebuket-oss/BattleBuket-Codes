@@ -39,28 +39,28 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          CSC_LINK: \${{ secrets.WINDOWS_CSC_LINK }}
-          CSC_KEY_PASSWORD: \${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
         run: |
           if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) { throw "Configure WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD before building a signed Windows installer." }
       - name: Require Apple signing and notarization credentials
         if: runner.os == 'macOS'
         env:
-          CSC_LINK: \${{ secrets.MACOS_CSC_LINK }}
-          CSC_KEY_PASSWORD: \${{ secrets.MACOS_CSC_KEY_PASSWORD }}
-          APPLE_ID: \${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: \${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: \${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.MACOS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD" && test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID" || { echo "Configure all macOS signing and notarization secrets."; exit 1; }
       - name: Build signed installer
         env:
-          CSC_LINK: \${{ runner.os == 'Windows' && secrets.WINDOWS_CSC_LINK || runner.os == 'macOS' && secrets.MACOS_CSC_LINK || '' }}
-          CSC_KEY_PASSWORD: \${{ runner.os == 'Windows' && secrets.WINDOWS_CSC_KEY_PASSWORD || runner.os == 'macOS' && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
-          APPLE_ID: \${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: \${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: \${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm --filter @battlebuket/desktop \${{ matrix.script }}
+          CSC_LINK: ${{ runner.os == 'Windows' && secrets.WINDOWS_CSC_LINK || runner.os == 'macOS' && secrets.MACOS_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'Windows' && secrets.WINDOWS_CSC_KEY_PASSWORD || runner.os == 'macOS' && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm --filter @battlebuket/desktop ${{ matrix.script }}
       - name: Verify Windows Authenticode signature
         if: runner.os == 'Windows'
         shell: pwsh
