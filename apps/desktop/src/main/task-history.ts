@@ -101,7 +101,8 @@ export async function readTaskHistory(userDataPath: string): Promise<TaskHistory
   const file = join(userDataPath, FILE_NAME);
   let contents: string;
   try {
-    const stat = await fs.stat(file);
+    const stat = await fs.lstat(file);
+    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("Task history path is not a regular file.");
     const handle = await fs.open(file, "r");
     try {
       const start = Math.max(0, stat.size - MAX_FILE_BYTES);
