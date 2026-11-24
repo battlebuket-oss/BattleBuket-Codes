@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { listWorkspace, readWorkspaceFile, searchWorkspaceContent, searchWorkspaceFiles, writeWorkspaceFile } from "./workspace-files";
 import { appendTaskHistory, readTaskHistory } from "./task-history";
 import { WorkspaceTerminalSessions, type TerminalSessionEvent } from "./terminal-sessions";
+import { openRecentWorkspace, readRecentWorkspaces, recordRecentWorkspace } from "./recent-workspaces";
 import { runProjectQualityChecks } from "./project-verification";
 import { EngineeringDirector } from "../../../../packages/engineering-director/src/index";
 import { ClaudeAgentSdkAdapter, CodexCliAdapter } from "../../../../packages/provider-adapters/src/index";
@@ -192,6 +193,19 @@ handleTrustedIpc("workspace:select", async () => {
   const result = await dialog.showOpenDialog({ title: "Open project folder", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || result.filePaths.length === 0) return null;
   activeWorkspace = await fs.realpath(result.filePaths[0]);
+  await recordRecentWorkspace(app.getPath("userData"), activeWorkspace);
+  return activeWorkspace;
+});
+
+handleTrustedIpc("workspace:recent", async () => readRecentWorkspaces(app.getPath("userData")));
+
+handleTrustedIpc("workspace:open-recent", async (_event, payload: { path: string }) => {
+  if (activeDirector || taskStartPending || terminalSessions.hasActiveSession()) {
+    throw new Error("Close the active task and terminal session before changing projects.");
+  }
+  if (!payload || typeof payload.path !== "string") throw new Error("Invalid recent workspace selection.");
+  activeWorkspace = await openRecentWorkspace(app.getPath("userData"), payload.path);
+  await recordRecentWorkspace(app.getPath("userData"), activeWorkspace);
   return activeWorkspace;
 });
 handleTrustedIpc("workspace:list", async (_event, relativePath = "") => {
