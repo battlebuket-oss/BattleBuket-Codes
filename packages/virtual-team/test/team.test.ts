@@ -8,6 +8,10 @@ describe("virtual team planning", () => {
   assert.equal(plan.assignments.find(x=>x.id==="b")?.assignedRole,"security-auditor");
   assert.deepEqual(plan.executionOrder,["b","a","c"]);
  });
+ it("balances flexible tasks across qualified specialists", () => {
+  const plan = buildTeamPlan([{id:"d1",title:"Docs one",description:"",priority:"normal",skill:"documentation",estimatedEffort:2,dependsOn:[]},{id:"d2",title:"Docs two",description:"",priority:"normal",skill:"documentation",estimatedEffort:2,dependsOn:[]}]);
+  assert.notEqual(plan.assignments[0].assignedRole,plan.assignments[1].assignedRole);
+ });
  it("rejects dependency cycles", () => {
   assert.throws(() => buildTeamPlan([{id:"a",title:"A",description:"",priority:"normal",skill:"testing",estimatedEffort:1,dependsOn:["b"]},{id:"b",title:"B",description:"",priority:"normal",skill:"review",estimatedEffort:1,dependsOn:["a"]}]),/cycle/);
  });
