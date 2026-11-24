@@ -48,6 +48,7 @@ test("PTY session preserves shell state, streams output, resizes and exits", asy
     await waitFor("state");
     await waitFor("second");
     const firstClose = sessions.close(sessionId);
+    assert.equal(sessions.hasActiveSession(), true, "a terminating PTY remains active until its exit is confirmed");
     const concurrentClose = sessions.close(sessionId);
     assert.equal(await firstClose, true);
     assert.equal(await concurrentClose, true);
