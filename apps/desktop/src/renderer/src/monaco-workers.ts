@@ -1,6 +1,5 @@
 import * as monaco from "monaco-editor";
 import { loader } from "@monaco-editor/react";
-import "monaco-editor/esm/vs/editor/editor.main.css";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker&inline";
 import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker&inline";
 import CssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker&inline";
