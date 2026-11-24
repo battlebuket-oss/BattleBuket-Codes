@@ -1,10 +1,8 @@
 import { promises as fs } from "node:fs";
 import { join, resolve } from "node:path";
-import { execFile as execFileCallback } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn, type ChildProcess } from "node:child_process";
 import type { VerificationResult } from "../../../../packages/agent-contracts/src/index";
 
-const execFile = promisify(execFileCallback);
 export const QUALITY_SCRIPTS = ["test", "lint", "typecheck", "build"] as const;
 export const QUALITY_TIMEOUT_MS = 5 * 60 * 1000;
 export const QUALITY_MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
@@ -200,6 +198,36 @@ export function dotnetOutputHasVulnerabilities(output: string): boolean {
   return /has the following vulnerable packages|vulnerable package(?:s)? found|vulnerabilities found/i.test(output);
 }
 
+async function terminateProcessTree(child: ChildProcess): Promise<void> {
+  const pid = child.pid;
+  if (!pid) {
+    try { child.kill(); } catch { /* The process may already have exited. */ }
+    return;
+  }
+
+  if (process.platform === "win32") {
+    await new Promise<void>(resolveTaskkill => {
+      let killer: ChildProcess;
+      try {
+        killer = spawn("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+          windowsHide: true,
+          stdio: "ignore"
+        });
+      } catch {
+        try { child.kill(); } catch { /* The process may already have exited. */ }
+        resolveTaskkill();
+        return;
+      }
+      killer.once("error", () => resolveTaskkill());
+      killer.once("close", () => resolveTaskkill());
+    });
+    return;
+  }
+
+  try { process.kill(-pid, "SIGTERM"); }
+  catch { try { child.kill("SIGTERM"); } catch { /* The process may already have exited. */ } }
+}
+
 async function runScript(manager: PackageManager, script: string, cwd: string, signal?: AbortSignal, yarnMajor?: number): Promise<VerificationResult> {
   const started = Date.now();
   const spec = qualityCommand(manager, script, yarnMajor);
@@ -208,28 +236,100 @@ async function runScript(manager: PackageManager, script: string, cwd: string, s
   const args = process.platform === "win32" && spec.shellCommand
     ? ["/d", "/s", "/c", spec.display]
     : spec.args;
+
+  if (signal?.aborted) return { name: label, passed: false, output: "Cancelled by the user." };
+
+  let child: ChildProcess;
   try {
-    const result = await execFile(executable, args, {
+    child = spawn(executable, args, {
       cwd,
       env: safeEnvironment(),
-      timeout: QUALITY_TIMEOUT_MS,
-      killSignal: "SIGTERM",
-      maxBuffer: QUALITY_MAX_OUTPUT_BYTES,
       windowsHide: true,
-      encoding: "utf8",
-      ...(signal ? { signal } : {})
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "pipe", "pipe"]
     });
-    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").slice(-12000);
+  } catch (error) {
+    return {
+      name: label,
+      passed: false,
+      output: "Failed to start " + spec.display + ": " + (error instanceof Error ? error.message : String(error))
+    };
+  }
+
+  let stdout = "";
+  let stderr = "";
+  let capturedBytes = 0;
+  let outputExceeded = false;
+  let timedOut = false;
+  let spawnError: Error | null = null;
+  let termination: Promise<void> | null = null;
+
+  const closed = new Promise<{ code: number | null; processSignal: NodeJS.Signals | null }>(resolveClose => {
+    child.once("close", (code, processSignal) => resolveClose({ code, processSignal }));
+  });
+
+  const appendOutput = (stream: "stdout" | "stderr", chunk: Buffer | string) => {
+    const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    if (capturedBytes + value.byteLength > QUALITY_MAX_OUTPUT_BYTES) {
+      const remaining = Math.max(0, QUALITY_MAX_OUTPUT_BYTES - capturedBytes);
+      const bounded = value.subarray(0, remaining).toString("utf8");
+      if (stream === "stdout") stdout += bounded;
+      else stderr += bounded;
+      capturedBytes = QUALITY_MAX_OUTPUT_BYTES;
+      outputExceeded = true;
+      void terminate();
+      return;
+    }
+    capturedBytes += value.byteLength;
+    if (stream === "stdout") stdout += value.toString("utf8");
+    else stderr += value.toString("utf8");
+  };
+
+  const terminate = (): Promise<void> => {
+    if (!termination) {
+      termination = terminateProcessTree(child).catch(() => {
+        try { child.kill("SIGKILL"); } catch { /* Preserve the original process result. */ }
+      });
+    }
+    return termination;
+  };
+
+  child.once("error", error => { spawnError = error; });
+  child.stdout?.on("data", chunk => appendOutput("stdout", chunk));
+  child.stderr?.on("data", chunk => appendOutput("stderr", chunk));
+
+  const onAbort = () => { void terminate(); };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
+
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    void terminate();
+  }, QUALITY_TIMEOUT_MS);
+
+  try {
+    const exit = await closed;
+    if (termination) await termination;
+    const output = [stdout, stderr].filter(Boolean).join("\n").slice(-12000);
+
+    if (signal?.aborted) return { name: label, passed: false, output: "Cancelled by the user." };
+    if (timedOut) return { name: label, passed: false, output: "Timed out after " + QUALITY_TIMEOUT_MS + " ms.\n" + output };
+    if (outputExceeded) return { name: label, passed: false, output: "Failed: command output exceeded the 2 MB capture limit.\n" + output };
+    if (spawnError) return { name: label, passed: false, output: "Failed to start " + spec.display + ": " + spawnError.message };
+    if (exit.code !== 0) {
+      return {
+        name: label,
+        passed: false,
+        output: "Failed after " + (Date.now() - started) + " ms (exit " + String(exit.code ?? exit.processSignal ?? "unknown") + ")\n" + output
+      };
+    }
     if (manager === "dotnet" && script === "security" && dotnetOutputHasVulnerabilities(output)) {
       return { name: label, passed: false, output: "Vulnerable packages were reported by dotnet.\n" + output };
     }
     return { name: label, passed: true, output: spec.display + " passed in " + (Date.now() - started) + " ms" + (output ? "\n" + output : "") };
-  } catch (error) {
-    const failure = error as NodeJS.ErrnoException & { code?: number | string; stdout?: string; stderr?: string; killed?: boolean };
-    const timedOut = failure.killed === true || failure.code === "ETIMEDOUT";
-    if (signal?.aborted) return { name: label, passed: false, output: "Cancelled by the user." };
-    const output = [failure.stdout, failure.stderr, failure.message].filter(Boolean).join("\n").slice(-12000);
-    return { name: label, passed: false, output: (timedOut ? "Timed out" : "Failed") + " after " + (Date.now() - started) + " ms (exit " + String(failure.code ?? "unknown") + ")\n" + output };
+  } finally {
+    clearTimeout(timeoutHandle);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 
