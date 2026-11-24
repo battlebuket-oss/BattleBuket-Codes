@@ -40,4 +40,6 @@ child.onExit(({ exitCode, signal }) => {
   process.exit(0);
 });
 
-child.write(isWindows ? "echo BB_PTY_SMOKE_OK\r" : "printf 'BB_PTY_SMOKE_OK\\n'\r");
+child.write(isWindows
+  ? "set BB_PTY_MARKER=BB_PTY_\rset BB_PTY_MARKER=%BB_PTY_MARKER%SMOKE_OK\recho %BB_PTY_MARKER%\r"
+  : "printf '%s%s\\n' 'BB_PTY_' 'SMOKE_OK'\r");

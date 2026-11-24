@@ -37,11 +37,11 @@ test("PTY session preserves shell state, streams output, resizes and exits", asy
     });
     sessions.resize(sessionId, 120, 32);
     const first = process.platform === "win32"
-      ? "set BB_PTY_MARKER=BB_PTY_STATE_OK\r\necho BB_PTY_FIRST\r"
-      : "export BB_PTY_MARKER=BB_PTY_STATE_OK; printf 'BB_PTY_FIRST\\n'\r";
+      ? "set BB_PTY_MARKER=BB_PTY_\r\necho BB_PTY_FIRST\r"
+      : "export BB_PTY_MARKER=BB_PTY_; printf 'BB_PTY_FIRST\\n'\r";
     const second = process.platform === "win32"
-      ? "echo %BB_PTY_MARKER% & echo BB_PTY_SECOND\r"
-      : "printf '%s\\n' \"$BB_PTY_MARKER\"; printf 'BB_PTY_SECOND\\n'\r";
+      ? "set BB_PTY_MARKER=%BB_PTY_MARKER%STATE_OK\r\necho %BB_PTY_MARKER% & echo BB_PTY_SECOND\r"
+      : "printf '%s\\n' \"\${BB_PTY_MARKER}STATE_OK\"; printf 'BB_PTY_SECOND\\n'\r";
     sessions.write(sessionId, first);
     await waitFor("first");
     sessions.write(sessionId, second);
