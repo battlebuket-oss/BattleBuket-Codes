@@ -139,8 +139,8 @@ function createWindow(): void {
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
   if (process.argv.includes("--smoke-test")) {
-    window.webContents.on("console-message", (_event, details) => {
-      console.error("[renderer-console] level=" + details.level + " message=" + details.message + " source=" + details.sourceId + ":" + details.lineNumber);
+    window.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+      console.error("[renderer-console] level=" + level + " message=" + message + " source=" + sourceId + ":" + line);
     });
     window.webContents.on("render-process-gone", (_event, details) => {
       console.error("[renderer-process-gone] reason=" + details.reason + " exitCode=" + details.exitCode);
