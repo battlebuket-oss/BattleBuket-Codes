@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import { Activity, Bot, Braces, CheckCircle2, ChevronDown, Command, FileCode2, Folder, FolderOpen, GitBranch, LayoutDashboard, Loader2, Plus, Search, Settings2, ShieldCheck, Sparkles, Square, Workflow, XCircle } from "lucide-react";
 
 type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
+type EditorTab = { path: string; content: string; mtimeMs: number; draft: string };
 type AgentProvider = "codex" | "claude";
 type TaskRisk = "low" | "medium" | "high";
 type AgentEvent = {
@@ -85,6 +86,7 @@ export default function App() {
   const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
   const [currentDirectory, setCurrentDirectory] = useState("");
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string; mtimeMs: number } | null>(null);
+  const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
@@ -121,7 +123,7 @@ export default function App() {
       setError("");
       const selected = await window.battleBuket?.selectWorkspace();
       if (selected) {
-        setWorkspace(selected); setCurrentDirectory(""); setSelectedFile(null); setTaskResult(null); setDataConsent(false);
+        setWorkspace(selected); setCurrentDirectory(""); setSelectedFile(null); setEditorTabs([]); setDraft(""); setTaskResult(null); setDataConsent(false);
         await refreshFiles("");
       }
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open project folder"); }
@@ -135,16 +137,49 @@ export default function App() {
   const openFile = async (path: string) => {
     try {
       setError("");
+      const cached = editorTabs.find(tab => tab.path === path);
+      if (cached) {
+        setSelectedFile({ path: cached.path, content: cached.content, mtimeMs: cached.mtimeMs });
+        setDraft(cached.draft);
+        setSaveMessage(cached.draft !== cached.content ? "Unsaved changes" : "");
+        return;
+      }
       const file = await window.battleBuket?.readWorkspaceFile(path);
-      if (file) { setSelectedFile(file); setDraft(file.content); setSaveMessage(""); }
+      if (file) {
+        const tab: EditorTab = { ...file, draft: file.content };
+        setEditorTabs(current => current.some(item => item.path === file.path) ? current : [...current, tab]);
+        setSelectedFile(file);
+        setDraft(file.content);
+        setSaveMessage("");
+      }
     } catch (e) { setError(e instanceof Error ? e.message : "Could not read file"); }
+  };
+  const activateEditorTab = (tab: EditorTab) => {
+    setSelectedFile({ path: tab.path, content: tab.content, mtimeMs: tab.mtimeMs });
+    setDraft(tab.draft);
+    setSaveMessage(tab.draft !== tab.content ? "Unsaved changes" : "");
+  };
+  const closeEditorTab = (path: string) => {
+    const tab = editorTabs.find(item => item.path === path);
+    if (!tab) return;
+    if (tab.draft !== tab.content && !window.confirm("Discard unsaved changes in " + path + "?")) return;
+    const nextTabs = editorTabs.filter(item => item.path !== path);
+    setEditorTabs(nextTabs);
+    if (selectedFile?.path === path) {
+      const next = nextTabs[nextTabs.length - 1];
+      if (next) activateEditorTab(next);
+      else { setSelectedFile(null); setDraft(""); setSaveMessage(""); }
+    }
   };
   const saveFile = async () => {
     if (!selectedFile || !window.battleBuket) return;
     try {
       setSaving(true); setError("");
       const saved = await window.battleBuket.saveWorkspaceFile({ path: selectedFile.path, content: draft, expectedMtimeMs: selectedFile.mtimeMs });
-      setSelectedFile({ ...selectedFile, content: draft, mtimeMs: saved.mtimeMs }); setSaveMessage("Saved");
+      const nextFile = { ...selectedFile, content: draft, mtimeMs: saved.mtimeMs };
+      setSelectedFile(nextFile);
+      setEditorTabs(current => current.map(tab => tab.path === selectedFile.path ? { ...tab, content: draft, draft, mtimeMs: saved.mtimeMs } : tab));
+      setSaveMessage("Saved");
     } catch (e) { setError(e instanceof Error ? e.message : "Save failed"); }
     finally { setSaving(false); }
   };
@@ -348,6 +383,14 @@ export default function App() {
       </aside>
       <section className="center">
         <div className="tab"><FileCode2 size={14}/> {selectedFile ? selectedFile.path : "Engineering command center"}<button className="terminal-toggle" onClick={() => { if (terminalOpen) setTerminalOpen(false); else void openTerminal(); }}>{terminalOpen ? "Hide terminal" : "Terminal"}</button></div>
+        {editorTabs.length > 0 && <div className="editor-tabs" role="tablist" aria-label="Open files">
+          {editorTabs.map(tab => <div key={tab.path} className={"editor-tab" + (selectedFile?.path === tab.path ? " active" : "")}>
+            <button className="editor-tab-name" role="tab" aria-selected={selectedFile?.path === tab.path} onClick={() => activateEditorTab(tab)}>
+              <FileCode2 size={12}/><span>{tab.path.split(/[\\/]/).pop()}</span>{tab.draft !== tab.content && <i aria-label="Unsaved changes"/>}
+            </button>
+            <button className="editor-tab-close" aria-label={"Close " + tab.path} onClick={() => closeEditorTab(tab.path)}>×</button>
+          </div>)}
+        </div>}
         {selectedFile ? <div className="editor-preview">
           <div className="editor-toolbar">
             <span className="editor-file-path">{selectedFile.path}</span>
@@ -360,7 +403,7 @@ export default function App() {
               language={editorLanguageForPath(selectedFile.path)}
               theme="vs-dark"
               value={draft}
-              onChange={value => { setDraft(value ?? ""); setSaveMessage(""); }}
+              onChange={value => { const nextDraft = value ?? ""; setDraft(nextDraft); setEditorTabs(current => current.map(tab => tab.path === selectedFile.path ? { ...tab, draft: nextDraft } : tab)); setSaveMessage(""); }}
               options={{
                 automaticLayout: true,
                 minimap: { enabled: true, scale: 1 },
