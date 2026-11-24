@@ -277,7 +277,7 @@ async function runScript(manager: PackageManager, script: string, cwd: string, s
   let capturedBytes = 0;
   let outputExceeded = false;
   let timedOut = false;
-  let spawnError: Error | null = null;
+  const spawnFailure: { error: Error | null } = { error: null };
   let termination: Promise<void> | null = null;
 
   const closed = new Promise<{ code: number | null; processSignal: NodeJS.Signals | null }>(resolveClose => {
@@ -310,7 +310,7 @@ async function runScript(manager: PackageManager, script: string, cwd: string, s
     return termination;
   };
 
-  child.once("error", error => { spawnError = error; });
+  child.once("error", error => { spawnFailure.error = error; });
   child.stdout?.on("data", chunk => appendOutput("stdout", chunk));
   child.stderr?.on("data", chunk => appendOutput("stderr", chunk));
 
@@ -331,7 +331,7 @@ async function runScript(manager: PackageManager, script: string, cwd: string, s
     if (signal?.aborted) return { name: label, passed: false, output: "Cancelled by the user." };
     if (timedOut) return { name: label, passed: false, output: "Timed out after " + QUALITY_TIMEOUT_MS + " ms.\n" + output };
     if (outputExceeded) return { name: label, passed: false, output: "Failed: command output exceeded the 2 MB capture limit.\n" + output };
-    if (spawnError) return { name: label, passed: false, output: "Failed to start " + spec.display + ": " + spawnError.message };
+    if (spawnFailure.error) return { name: label, passed: false, output: "Failed to start " + spec.display + ": " + spawnFailure.error.message };
     if (exit.code !== 0) {
       return {
         name: label,
