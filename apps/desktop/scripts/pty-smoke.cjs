@@ -1,7 +1,17 @@
 const pty = require("node-pty");
 
+const fs = require("node:fs");
+const path = require("node:path");
 const isWindows = process.platform === "win32";
-const shell = isWindows ? (process.env.ComSpec || "cmd.exe") : (process.env.SHELL || "/bin/sh");
+const shell = isWindows
+  ? (process.env.ComSpec || process.env.SystemRoot && path.join(process.env.SystemRoot, "System32", "cmd.exe") || "cmd.exe")
+  : [...new Set([process.env.SHELL, "/bin/zsh", "/bin/bash", "/bin/sh", "/usr/bin/bash"])]
+      .filter(candidate => typeof candidate === "string" && path.isAbsolute(candidate))
+      .find(candidate => {
+        try { fs.accessSync(candidate, fs.constants.X_OK); return true; }
+        catch { return false; }
+      });
+if (!shell) throw new Error("No executable shell was found for the native PTY smoke test.");
 const args = isWindows ? ["/D"] : ["-i"];
 const safeEnv = {};
 const allowedEnv = [
@@ -13,6 +23,7 @@ const allowedEnv = [
 for (const key of allowedEnv) {
   if (typeof process.env[key] === "string") safeEnv[key] = process.env[key];
 }
+if (!isWindows && !safeEnv.PATH) safeEnv.PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 safeEnv.TERM = "xterm-256color";
 safeEnv.COLORTERM = "truecolor";
 const child = pty.spawn(shell, args, {
