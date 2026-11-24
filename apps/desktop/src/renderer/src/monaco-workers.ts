@@ -1,10 +1,18 @@
 import * as monaco from "monaco-editor";
 import { loader } from "@monaco-editor/react";
-import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker&inline";
-import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker&inline";
-import CssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker&inline";
-import HtmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker&inline";
-import TypeScriptWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker&inline";
+
+type MonacoWorkerLabel =
+  | "editorWorkerService"
+  | "json"
+  | "css"
+  | "scss"
+  | "less"
+  | "html"
+  | "handlebars"
+  | "razor"
+  | "javascript"
+  | "typescript"
+  | "extensionHostWorkerMain";
 
 type MonacoWorkerEnvironment = {
   getWorker(moduleId: string, label: string): Worker;
@@ -12,34 +20,43 @@ type MonacoWorkerEnvironment = {
   getWorkerOptions?(moduleId: string, label: string): WorkerOptions | undefined;
 };
 
-const extensionHostWorkerUrl = new URL(
-  "@codingame/monaco-vscode-api/workers/extensionHost.worker",
-  import.meta.url
-).toString();
+const workerUrls: Partial<Record<MonacoWorkerLabel, URL>> = {
+  editorWorkerService: new URL("monaco-editor/esm/vs/editor/editor.worker.js", import.meta.url),
+  json: new URL("monaco-editor/esm/vs/language/json/json.worker.js", import.meta.url),
+  css: new URL("monaco-editor/esm/vs/language/css/css.worker.js", import.meta.url),
+  scss: new URL("monaco-editor/esm/vs/language/css/css.worker.js", import.meta.url),
+  less: new URL("monaco-editor/esm/vs/language/css/css.worker.js", import.meta.url),
+  html: new URL("monaco-editor/esm/vs/language/html/html.worker.js", import.meta.url),
+  handlebars: new URL("monaco-editor/esm/vs/language/html/html.worker.js", import.meta.url),
+  razor: new URL("monaco-editor/esm/vs/language/html/html.worker.js", import.meta.url),
+  javascript: new URL("monaco-editor/esm/vs/language/typescript/ts.worker.js", import.meta.url),
+  typescript: new URL("monaco-editor/esm/vs/language/typescript/ts.worker.js", import.meta.url),
+  extensionHostWorkerMain: new URL("@codingame/monaco-vscode-api/workers/extensionHost.worker", import.meta.url)
+};
+
+function workerUrl(label: string): URL | undefined {
+  return workerUrls[label as MonacoWorkerLabel] ?? workerUrls.editorWorkerService;
+}
 
 export function configureMonacoWorkers(): void {
-  (globalThis as typeof globalThis & { MonacoEnvironment?: MonacoWorkerEnvironment }).MonacoEnvironment = {
+  const environment: MonacoWorkerEnvironment = {
     getWorkerUrl(_moduleId, label) {
-      return label === "extensionHostWorkerMain" ? extensionHostWorkerUrl : undefined;
+      return workerUrl(label)?.toString();
     },
     getWorkerOptions(_moduleId, label) {
-      return label === "extensionHostWorkerMain" ? { type: "module", name: "battlebuket-extension-host" } : undefined;
+      return workerUrl(label) ? { type: "module", name: "battlebuket-" + label } : undefined;
     },
     getWorker(_moduleId, label) {
-      switch (label) {
-        case "json": return new JsonWorker();
-        case "css":
-        case "scss":
-        case "less": return new CssWorker();
-        case "html":
-        case "handlebars":
-        case "razor": return new HtmlWorker();
-        case "javascript":
-        case "typescript": return new TypeScriptWorker();
-        default: return new EditorWorker();
-      }
+      const url = workerUrl(label);
+      if (!url) throw new Error("No Monaco worker is registered for label: " + label);
+      return new Worker(url, { type: "module", name: "battlebuket-" + label });
     }
   };
+
+  // The VS Code web workbench reads MonacoEnvironment from window; standalone
+  // Monaco consumers read the same object from globalThis in the renderer.
+  (window as Window & { MonacoEnvironment?: MonacoWorkerEnvironment }).MonacoEnvironment = environment;
+  (globalThis as typeof globalThis & { MonacoEnvironment?: MonacoWorkerEnvironment }).MonacoEnvironment = environment;
 }
 
 configureMonacoWorkers();
