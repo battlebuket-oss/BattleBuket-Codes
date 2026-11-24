@@ -71,6 +71,7 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.0.0 --activate
       - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level high
       - name: Run unit tests with the Node ABI
         run: pnpm test
       - name: Typecheck and lint
