@@ -14,27 +14,45 @@ concurrency:
 
 jobs:
   bootstrap:
-    if: ${{ hashFiles('pnpm-lock.yaml') == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Check whether a lockfile is needed
+        id: check
+        run: |
+          if test -f pnpm-lock.yaml; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.exists == 'false'
         with:
           node-version: 22
       - run: corepack enable
+        if: steps.check.outputs.exists == 'false'
       - run: corepack prepare pnpm@10.0.0 --activate
+        if: steps.check.outputs.exists == 'false'
       - name: Generate the workspace lockfile
+        if: steps.check.outputs.exists == 'false'
         run: pnpm install --lockfile-only
       - run: pnpm install --frozen-lockfile
+        if: steps.check.outputs.exists == 'false'
       - run: pnpm audit --audit-level high
+        if: steps.check.outputs.exists == 'false'
       - run: pnpm lint
+        if: steps.check.outputs.exists == 'false'
       - run: pnpm typecheck
+        if: steps.check.outputs.exists == 'false'
       - run: pnpm test
+        if: steps.check.outputs.exists == 'false'
       - run: pnpm build
+        if: steps.check.outputs.exists == 'false'
       - name: Commit the generated lockfile
+        if: steps.check.outputs.exists == 'false'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
