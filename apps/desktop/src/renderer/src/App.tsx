@@ -707,11 +707,14 @@ export default function App() {
             {editorDiagnostics.length === 0
               ? <p className="problems-empty">No editor diagnostics for this file.</p>
               : <div className="problems-list">
-                  {editorDiagnostics.slice(0, 100).map((diagnostic, index) => <div className="problem-item" key={diagnostic.line + ":" + diagnostic.column + ":" + index}>
+                  {editorDiagnostics.slice(0, 100).map((diagnostic, index) => <button className="problem-item" type="button" key={diagnostic.line + ":" + diagnostic.column + ":" + index} onClick={() => {
+                    setPendingEditorJump({ path: selectedFile.path, lineNumber: diagnostic.line });
+                    editorRef.current?.focus();
+                  }}>
                     <span className={diagnostic.severity === 8 ? "problem-error" : diagnostic.severity === 4 ? "problem-warning" : "problem-info"}>{diagnostic.severity === 8 ? "ERROR" : diagnostic.severity === 4 ? "WARNING" : "INFO"}</span>
                     <span className="problem-message">{diagnostic.message}</span>
                     <small>{diagnostic.line}:{diagnostic.column}</small>
-                  </div>)}
+                  </button>)}
                 </div>}
           </section>
         </div> : <article>
