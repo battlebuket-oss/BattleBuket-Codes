@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { listWorkspace, readWorkspaceFile, writeWorkspaceFile } from "./workspace-files";
+import { listWorkspace, readWorkspaceFile, searchWorkspaceFiles, writeWorkspaceFile } from "./workspace-files";
 import { appendTaskHistory, readTaskHistory } from "./task-history";
 import { WorkspaceTerminalSessions, type TerminalSessionEvent } from "./terminal-sessions";
 import { runProjectQualityChecks } from "./project-verification";
@@ -137,6 +137,11 @@ handleTrustedIpc("workspace:select", async () => {
 handleTrustedIpc("workspace:list", async (_event, relativePath = "") => {
   if (typeof relativePath !== "string" || relativePath.length > 4096 || !activeWorkspace) throw new Error("Invalid folder request");
   return listWorkspace(activeWorkspace, relativePath);
+});
+
+handleTrustedIpc("workspace:search", async (_event, query: string) => {
+  if (typeof query !== "string" || query.length > 200 || !activeWorkspace) throw new Error("Invalid workspace search request.");
+  return searchWorkspaceFiles(activeWorkspace, query);
 });
 handleTrustedIpc("workspace:read", async (_event, relativePath: string) => {
   if (typeof relativePath !== "string" || relativePath.length > 4096 || !activeWorkspace) throw new Error("Invalid file request");
