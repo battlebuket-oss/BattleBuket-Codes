@@ -6,6 +6,7 @@ export type TaskHistoryEvent = {
   taskId: string;
   provider: "codex" | "claude";
   risk: "low" | "medium" | "high";
+  title?: string;
   status: TaskHistoryStatus;
   at: string;
   changedFileCount?: number;
@@ -27,6 +28,7 @@ function isHistoryEvent(value: unknown): value is TaskHistoryEvent {
   return typeof item.taskId === "string" && item.taskId.length > 0 && item.taskId.length <= 128 &&
     (item.provider === "codex" || item.provider === "claude") &&
     (item.risk === "low" || item.risk === "medium" || item.risk === "high") &&
+    (item.title === undefined || (typeof item.title === "string" && item.title.length <= 120)) &&
     (item.status === "running" || item.status === "succeeded" || item.status === "failed" || item.status === "cancelled") &&
     typeof item.at === "string" && Number.isFinite(Date.parse(item.at)) &&
     (item.changedFileCount === undefined || (typeof item.changedFileCount === "number" && Number.isSafeInteger(item.changedFileCount) && item.changedFileCount >= 0)) &&
@@ -48,6 +50,7 @@ export async function appendTaskHistory(userDataPath: string, event: TaskHistory
     taskId: event.taskId,
     provider: event.provider,
     risk: event.risk,
+    ...(event.title === undefined ? {} : { title: event.title }),
     status: event.status,
     at: event.at,
     ...(event.changedFileCount === undefined ? {} : { changedFileCount: event.changedFileCount }),
@@ -85,6 +88,7 @@ export async function readTaskHistory(userDataPath: string): Promise<TaskHistory
           taskId: parsed.taskId,
           provider: parsed.provider,
           risk: parsed.risk,
+          ...(parsed.title === undefined ? {} : { title: parsed.title }),
           status: parsed.status,
           startedAt: parsed.at,
           ...(parsed.status === "running" ? {} : { finishedAt: parsed.at }),
@@ -92,6 +96,7 @@ export async function readTaskHistory(userDataPath: string): Promise<TaskHistory
           ...(parsed.verificationPassed === undefined ? {} : { verificationPassed: parsed.verificationPassed })
         });
       } else {
+        if (parsed.title !== undefined) current.title = parsed.title;
         current.status = parsed.status;
         if (parsed.status !== "running") current.finishedAt = parsed.at;
         if (parsed.changedFileCount !== undefined) current.changedFileCount = parsed.changedFileCount;
