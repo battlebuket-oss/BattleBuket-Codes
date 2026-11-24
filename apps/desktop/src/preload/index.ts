@@ -13,10 +13,9 @@ type AgentEvent = {
 type TerminalSessionEvent = {
   sessionId: string;
   type: "output" | "error" | "exit";
-  stream?: "stdout" | "stderr";
   text?: string;
   exitCode?: number | null;
-  signal?: NodeJS.Signals | null;
+  signal?: number;
 };
 
 type TaskHistoryItem = {
@@ -48,6 +47,7 @@ contextBridge.exposeInMainWorld("battleBuket", {
   startTerminal: (): Promise<string> => ipcRenderer.invoke("terminal:start"),
   writeTerminal: (sessionId: string, input: string): Promise<boolean> => ipcRenderer.invoke("terminal:write", { sessionId, input }),
   closeTerminal: (sessionId: string): Promise<boolean> => ipcRenderer.invoke("terminal:close", { sessionId }),
+  resizeTerminal: (sessionId: string, columns: number, rows: number): Promise<boolean> => ipcRenderer.invoke("terminal:resize", { sessionId, columns, rows }),
   onTerminalEvent: (listener: (event: TerminalSessionEvent) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: TerminalSessionEvent) => listener(payload);
     ipcRenderer.on("terminal:event", handler);
