@@ -169,6 +169,14 @@ handleTrustedIpc("terminal:close", async (_event, payload: { sessionId: string }
   return closed;
 });
 
+handleTrustedIpc("terminal:resize", async (_event, payload: { sessionId: string; columns: number; rows: number }) => {
+  if (!payload || payload.sessionId !== activeTerminalSessionId) {
+    throw new Error("Invalid or inactive terminal session.");
+  }
+  terminalSessions.resize(payload.sessionId, payload.columns, payload.rows);
+  return true;
+});
+
 handleTrustedIpc("agents:availability", async () => {
   const availability = await Promise.all(adapters.map(async adapter => {
     try { return [adapter.provider, await adapter.isAvailable()] as const; }
