@@ -59,7 +59,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
 - [x] Add opt-in live Codex/Claude read-only and single-file workspace-write boundary smoke tests, including an outside-workspace sentinel check, plus a manual self-hosted runner workflow. The tests require real sign-in and have not yet been executed on authenticated runners.
-- [x] Add packaged-app smoke mode with expected-version and Monaco-worker checks, real VS Code workbench/extension-host startup, VS Code integrated-terminal PTY round trip, plus clean install, launch and uninstall steps for all three OS targets. These steps have not run yet.
+- [x] Add packaged-app smoke mode with expected-version and Monaco-worker checks, VS Code workbench/extension-host startup, workspace filesystem create/read/overwrite/rename/delete, integrated-terminal PTY input/output/exit, plus clean install, launch and uninstall steps for all three OS targets. The smoke implementation is present; these steps have not run successfully on the latest branch head yet.
 - [x] Add manual cross-platform installer upgrade/rollback tests that verify a user-data marker survives baseline → candidate → rollback. The workflow requires two existing signed releases and has not yet run.
 - [ ] Execute authenticated provider and signed-installer workflows; add permission-escalation and longer-session tests, run the two-release upgrade/rollback workflow, and add crash-recovery and broader UI end-to-end tests.
 
