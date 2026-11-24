@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { once } from "node:events";
 import { promises as fs } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 
 export const TERMINAL_MAX_INPUT_BYTES = 16 * 1024;
 export const TERMINAL_MAX_SESSION_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -98,11 +99,39 @@ export class WorkspaceTerminalSessions {
     this.sessions.delete(sessionId);
     const child = session.child;
     if (child.exitCode !== null || child.signalCode !== null) return true;
-    try {
-      if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGTERM");
-      else child.kill("SIGTERM");
-    } catch { child.kill(); }
-    return true;
+
+    const waitForExit = async (milliseconds: number) => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      await Promise.race([
+        once(child, "exit").then(() => undefined).catch(() => undefined),
+        delay(milliseconds).then(() => undefined)
+      ]);
+    };
+
+    if (process.platform === "win32" && child.pid) {
+      const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore"
+      });
+      await Promise.race([
+        once(killer, "close").then(() => undefined).catch(() => undefined),
+        delay(5000).then(() => undefined)
+      ]);
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+    } else {
+      try {
+        if (child.pid) process.kill(-child.pid, "SIGTERM");
+        else child.kill("SIGTERM");
+      } catch { child.kill("SIGTERM"); }
+      await waitForExit(1500);
+      if (child.exitCode === null && child.signalCode === null) {
+        try { if (child.pid) process.kill(-child.pid, "SIGKILL"); else child.kill("SIGKILL"); }
+        catch { child.kill("SIGKILL"); }
+      }
+    }
+
+    await waitForExit(1000);
+    return child.exitCode !== null || child.signalCode !== null;
   }
 
   async closeAll(): Promise<void> {
