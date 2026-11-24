@@ -45,6 +45,7 @@ type BattleBuketAgentResult = {
 interface Window {
   battleBuket?: {
     getVersion: () => Promise<string>;
+    isSmokeTest: () => Promise<boolean>;
     getActiveWorkspace: () => Promise<string | null>;
     selectWorkspace: () => Promise<string | null>;
     getRecentWorkspaces: () => Promise<BattleBuketRecentWorkspace[]>;
