@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { promises as fs } from "node:fs";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
@@ -16,6 +16,31 @@ let activeWorkspace: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 let activeDirector: EngineeringDirector | null = null;
 let taskStartPending = false;
+
+// Only the trusted top-level renderer may invoke privileged main-process IPC.
+function handleTrustedIpc(
+  channel: string,
+  handler: (event: IpcMainInvokeEvent, ...args: any[]) => any
+): void {
+  handleTrustedIpc(channel, (event, ...args) => {
+    const frame = event.senderFrame;
+    if (!frame || frame !== event.sender.mainFrame) {
+      throw new Error("IPC is only available to the trusted top-level window.");
+    }
+    try {
+      const frameUrl = new URL(frame.url);
+      const isPackagedRenderer = frameUrl.protocol === "file:";
+      const devUrl = process.env.ELECTRON_RENDERER_URL;
+      const isTrustedDevRenderer = Boolean(devUrl) && frameUrl.origin === new URL(devUrl!).origin;
+      if (!isPackagedRenderer && !isTrustedDevRenderer) {
+        throw new Error("Untrusted renderer origin.");
+      }
+    } catch {
+      throw new Error("Untrusted renderer origin.");
+    }
+    return handler(event, ...args);
+  });
+}
 
 async function verifyWorkspaceDiff(workspacePath: string): Promise<VerificationResult[]> {
   try {
@@ -52,30 +77,30 @@ function createWindow(): void {
   else void window.loadFile(join(__dirname, "../renderer/index.html"));
 }
 
-ipcMain.handle("platform:version", () => app.getVersion());
-ipcMain.handle("workspace:select", async () => {
+handleTrustedIpc("platform:version", () => app.getVersion());
+handleTrustedIpc("workspace:select", async () => {
   if (activeDirector || taskStartPending) throw new Error("Finish or cancel the active engineering task before changing projects.");
   const result = await dialog.showOpenDialog({ title: "Open project folder", properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || result.filePaths.length === 0) return null;
   activeWorkspace = await fs.realpath(result.filePaths[0]);
   return activeWorkspace;
 });
-ipcMain.handle("workspace:list", async (_event, relativePath = "") => {
+handleTrustedIpc("workspace:list", async (_event, relativePath = "") => {
   if (typeof relativePath !== "string" || relativePath.length > 4096 || !activeWorkspace) throw new Error("Invalid folder request");
   return listWorkspace(activeWorkspace, relativePath);
 });
-ipcMain.handle("workspace:read", async (_event, relativePath: string) => {
+handleTrustedIpc("workspace:read", async (_event, relativePath: string) => {
   if (typeof relativePath !== "string" || relativePath.length > 4096 || !activeWorkspace) throw new Error("Invalid file request");
   return readWorkspaceFile(activeWorkspace, relativePath);
 });
-ipcMain.handle("workspace:write", async (_event, payload: { path: string; content: string; expectedMtimeMs: number }) => {
+handleTrustedIpc("workspace:write", async (_event, payload: { path: string; content: string; expectedMtimeMs: number }) => {
   if (!payload || typeof payload.path !== "string" || payload.path.length > 4096 || !activeWorkspace) throw new Error("Invalid save request");
   return writeWorkspaceFile(activeWorkspace, payload.path, payload.content, payload.expectedMtimeMs);
 });
 
-ipcMain.handle("tasks:history", async () => readTaskHistory(app.getPath("userData")));
+handleTrustedIpc("tasks:history", async () => readTaskHistory(app.getPath("userData")));
 
-ipcMain.handle("agents:availability", async () => {
+handleTrustedIpc("agents:availability", async () => {
   const availability = await Promise.all(adapters.map(async adapter => {
     try { return [adapter.provider, await adapter.isAvailable()] as const; }
     catch { return [adapter.provider, false] as const; }
@@ -83,7 +108,7 @@ ipcMain.handle("agents:availability", async () => {
   return Object.fromEntries(availability) as Record<AgentProvider, boolean>;
 });
 
-ipcMain.handle("agents:run", async (_event, payload: { prompt: string; provider: AgentProvider; risk: RiskLevel }) => {
+handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provider: AgentProvider; risk: RiskLevel }) => {
   if (!payload || typeof payload.prompt !== "string" || payload.prompt.trim().length < 3 || payload.prompt.length > 12000) {
     throw new Error("Enter a task prompt between 3 and 12,000 characters.");
   }
@@ -174,7 +199,7 @@ ipcMain.handle("agents:run", async (_event, payload: { prompt: string; provider:
   }
 });
 
-ipcMain.handle("agents:cancel", async () => {
+handleTrustedIpc("agents:cancel", async () => {
   if (!activeDirector) return false;
   await activeDirector.cancel();
   return true;
