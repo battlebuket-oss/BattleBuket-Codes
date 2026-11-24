@@ -240,7 +240,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
         }
         const reviewTask: AgentTask = {
           ...reviewedTask,
-          id: randomUUID(),
+          id: reviewedTask.id,
           title: "Read-only implementation review",
           prompt: [
             "You are performing a read-only code review after an implementation task.",
