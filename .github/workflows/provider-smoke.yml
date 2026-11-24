@@ -18,12 +18,12 @@ permissions:
 
 jobs:
   live-provider-smoke:
-    name: Live provider conformance (\${{ inputs.providers }})
+    name: Live provider conformance (${{ inputs.providers }})
     runs-on: [self-hosted, battlebuket-provider-smoke]
     timeout-minutes: 90
     env:
       BATTLEBUKET_REAL_PROVIDER_SMOKE: "1"
-      BATTLEBUKET_SMOKE_PROVIDERS: \${{ inputs.providers }}
+      BATTLEBUKET_SMOKE_PROVIDERS: ${{ inputs.providers }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
