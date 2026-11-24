@@ -1,20 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { promises as fs } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { isPathInside } from "./workspace-path";
+import { listWorkspace, readWorkspaceFile, writeWorkspaceFile } from "./workspace-files";
 
 type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
 let activeWorkspace: string | null = null;
 const MAX_FILE_BYTES = 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "out", ".next"]);
-
-async function resolveWorkspacePath(relativePath = ""): Promise<string> {
-  if (!activeWorkspace) throw new Error("Open a project folder first");
-  const root = await fs.realpath(activeWorkspace);
-  const candidate = await fs.realpath(resolve(root, relativePath));
-  if (!isPathInside(root, candidate)) throw new Error("Access outside the selected workspace is blocked");
-  return candidate;
-}
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -38,55 +30,17 @@ ipcMain.handle("workspace:select", async () => {
   activeWorkspace = await fs.realpath(result.filePaths[0]);
   return activeWorkspace;
 });
-ipcMain.handle("workspace:list", async (_event, relativePath = ""): Promise<WorkspaceEntry[]> => {
-  if (typeof relativePath !== "string" || relativePath.length > 4096) throw new Error("Invalid folder path");
-  const directory = await resolveWorkspacePath(relativePath);
-  const entries = await fs.readdir(directory, { withFileTypes: true });
-  const result: WorkspaceEntry[] = [];
-  for (const entry of entries) {
-    if (entry.isSymbolicLink()) continue;
-    if (entry.isDirectory() && IGNORED_DIRECTORIES.has(entry.name)) continue;
-    if (!entry.isDirectory() && !entry.isFile()) continue;
-    const fullPath = join(directory, entry.name);
-    const stat = await fs.stat(fullPath);
-    result.push({
-      name: entry.name,
-      path: relative(activeWorkspace!, fullPath),
-      kind: entry.isDirectory() ? "directory" : "file",
-      size: stat.size
-    });
-  }
-  return result.sort((a, b) => a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "directory" ? -1 : 1).slice(0, 300);
+ipcMain.handle("workspace:list", async (_event, relativePath = "") => {
+  if (typeof relativePath !== "string" || relativePath.length > 4096 || !activeWorkspace) throw new Error("Invalid folder request");
+  return listWorkspace(activeWorkspace, relativePath);
 });
 ipcMain.handle("workspace:read", async (_event, relativePath: string) => {
-  if (typeof relativePath !== "string" || relativePath.length > 4096) throw new Error("Invalid file path");
-  const file = await resolveWorkspacePath(relativePath);
-  const stat = await fs.stat(file);
-  if (!stat.isFile()) throw new Error("Selected path is not a file");
-  if (stat.size > MAX_FILE_BYTES) throw new Error("File is larger than the 1 MB preview limit");
-  const content = await fs.readFile(file);
-  if (content.includes(0)) throw new Error("Binary files cannot be previewed as text");
-  return { path: relative(activeWorkspace!, file), content: content.toString("utf8"), mtimeMs: stat.mtimeMs };
+  if (typeof relativePath !== "string" || relativePath.length > 4096 || !activeWorkspace) throw new Error("Invalid file request");
+  return readWorkspaceFile(activeWorkspace, relativePath);
 });
-
 ipcMain.handle("workspace:write", async (_event, payload: { path: string; content: string; expectedMtimeMs: number }) => {
-  if (!payload || typeof payload.path !== "string" || payload.path.length > 4096 ||
-      typeof payload.content !== "string" || !Number.isFinite(payload.expectedMtimeMs)) {
-    throw new Error("Invalid save request");
-  }
-  if (Buffer.byteLength(payload.content, "utf8") > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MB save limit");
-  const file = await resolveWorkspacePath(payload.path);
-  const handle = await fs.open(file, "r+");
-  try {
-    const stat = await handle.stat();
-    if (!stat.isFile()) throw new Error("Selected path is not a regular file");
-    if (stat.mtimeMs !== payload.expectedMtimeMs) throw new Error("File changed outside BattleBuket Codes. Reopen it before saving to avoid overwriting newer changes.");
-    await handle.truncate(0);
-    await handle.writeFile(payload.content, "utf8");
-    return { path: relative(activeWorkspace!, file), mtimeMs: (await handle.stat()).mtimeMs };
-  } finally {
-    await handle.close();
-  }
+  if (!payload || typeof payload.path !== "string" || payload.path.length > 4096 || !activeWorkspace) throw new Error("Invalid save request");
+  return writeWorkspaceFile(activeWorkspace, payload.path, payload.content, payload.expectedMtimeMs);
 });
 
 app.whenReady().then(() => {
