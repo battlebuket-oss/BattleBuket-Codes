@@ -11,6 +11,16 @@ type AgentEvent = {
   message: string;
   data?: Record<string, unknown>;
 };
+type TaskHistoryItem = {
+  taskId: string;
+  provider: AgentProvider;
+  risk: TaskRisk;
+  status: "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
+  startedAt: string;
+  finishedAt?: string;
+  changedFileCount?: number;
+  verificationPassed?: boolean;
+};
 type AgentResult = {
   taskId: string;
   status: "succeeded" | "failed" | "cancelled";
@@ -27,6 +37,7 @@ declare global {
       readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;
       saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
       getAgentAvailability: () => Promise<Record<AgentProvider, boolean>>;
+      getTaskHistory: () => Promise<TaskHistoryItem[]>;
       runAgent: (payload: { prompt: string; provider: AgentProvider; risk: TaskRisk }) => Promise<AgentResult>;
       cancelAgent: () => Promise<boolean>;
       onAgentEvent: (listener: (event: AgentEvent) => void) => () => void;
@@ -52,6 +63,7 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([]);
   const [taskResult, setTaskResult] = useState<AgentResult | null>(null);
+  const [taskHistory, setTaskHistory] = useState<TaskHistoryItem[]>([]);
 
   const refreshFiles = async (directory = currentDirectory) => {
     try {
@@ -70,6 +82,12 @@ export default function App() {
         await refreshFiles("");
       }
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open project folder"); }
+  };
+  const refreshHistory = async () => {
+    try {
+      const items = await window.battleBuket?.getTaskHistory();
+      setTaskHistory(items ?? []);
+    } catch { /* History is optional; a failed read must not block editing. */ }
   };
   const openFile = async (path: string) => {
     try {
@@ -97,7 +115,7 @@ export default function App() {
       setTaskResult(result);
       if (result.status === "succeeded") await refreshFiles("");
     } catch (e) { setError(e instanceof Error ? e.message : "The engineering task failed to start"); }
-    finally { setRunning(false); }
+    finally { setRunning(false); void refreshHistory(); }
   };
   const cancelTask = async () => {
     try { await window.battleBuket?.cancelAgent(); }
@@ -107,6 +125,7 @@ export default function App() {
   useEffect(() => {
     window.battleBuket?.getVersion().then(setVersion).catch(() => {});
     window.battleBuket?.getAgentAvailability().then(setAvailability).catch(() => {});
+    void refreshHistory();
     const unsubscribe = window.battleBuket?.onAgentEvent(event => {
       setAgentEvents(current => [...current, event].slice(-80));
     });
@@ -199,6 +218,15 @@ export default function App() {
         <p className="gate">◈ Claude runtime <b className={availability.claude ? "" : "pending"}>{availability.claude ? "DETECTED" : "NOT FOUND"}</b></p>
         <h4>TASK PIPELINE</h4>
         <p className="no-tasks">{running ? "1 task running" : taskResult ? "Last task: " + taskResult.status : "No active tasks"}<br/><small>One task at a time; progress events are streamed from the provider.</small></p>
+        <h4>RECENT TASKS <span>{taskHistory.length}</span></h4>
+        <div className="history-list">
+          {taskHistory.slice(0, 5).map(item => <div className="history-item" key={item.taskId}>
+            <span className={"history-status " + item.status}>{item.status}</span>
+            <b>{item.provider === "codex" ? "Codex" : "Claude"} · {item.risk}</b>
+            <small>{new Date(item.startedAt).toLocaleString()} {item.changedFileCount !== undefined ? "· " + item.changedFileCount + " changed" : ""}</small>
+          </div>)}
+          {taskHistory.length === 0 && <p className="history-empty">Completed task summaries appear here. Prompts and model output are not stored.</p>}
+        </div>
         <h4>QUALITY GATES</h4>
         <p className="gate">◈ Workspace boundary <b>ENFORCED</b></p>
         <p className="gate">◈ Git diff check <b>PARTIAL</b></p>
