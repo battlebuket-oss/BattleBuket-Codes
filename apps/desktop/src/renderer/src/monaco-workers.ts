@@ -8,10 +8,23 @@ import TypeScriptWorker from "monaco-editor/esm/vs/language/typescript/ts.worker
 
 type MonacoWorkerEnvironment = {
   getWorker(moduleId: string, label: string): Worker;
+  getWorkerUrl?(moduleId: string, label: string): string | undefined;
+  getWorkerOptions?(moduleId: string, label: string): WorkerOptions | undefined;
 };
+
+const extensionHostWorkerUrl = new URL(
+  "@codingame/monaco-vscode-api/workers/extensionHost.worker",
+  import.meta.url
+).toString();
 
 export function configureMonacoWorkers(): void {
   (globalThis as typeof globalThis & { MonacoEnvironment?: MonacoWorkerEnvironment }).MonacoEnvironment = {
+    getWorkerUrl(_moduleId, label) {
+      return label === "extensionHostWorkerMain" ? extensionHostWorkerUrl : undefined;
+    },
+    getWorkerOptions(_moduleId, label) {
+      return label === "extensionHostWorkerMain" ? { type: "module", name: "battlebuket-extension-host" } : undefined;
+    },
     getWorker(_moduleId, label) {
       switch (label) {
         case "json": return new JsonWorker();
