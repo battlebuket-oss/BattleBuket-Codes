@@ -10,6 +10,16 @@ type AgentEvent = {
   message: string;
   data?: Record<string, unknown>;
 };
+type TaskHistoryItem = {
+  taskId: string;
+  provider: AgentProvider;
+  risk: TaskRisk;
+  status: "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
+  startedAt: string;
+  finishedAt?: string;
+  changedFileCount?: number;
+  verificationPassed?: boolean;
+};
 type AgentResult = {
   taskId: string;
   status: "succeeded" | "failed" | "cancelled";
@@ -25,6 +35,7 @@ contextBridge.exposeInMainWorld("battleBuket", {
   readWorkspaceFile: (path: string): Promise<{ path: string; content: string; mtimeMs: number }> => ipcRenderer.invoke("workspace:read", path),
   saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }): Promise<{ path: string; mtimeMs: number }> => ipcRenderer.invoke("workspace:write", payload),
   getAgentAvailability: (): Promise<Record<AgentProvider, boolean>> => ipcRenderer.invoke("agents:availability"),
+  getTaskHistory: (): Promise<TaskHistoryItem[]> => ipcRenderer.invoke("tasks:history"),
   runAgent: (payload: { prompt: string; provider: AgentProvider; risk: TaskRisk }): Promise<AgentResult> => ipcRenderer.invoke("agents:run", payload),
   cancelAgent: (): Promise<boolean> => ipcRenderer.invoke("agents:cancel"),
   onAgentEvent: (listener: (event: AgentEvent) => void): (() => void) => {
