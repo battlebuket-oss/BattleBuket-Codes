@@ -39,16 +39,19 @@ Implemented in BattleBuket-Codes:
 - Engineering Director task lifecycle and provider selection.
 - Workspace file explorer, bounded text preview/editing, path boundary checks, and stale-write protection.
 - Local JSONL task history with interrupted-run recovery, task titles, provider/risk, timestamps, changed-file count, and verification status. Prompts and model output are intentionally not persisted.
-- Workspace command panel with a bounded one-command shell runner (120-second timeout, 1 MB output cap, reduced environment). This is not yet a persistent PTY terminal and does not support full-screen terminal applications.
-- CI validation for audit, lint, typecheck, unit tests, build, and desktop bundles on Windows/macOS/Linux.
-- A tag-triggered signed-release workflow that requires platform signing credentials and assembles a draft GitHub release.
+- Persistent pipe-based workspace shell session with streamed output, input/output bounds, session close/restart, and app-shutdown cleanup. It is **not a PTY**: no terminal resize, raw mode, full-screen TTY programs, or terminal-emulator integration.
+- Consent-gated project script verification for test/lint/typecheck/build and high-severity pnpm/npm lockfile audits, with five-minute per-command timeout and bounded output. These scripts are arbitrary project code, run under the user's OS account, and are not a security sandbox.
+- Durable local JSONL task status history with interrupted-run recovery and size compaction that preserves the latest 50 tasks. This is not a transactional event database.
+- Opt-in live Codex/Claude conformance tests for read-only and workspace-write flows, plus a manual self-hosted runner workflow. The live tests have not yet been run on an authenticated provider runner.
+- CI validation for audit, lint, typecheck, unit tests, build, CodeQL, secret scanning, and desktop bundles on Windows/macOS/Linux.
+- A tag-triggered release workflow that requires Windows/macOS signing secrets, builds platform installers, checks signatures/notarization, performs installed-app launch smoke checks, and assembles a draft GitHub release. No tagged production release has run or been published.
 
 Still not implemented or not verified:
 - The full Code - OSS / VS Code workbench is not embedded in the BattleBuket desktop window. The current textarea editor is only a lightweight preview/editor and must not be represented as VS Code.
-- A persistent PTY terminal with terminal resize, interactive TTY applications, and process/session management.
-- Live provider end-to-end tests against authenticated Codex and Claude installations on supported desktop operating systems.
-- Full task verification that runs project-specific tests/build/lint/security checks and makes task success depend on their results.
+- A native PTY terminal with xterm rendering, terminal resize, raw input, full-screen TTY support, and process/session management.
+- Execution of the live provider smoke workflow on authenticated Codex and Claude runners, plus extended OS/model/version coverage. A harness exists but has not yet been run against live accounts.
+- Sandboxed project verification and broader quality gates (SAST, secret scanning, license/provenance checks). Current project scripts require approval and run with user permissions; supported lockfile audits are available, but there is no execution sandbox.
 - Installer signing/notarization and release publication. The release workflow is configured, but it cannot produce a signed production release until repository signing secrets are configured and a tagged release build passes.
-- Installed-app smoke tests, upgrade/uninstall tests, crash recovery, and real user acceptance testing.
+- Actual signed installer workflow execution and artifact verification, upgrade/rollback tests, crash recovery, and real user acceptance testing. The tag workflow now defines clean-install/launch/uninstall smoke steps, but those steps have not run.
 
 A green source CI run is not proof of a production-ready desktop product. Production readiness requires the remaining items above to be implemented and verified on actual installed builds.
