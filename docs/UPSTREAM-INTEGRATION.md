@@ -1,32 +1,35 @@
 # Upstream integration plan
 
-The product is implemented and released from this repository only: battlebuket-oss/BattleBuket-Codes.
+All first-party product changes and commits belong in battlebuket-oss/BattleBuket-Codes. Upstream repositories are integration dependencies, not destinations for our work.
 
-## Components and boundaries
+## Selected upstream components
 
-1. **VS Code OSS** is the editor/workbench foundation. Integrate it as the primary editing surface and preserve upstream notices, licensing, and branding requirements.
-2. **Electron** is the desktop runtime used by the VS Code desktop architecture. Do not wrap a second Electron shell around an already Electron-based workbench.
-3. **OpenAI Codex** is an execution engine behind the BattleBuket agent adapter. Use its supported CLI/App Server interface; do not claim the platform includes model access or provider billing.
-4. **Anthropic Claude Code / Agent SDK** is a second execution engine behind the same adapter contract. Keep provider authentication, permissions, and usage visible in settings and diagnostics.
+| Component | Upstream | Integration decision |
+|---|---|---|
+| Editor/workbench | https://github.com/microsoft/vscode | Use Code - OSS as the editor/workbench base; pin a tested revision and preserve MIT notices and third-party notices. |
+| Desktop runtime | https://github.com/electron/electron | Electron is the runtime already used by the VS Code desktop architecture. Do not create a second nested Electron shell. Pin a compatible runtime through the workbench build. |
+| Coding agent | https://github.com/openai/codex | Integrate the supported Codex CLI/App Server protocol behind the BattleBuket adapter. The upstream repository is Apache-2.0; model access and account/API billing remain subject to OpenAI terms. |
+| Coding agent | https://github.com/anthropics/claude-code | Integrate Claude Code as a separately installed/provider-managed runtime or through the supported Claude Agent SDK. Do not vendor or redistribute Claude Code source: its repository LICENSE.md states Anthropic copyright and that use is subject to Anthropic Commercial Terms. |
 
-## Integration order
+## Integration sequence
 
-1. Pin upstream versions/commits and record license, notices, runtime requirements, and security advisories.
-2. Establish the VS Code OSS workbench build and Electron packaging baseline.
-3. Implement Codex adapter and verify event streaming, cancellation, workspace scoping, and authentication.
-4. Implement Claude adapter against the same contract and run the same conformance tests.
-5. Connect both adapters to the Engineering Director; add planning, delegation, review, retries, and audit history.
+1. Record immutable upstream revisions, runtime versions, licenses, notices, and security advisories.
+2. Establish a reproducible Code - OSS workbench build with its Electron runtime and BattleBuket branding.
+3. Add a Codex adapter using the supported machine interface; test authentication, streaming, cancellation, workspace boundaries, and approval modes.
+4. Add a Claude adapter using the supported installed runtime/SDK; test the same adapter conformance suite and comply with Anthropic commercial terms.
+5. Connect both adapters to the Engineering Director; implement task planning, delegation, independent review, retry/recovery, and durable audit history.
 6. Add end-to-end tests, signed installers, update/rollback, crash recovery, and release gates.
 
-## Non-negotiable safety boundaries
+## Security and release gates
 
 - Never execute agent-proposed shell commands without policy checks and the configured approval mode.
-- Restrict file writes to the selected workspace unless the user explicitly authorizes otherwise.
+- Restrict writes to the selected workspace unless the user explicitly authorizes otherwise.
 - Keep provider credentials out of renderer processes, logs, source control, and crash reports.
 - Treat agent output, repository files, terminal output, and tool results as untrusted data.
 - A successful agent response is not a successful task until verification passes.
-- Do not merge or redistribute upstream source until its current license and distribution terms have been reviewed.
+- Do not redistribute upstream code or bundled runtimes unless the relevant license and provider terms explicitly permit it.
+- No provider credentials or paid model access are included with the application.
 
-## Current implementation status
+## Implementation status
 
-The shared adapter contract and initial Director lifecycle are implemented in this repository. This does not yet mean the upstream workbench or provider runtimes have been vendored, built, or tested. Those integrations remain separate deliverables and must pass the release gates above.
+The BattleBuket repository now contains the initial desktop shell, shared provider-neutral agent contracts, an initial Engineering Director lifecycle, and lifecycle tests. The VS Code workbench, upstream runtime adapters, actual test execution, signing, packaging, and production hardening are not yet complete. This document is an integration plan, not a claim that those upstream components have already been installed or built.
