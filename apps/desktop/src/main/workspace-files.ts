@@ -1,9 +1,9 @@
 import { promises as fs } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { isPathInside } from "./workspace-path";
 
-export type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
+export type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number; mtimeMs: number };
 const MAX_FILE_BYTES = 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "out", ".next", ".cache", ".turbo", ".venv", "venv", "coverage", "vendor", ".dart_tool"]);
 
@@ -14,8 +14,38 @@ async function resolveInside(rootPath: string, relativePath = ""): Promise<{ roo
   return { root, target };
 }
 
+async function resolveWorkspacePath(rootPath: string, relativePath = "", allowMissingFinal = false): Promise<{ root: string; target: string }> {
+  if (typeof relativePath !== "string" || relativePath.includes("\0") || relativePath.length > 4096) {
+    throw new Error("Invalid workspace-relative path.");
+  }
+  const root = await fs.realpath(rootPath);
+  const target = resolve(root, relativePath);
+  if (!isPathInside(root, target)) throw new Error("Access outside the selected workspace is blocked");
+  const relativeTarget = relative(root, target);
+  if (!relativeTarget || relativeTarget === ".") return { root, target: root };
+  const segments = relativeTarget.split(sep).filter(Boolean);
+  let current = root;
+  for (let index = 0; index < segments.length; index++) {
+    current = join(current, segments[index]);
+    try {
+      const stat = await fs.lstat(current);
+      if (stat.isSymbolicLink()) {
+        throw new Error("Access outside the selected workspace is blocked (symbolic links are not followed)");
+      }
+      if (index < segments.length - 1 && !stat.isDirectory()) {
+        throw new Error("A workspace path parent is not a directory.");
+      }
+    } catch (error) {
+      if (allowMissingFinal && index === segments.length - 1 &&
+          (error as NodeJS.ErrnoException).code === "ENOENT") return { root, target: current };
+      throw error;
+    }
+  }
+  return { root, target };
+}
+
 export async function listWorkspace(rootPath: string, relativePath = ""): Promise<WorkspaceEntry[]> {
-  const { root, target } = await resolveInside(rootPath, relativePath);
+  const { root, target } = await resolveWorkspacePath(rootPath, relativePath);
   const entries = await fs.readdir(target, { withFileTypes: true });
   const result: WorkspaceEntry[] = [];
   for (const entry of entries) {
@@ -23,13 +53,13 @@ export async function listWorkspace(rootPath: string, relativePath = ""): Promis
     if (!entry.isDirectory() && !entry.isFile()) continue;
     const fullPath = join(target, entry.name);
     const stat = await fs.stat(fullPath);
-    result.push({ name: entry.name, path: relative(root, fullPath), kind: entry.isDirectory() ? "directory" : "file", size: stat.size });
+    result.push({ name: entry.name, path: relative(root, fullPath), kind: entry.isDirectory() ? "directory" : "file", size: stat.size, mtimeMs: stat.mtimeMs });
   }
   return result.sort((a,b) => a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "directory" ? -1 : 1).slice(0,300);
 }
 
 export async function readWorkspaceFile(rootPath: string, relativePath: string) {
-  const { root, target } = await resolveInside(rootPath, relativePath);
+  const { root, target } = await resolveWorkspacePath(rootPath, relativePath);
   const stat = await fs.stat(target);
   if (!stat.isFile()) throw new Error("Selected path is not a file");
   if (stat.size > MAX_FILE_BYTES) throw new Error("File is larger than the 1 MB preview limit");
@@ -41,7 +71,7 @@ export async function readWorkspaceFile(rootPath: string, relativePath: string) 
 export async function writeWorkspaceFile(rootPath: string, relativePath: string, content: string, expectedMtimeMs: number) {
   if (typeof content !== "string" || Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) throw new Error("File exceeds the 1 MB save limit");
   if (!Number.isFinite(expectedMtimeMs)) throw new Error("Invalid file version");
-  const { root, target } = await resolveInside(rootPath, relativePath);
+  const { root, target } = await resolveWorkspacePath(rootPath, relativePath);
   const original = await fs.stat(target);
   if (!original.isFile()) throw new Error("Selected path is not a regular file");
   if (original.mtimeMs !== expectedMtimeMs) throw new Error("File changed outside BattleBuket Codes. Reopen it before saving to avoid overwriting newer changes.");
@@ -60,8 +90,8 @@ export async function writeWorkspaceFile(rootPath: string, relativePath: string,
   await temporaryHandle.close();
 
   try {
-    const latest = await fs.stat(target);
-    if (latest.dev !== original.dev || latest.ino !== original.ino || latest.size !== original.size || latest.mtimeMs !== expectedMtimeMs) {
+    const latest = await fs.lstat(target);
+    if (latest.isSymbolicLink() || latest.dev !== original.dev || latest.ino !== original.ino || latest.size !== original.size || latest.mtimeMs !== expectedMtimeMs) {
       throw new Error("File changed while the save was being prepared. Reopen it before trying again.");
     }
     await fs.rename(temporary, target);
@@ -78,6 +108,86 @@ export async function writeWorkspaceFile(rootPath: string, relativePath: string,
   } finally {
     await fs.unlink(temporary).catch(() => {});
   }
+}
+
+
+export async function createWorkspaceDirectory(rootPath: string, relativePath: string): Promise<void> {
+  const { target } = await resolveWorkspacePath(rootPath, relativePath, true);
+  if (target === await fs.realpath(rootPath)) throw new Error("The workspace root already exists.");
+  await fs.mkdir(target);
+}
+
+export async function createWorkspaceFile(rootPath: string, relativePath: string, content: string): Promise<{ path: string; mtimeMs: number }> {
+  if (typeof content !== "string" || Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) {
+    throw new Error("File exceeds the 1 MB save limit");
+  }
+  const { root, target } = await resolveWorkspacePath(rootPath, relativePath, true);
+  if (target === root) throw new Error("Cannot create a file over the workspace root.");
+  const handle = await fs.open(target, "wx", 0o600);
+  try {
+    await handle.writeFile(content, "utf8");
+    await handle.sync();
+  } catch (error) {
+    await handle.close();
+    await fs.unlink(target).catch(() => {});
+    throw error;
+  }
+  await handle.close();
+  return { path: relative(root, target), mtimeMs: (await fs.stat(target)).mtimeMs };
+}
+
+export async function writeWorkspaceFileSystemFile(
+  rootPath: string,
+  relativePath: string,
+  content: string,
+  create: boolean,
+  overwrite: boolean
+): Promise<{ path: string; mtimeMs: number }> {
+  if (typeof create !== "boolean" || typeof overwrite !== "boolean") throw new Error("Invalid file write options.");
+  try {
+    const existing = await readWorkspaceFile(rootPath, relativePath);
+    if (!overwrite) throw new Error("File already exists.");
+    return writeWorkspaceFile(rootPath, relativePath, content, existing.mtimeMs);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (!create) throw error;
+    return createWorkspaceFile(rootPath, relativePath, content);
+  }
+}
+
+export async function deleteWorkspacePath(rootPath: string, relativePath: string, recursive: boolean): Promise<void> {
+  const { root, target } = await resolveWorkspacePath(rootPath, relativePath);
+  if (target === root) throw new Error("The workspace root cannot be deleted.");
+  const stat = await fs.lstat(target);
+  if (stat.isSymbolicLink()) throw new Error("Symbolic links cannot be deleted through the workspace provider.");
+  if (stat.isDirectory() && !recursive) {
+    await fs.rmdir(target);
+    return;
+  }
+  await fs.rm(target, { recursive, force: false });
+}
+
+export async function renameWorkspacePath(
+  rootPath: string,
+  oldRelativePath: string,
+  newRelativePath: string,
+  overwrite: boolean
+): Promise<void> {
+  const { root, target: source } = await resolveWorkspacePath(rootPath, oldRelativePath);
+  const { target: destination } = await resolveWorkspacePath(rootPath, newRelativePath, true);
+  if (source === root || destination === root) throw new Error("The workspace root cannot be renamed or replaced.");
+  if (isPathInside(source, destination)) throw new Error("A directory cannot be moved inside itself.");
+  const sourceStat = await fs.lstat(source);
+  if (sourceStat.isSymbolicLink()) throw new Error("Symbolic links cannot be renamed through the workspace provider.");
+  try {
+    const destinationStat = await fs.lstat(destination);
+    if (destinationStat.isSymbolicLink()) throw new Error("Symbolic links cannot be replaced through the workspace provider.");
+    if (!overwrite) throw new Error("Destination already exists.");
+    await fs.rm(destination, { recursive: destinationStat.isDirectory(), force: false });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  await fs.rename(source, destination);
 }
 
 
