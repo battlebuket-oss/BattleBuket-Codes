@@ -8,7 +8,8 @@ declare global {
       getVersion: () => Promise<string>;
       selectWorkspace: () => Promise<string | null>;
       listWorkspace: (path?: string) => Promise<WorkspaceEntry[]>;
-      readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;\n      saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
+      readWorkspaceFile: (path: string) => Promise<{ path: string; content: string; mtimeMs: number }>;
+      saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }) => Promise<{ path: string; mtimeMs: number }>;
     };
   }
 }
@@ -17,7 +18,10 @@ export default function App() {
   const [workspace, setWorkspace] = useState<string | null>(null);
   const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
   const [currentDirectory, setCurrentDirectory] = useState("");
-  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string; mtimeMs: number } | null>(null);\n  const [draft, setDraft] = useState("");\n  const [saving, setSaving] = useState(false);\n  const [saveMessage, setSaveMessage] = useState("");
+  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string; mtimeMs: number } | null>(null);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -40,7 +44,12 @@ export default function App() {
     try { setError(""); const file = await window.battleBuket?.readWorkspaceFile(path); if (file) { setSelectedFile(file); setDraft(file.content); setSaveMessage(""); } }
     catch (e) { setError(e instanceof Error ? e.message : "Could not read file"); }
   };
-  const saveFile = async () => {\n    if (!selectedFile || !window.battleBuket) return;\n    try { setSaving(true); setError(""); const saved = await window.battleBuket.saveWorkspaceFile({ path: selectedFile.path, content: draft, expectedMtimeMs: selectedFile.mtimeMs }); setSelectedFile({ ...selectedFile, content: draft, mtimeMs: saved.mtimeMs }); setSaveMessage("Saved"); }\n    catch (e) { setError(e instanceof Error ? e.message : "Save failed"); } finally { setSaving(false); }\n  };\n  useEffect(() => { window.battleBuket?.getVersion().then(setVersion).catch(() => {}); }, []);
+  const saveFile = async () => {
+    if (!selectedFile || !window.battleBuket) return;
+    try { setSaving(true); setError(""); const saved = await window.battleBuket.saveWorkspaceFile({ path: selectedFile.path, content: draft, expectedMtimeMs: selectedFile.mtimeMs }); setSelectedFile({ ...selectedFile, content: draft, mtimeMs: saved.mtimeMs }); setSaveMessage("Saved"); }
+    catch (e) { setError(e instanceof Error ? e.message : "Save failed"); } finally { setSaving(false); }
+  };
+  useEffect(() => { window.battleBuket?.getVersion().then(setVersion).catch(() => {}); }, []);
 
   return <main className="shell">
     <header className="top"><div className="brand"><span className="mark"><Braces size={17}/></span>BATTLEBUKET <b>CODES</b><small>ENGINEERING WORKSPACE</small></div><div className="workspace-name"><i/> {workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : "Director workspace"} <ChevronDown size={13}/></div><div className="top-right">v{version}<Settings2 size={16}/></div></header>
