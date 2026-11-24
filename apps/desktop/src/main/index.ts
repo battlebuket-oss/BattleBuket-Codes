@@ -151,6 +151,9 @@ handleTrustedIpc("tasks:history", async () => readTaskHistory(app.getPath("userD
 
 handleTrustedIpc("terminal:start", async () => {
   await runtimeCleanup;
+  if (shutdownInProgress || shutdownComplete || !mainWindow || mainWindow.isDestroyed()) {
+    throw new Error("The desktop window is closing. Reopen it before starting a terminal.");
+  }
   if (!activeWorkspace) throw new Error("Open a project folder before starting the terminal.");
   if (activeDirector || taskStartPending) throw new Error("Close or finish the engineering task before starting the terminal.");
   if (terminalSessions.hasActiveSession()) throw new Error("A terminal session is already active.");
