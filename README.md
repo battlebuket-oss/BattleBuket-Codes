@@ -17,7 +17,7 @@ BattleBuket Codes brings a project workspace, local coding-engine integrations, 
 The repository currently includes:
 
 - Electron desktop shell with a context-isolated preload bridge, navigation blocking and trusted-renderer IPC checks.
-- Native project-folder selection, bounded workspace browsing, a Monaco code editor with language-aware highlighting, minimap and bundled language workers, multi-file tabs, unsaved-draft protection, Ctrl/Cmd+S saving, a Problems panel for Monaco language diagnostics, Quick Open filename search (Ctrl/Cmd+P), bounded project-wide text search (Ctrl/Cmd+Shift+F), a desktop command palette (Ctrl/Cmd+Shift+P), and integrated terminal toggle (Ctrl/Cmd+J), atomic saves, stale-write protection and path/symlink checks.
+- Native project-folder selection with a validated, persistent recent-project list (last 10), bounded workspace browsing, a Monaco code editor with language-aware highlighting, minimap and bundled language workers, multi-file tabs, unsaved-draft protection, Ctrl/Cmd+S saving, a Problems panel for Monaco language diagnostics, Quick Open filename search (Ctrl/Cmd+P), bounded project-wide text search (Ctrl/Cmd+Shift+F), a desktop command palette (Ctrl/Cmd+Shift+P), and integrated terminal toggle (Ctrl/Cmd+J), atomic saves, stale-write protection and path/symlink checks.
 - Codex CLI adapter with version/login preflight, structured event streaming, cancellation, bounded runtime, read-only and workspace-write modes.
 - Claude Agent SDK adapter with sandbox-required startup, restricted built-in tool allowlists, bounded turns and cancellation.
 - Single-task Engineering Director lifecycle, explicit provider selection, risk-based approval and task status events.
