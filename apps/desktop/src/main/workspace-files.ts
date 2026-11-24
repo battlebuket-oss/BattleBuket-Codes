@@ -132,3 +132,70 @@ export async function searchWorkspaceFiles(rootPath: string, query: string): Pro
     return score(aPath, aName) - score(bPath, bName) || a.path.localeCompare(b.path);
   }).slice(0, maxResults);
 }
+
+
+export type WorkspaceContentMatch = {
+  path: string;
+  lineNumber: number;
+  preview: string;
+};
+
+export async function searchWorkspaceContent(rootPath: string, query: string): Promise<WorkspaceContentMatch[]> {
+  if (typeof query !== "string" || query.trim().length < 2 || query.length > 200) return [];
+  const { root, target } = await resolveInside(rootPath, "");
+  const needle = query.trim().toLocaleLowerCase();
+  const matches: WorkspaceContentMatch[] = [];
+  let scannedFiles = 0;
+  let bytesRead = 0;
+  const maxScannedFiles = 3000;
+  const maxTotalBytes = 64 * 1024 * 1024;
+  const maxMatches = 200;
+
+  const walk = async (directory: string, depth: number): Promise<void> => {
+    if (depth > 12 || scannedFiles >= maxScannedFiles || bytesRead >= maxTotalBytes || matches.length >= maxMatches) return;
+    let entries;
+    try { entries = await fs.readdir(directory, { withFileTypes: true }); }
+    catch { return; }
+    for (const entry of entries) {
+      if (scannedFiles >= maxScannedFiles || bytesRead >= maxTotalBytes || matches.length >= maxMatches) break;
+      if (entry.isSymbolicLink()) continue;
+      const fullPath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (IGNORED_DIRECTORIES.has(entry.name)) continue;
+        try {
+          const real = await fs.realpath(fullPath);
+          if (isPathInside(root, real)) await walk(real, depth + 1);
+        } catch { /* Ignore directories removed or made inaccessible during search. */ }
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      scannedFiles++;
+      try {
+        const real = await fs.realpath(fullPath);
+        if (!isPathInside(root, real)) continue;
+        const stat = await fs.stat(real);
+        if (!stat.isFile() || stat.size === 0 || stat.size > MAX_FILE_BYTES || bytesRead + stat.size > maxTotalBytes) continue;
+        const content = await fs.readFile(real);
+        bytesRead += content.byteLength;
+        if (content.includes(0)) continue;
+        const text = content.toString("utf8");
+        const lines = text.split(/\r?\n/);
+        for (let index = 0; index < lines.length; index++) {
+          const line = lines[index];
+          if (!line.toLocaleLowerCase().includes(needle)) continue;
+          matches.push({
+            path: relative(root, real),
+            lineNumber: index + 1,
+            preview: line.trim().slice(0, 280)
+          });
+          if (matches.length >= maxMatches) break;
+        }
+      } catch { /* Ignore files changed or removed during search. */ }
+    }
+  };
+
+  await walk(target, 0);
+  return matches.sort((a, b) =>
+    a.path.localeCompare(b.path) || a.lineNumber - b.lineNumber
+  );
+}
