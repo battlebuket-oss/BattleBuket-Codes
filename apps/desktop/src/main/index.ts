@@ -66,7 +66,7 @@ ipcMain.handle("workspace:read", async (_event, relativePath: string) => {
   if (stat.size > MAX_FILE_BYTES) throw new Error("File is larger than the 1 MB preview limit");
   const content = await fs.readFile(file);
   if (content.includes(0)) throw new Error("Binary files cannot be previewed as text");
-  return { path: relative(activeWorkspace!, file), content: content.toString("utf8") };
+  return { path: relative(activeWorkspace!, file), content: content.toString("utf8"), mtimeMs: stat.mtimeMs };
 });
 
 app.whenReady().then(() => {
