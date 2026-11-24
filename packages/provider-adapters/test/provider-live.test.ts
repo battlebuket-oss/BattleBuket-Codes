@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -67,10 +67,10 @@ for (const provider of ["codex", "claude"] as const) {
           result.summary.includes("BATTLEBUKET_PROVIDER_SMOKE_OK"),
           \`\${provider} did not return the required smoke marker: \${result.summary}\`
         );
-        assert.deepEqual(result.changedFiles, [], "read-only smoke must leave the temporary workspace unchanged");
+        assert.deepEqual(result.changedFiles, [], "read-only smoke must not report changed files");
+        assert.deepEqual(await readdir(workspacePath), [], "read-only smoke must leave the temporary workspace empty");
         assert.ok(events.some(event => event.type === "completed"), "adapter should emit a completed event");
       } finally {
-        await adapter.cancel("provider-smoke-cleanup").catch(() => {});
         await rm(workspacePath, { recursive: true, force: true });
       }
     }
