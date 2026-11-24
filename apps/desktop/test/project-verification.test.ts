@@ -52,7 +52,7 @@ test("aborts a running project script when the task is cancelled", async () => {
   const controller = new AbortController();
   try {
     await writeFile(join(root, "package.json"), JSON.stringify({
-      scripts: { test: "node -e \\"setTimeout(() => {}, 30000)\\"" }
+      scripts: { test: 'node -e "setTimeout(() => {}, 30000)"' }
     }));
     const running = runProjectQualityChecks(root, async () => true, controller.signal);
     await new Promise(resolve => setTimeout(resolve, 100));
