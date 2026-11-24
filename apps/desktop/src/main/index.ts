@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { listWorkspace, readWorkspaceFile, writeWorkspaceFile } from "./workspace-files";
 import { appendTaskHistory, readTaskHistory } from "./task-history";
 import { runWorkspaceCommand } from "./terminal";
+import { runProjectQualityChecks } from "./project-verification";
 import { EngineeringDirector } from "../../../../packages/engineering-director/src/index";
 import { ClaudeAgentSdkAdapter, CodexCliAdapter } from "../../../../packages/provider-adapters/src/index";
 import type { AgentEvent, AgentProvider, AgentTask, RiskLevel, VerificationResult } from "../../../../packages/agent-contracts/src/index";
@@ -56,12 +57,20 @@ async function verifyWorkspaceDiff(workspacePath: string): Promise<VerificationR
     if (git.stdout.trim() !== "true") {
       return [{ name: "Git diff whitespace check", passed: true, output: "Skipped: this workspace is not a Git working tree." }];
     }
+  } catch (error) {
+    const failure = error as NodeJS.ErrnoException & { stderr?: string };
+    if ((failure.stderr ?? "").toLowerCase().includes("not a git repository")) {
+      return [{ name: "Git diff whitespace check", passed: true, output: "Skipped: this workspace is not a Git working tree." }];
+    }
+    return [{ name: "Git diff whitespace check", passed: false, output: (failure.message ?? "Git verification failed").slice(0, 2000) }];
+  }
+  try {
     await execFile("git", ["diff", "--check"], {
       cwd: workspacePath, timeout: 15000, windowsHide: true, maxBuffer: 256 * 1024
     });
     return [{ name: "Git diff whitespace check", passed: true, output: "No whitespace errors reported by git diff --check." }];
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "Git verification failed";
+    const detail = error instanceof Error ? error.message : "Git diff verification failed";
     return [{ name: "Git diff whitespace check", passed: false, output: detail.slice(0, 2000) }];
   }
 }
@@ -162,7 +171,32 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
         : await dialog.showMessageBox(options);
       return result.response === 1;
     },
-    verify: async () => verifyWorkspaceDiff(task.workspacePath),
+    verify: async () => {
+      const diffChecks = await verifyWorkspaceDiff(task.workspacePath);
+      const projectChecks = await runProjectQualityChecks(task.workspacePath, async (scripts, manager) => {
+        const detail = [
+          `Package manager: ${manager}`,
+          `Scripts to run: ${scripts.map(script => `${manager} run ${script}`).join(", ")}`,
+          "These repository-defined scripts can execute arbitrary code and may access the network using your user account.",
+          "They run with a reduced environment, a five-minute timeout per script, and a bounded output buffer. Approve only if you trust this project."
+        ].join("\\n");
+        const options = {
+          type: "warning" as const,
+          title: "Run project quality checks?",
+          message: "Allow BattleBuket Codes to execute the detected test, lint, typecheck, and build scripts?",
+          detail,
+          buttons: ["Skip checks (task fails verification)", "Run checks"],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true
+        };
+        const answer = mainWindow
+          ? await dialog.showMessageBox(mainWindow, options)
+          : await dialog.showMessageBox(options);
+        return answer.response === 1;
+      });
+      return [...diffChecks, ...projectChecks];
+    },
     emit: (event: AgentEvent) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("agent:event", event);
     }
