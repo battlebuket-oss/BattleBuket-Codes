@@ -26,7 +26,7 @@ Linux artifacts are not code-signed by this workflow. Add repository secrets onl
 3. Confirm the app's Code - OSS workbench is embedded, verify the bundled Monaco TypeScript worker can be created by the packaged renderer, and independently verify the native PTY terminal on clean Windows, macOS and Linux machines before calling the product production-ready.
 4. Configure and validate the signing secrets above.
 5. Push a version tag. The workflow must complete all platform builds and create a draft release.
-6. Inspect installer signatures, macOS notarization/stapling, artifact hashes, installation, upgrade, uninstall, and launch behavior on clean machines.
+6. Inspect installer signatures, macOS notarization/stapling, artifact hashes, installation, upgrade, rollback, uninstall, and launch behavior on clean machines. After two signed tags exist, run `.github/workflows/upgrade-rollback-smoke.yml` with the older and newer tags.
 7. Publish the draft manually only after the release owner signs off.
 
 A successful workflow run or draft release alone is not a production-readiness certification.
