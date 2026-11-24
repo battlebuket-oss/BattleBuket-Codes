@@ -70,7 +70,6 @@ export class WorkspaceTerminalSessions {
       rows,
       cwd,
       env: terminalEnvironment(),
-      useConpty: isWindows
     });
 
     let resolveExit!: () => void;
