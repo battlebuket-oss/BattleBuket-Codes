@@ -151,6 +151,10 @@ export default function App() {
       return;
     }
     const terminal = terminalRef.current;
+    if (!terminal) {
+      if (pendingTerminalEventsRef.current.length < 500) pendingTerminalEventsRef.current.push(event);
+      return;
+    }
     if (event.type === "output" && event.text) {
       terminal?.write(event.text);
     } else if (event.type === "error") {
@@ -169,6 +173,7 @@ export default function App() {
     if (terminalStatus === "starting" || terminalSessionRef.current) return;
     try {
       setTerminalStatus("starting");
+      pendingTerminalEventsRef.current = [];
       const id = await window.battleBuket.startTerminal();
       terminalSessionRef.current = id;
       setTerminalSessionId(id);
@@ -206,6 +211,7 @@ export default function App() {
       catch (e) { terminalRef.current?.writeln("\r\n\x1b[31m[close failed] " + (e instanceof Error ? e.message : "Unknown error") + "\x1b[0m"); }
     }
     terminalSessionRef.current = null;
+    pendingTerminalEventsRef.current = [];
     setTerminalSessionId(null);
     setTerminalStatus("closed");
   };
