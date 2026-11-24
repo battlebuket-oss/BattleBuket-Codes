@@ -30,7 +30,7 @@ The repository currently includes:
 
 ## Important limitations — not a production release
 
-The full Code - OSS / VS Code workbench is **not embedded**. The current editor uses Monaco (the code editor component from the VS Code ecosystem), but it is not the complete Code - OSS workbench. Tabs, workbench services, native extension host, diagnostics integration, project search and command palette integration remain.
+The full Code - OSS / VS Code workbench is **not embedded**. The current editor uses Monaco (the code editor component from the VS Code ecosystem) with language workers, per-file models, multi-file tabs and unsaved-draft protection, but it is not the complete Code - OSS workbench. Workbench services, native extension host, diagnostics integration, project search and command palette integration remain.
 
 The PTY implementation is currently on the draft `feature/pty-terminal` pull request. It is not a verified production feature until the native Electron ABI and Windows/macOS/Linux workflow passes.
 
