@@ -15,15 +15,15 @@ declare global {
 export default function App() {
   const [version, setVersion] = useState("dev");
   const [workspace, setWorkspace] = useState<string | null>(null);
-  const [entries, setEntries] = useState<WorkspaceEntry[]>([]);
+  const [entries, setEntries] = useState<WorkspaceEntry[]>([]);\n  const [currentDirectory, setCurrentDirectory] = useState("");
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const refreshFiles = async () => {
+  const refreshFiles = async (directory = currentDirectory) => {
     try {
       setLoading(true); setError("");
-      const files = await window.battleBuket?.listWorkspace("");
+      const files = await window.battleBuket?.listWorkspace(directory);
       setEntries(files ?? []);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not list project files"); }
     finally { setLoading(false); }
@@ -32,7 +32,7 @@ export default function App() {
     try {
       setError("");
       const selected = await window.battleBuket?.selectWorkspace();
-      if (selected) { setWorkspace(selected); setSelectedFile(null); await refreshFiles(); }
+      if (selected) { setWorkspace(selected); setCurrentDirectory(""); setSelectedFile(null); await refreshFiles(""); }
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open project folder"); }
   };
   const openFile = async (path: string) => {
@@ -48,9 +48,9 @@ export default function App() {
       <aside className="projects">
         <label>PROJECT EXPLORER</label>
         <button onClick={openWorkspace}><FolderOpen size={15}/> {workspace ? "Change project" : "Open project"} <Plus size={13}/></button>
-        {workspace && <div className="file-list"><div className="file-heading" onClick={refreshFiles}><Folder size={13}/> {workspace.split(/[\\/]/).filter(Boolean).pop()} <span>↻</span></div>
+        {workspace && <div className="file-list"><div className="file-heading" onClick={() => { setCurrentDirectory(""); void refreshFiles(""); }}><Folder size={13}/> {currentDirectory || workspace.split(/[\\/]/).filter(Boolean).pop()} <span>↻</span></div>
           {loading && <small>Loading files…</small>}
-          {entries.map(entry => <button className="file-entry" key={entry.path} onClick={() => entry.kind === "file" ? openFile(entry.path) : setError("Folder navigation is not available in this first preview yet.")}>
+          {currentDirectory && <button className="file-entry" onClick={() => { const parent = currentDirectory.split(/[\\/]/).slice(0,-1).join("/"); setCurrentDirectory(parent); void refreshFiles(parent); }}>↰ <span>..</span></button>}\n          {entries.map(entry => <button className="file-entry" key={entry.path} onClick={() => { if (entry.kind === "file") void openFile(entry.path); else { setCurrentDirectory(entry.path); void refreshFiles(entry.path); } }}>
             {entry.kind === "directory" ? <Folder size={13}/> : <FileCode2 size={13}/>}<span>{entry.name}</span>
           </button>)}
           {entries.length === 0 && !loading && <small>No visible files in this folder.</small>}
