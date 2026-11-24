@@ -318,7 +318,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
         : await dialog.showMessageBox(options);
       return result.response === 1;
     },
-    review: async (reviewedTask: AgentTask, _implementation: AgentResult, decision: DirectorDecision): Promise<VerificationResult> => {
+    review: async (reviewedTask: AgentTask, _implementation: AgentResult, decision: DirectorDecision, signal?: AbortSignal): Promise<VerificationResult> => {
       const reviewer = decision.reviewer;
       if (!reviewer) return { name: "Read-only provider review", passed: true, output: "Skipped: no reviewer provider was selected." };
       const adapter = adapters.find(item => item.provider === reviewer);
@@ -351,7 +351,8 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
           task: reviewTask,
           provider: reviewer,
           workingDirectory: reviewedTask.workspacePath,
-          approvalMode: "read-only"
+          approvalMode: "read-only",
+          abortSignal: signal
         }, event => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send("agent:event", {
