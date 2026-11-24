@@ -35,6 +35,7 @@ export function buildTeamPlan(items: WorkItem[]): TeamPlan {
     if (!Number.isFinite(item.estimatedEffort) || item.estimatedEffort <= 0) throw new Error("Estimated effort must be a positive number for " + item.id);
     const preferred = skillRole[item.skill];
     const allowed = item.eligibleRoles ?? qualifiedRoles[item.skill];
+    if (allowed.some(role => !qualifiedRoles[item.skill].includes(role))) throw new Error("Ineligible role requested for skill " + item.skill);
     const candidates = workloads.filter(load => allowed.includes(load.role.id));
     if (!candidates.length || !allowed.includes(preferred)) throw new Error("No qualified role for work item " + item.id);
     const target = candidates.sort((a,b) => a.weightedEffort-b.weightedEffort || (a.role.id === preferred ? -1 : b.role.id === preferred ? 1 : a.role.id.localeCompare(b.role.id)))[0];
