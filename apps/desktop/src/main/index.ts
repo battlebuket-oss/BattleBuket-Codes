@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { listWorkspace, readWorkspaceFile, writeWorkspaceFile } from "./workspace-files";
+import { appendTaskHistory, readTaskHistory } from "./task-history";
 import { EngineeringDirector } from "../../../../packages/engineering-director/src/index";
 import { ClaudeAgentSdkAdapter, CodexCliAdapter } from "../../../../packages/provider-adapters/src/index";
 import type { AgentEvent, AgentProvider, AgentTask, RiskLevel, VerificationResult } from "../../../../packages/agent-contracts/src/index";
@@ -70,6 +71,8 @@ ipcMain.handle("workspace:write", async (_event, payload: { path: string; conten
   return writeWorkspaceFile(activeWorkspace, payload.path, payload.content, payload.expectedMtimeMs);
 });
 
+ipcMain.handle("tasks:history", async () => readTaskHistory(app.getPath("userData")));
+
 ipcMain.handle("agents:availability", async () => {
   const availability = await Promise.all(adapters.map(async adapter => {
     try { return [adapter.provider, await adapter.isAvailable()] as const; }
@@ -123,9 +126,42 @@ ipcMain.handle("agents:run", async (_event, payload: { prompt: string; provider:
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("agent:event", event);
     }
   });
+  const userDataPath = app.getPath("userData");
+  const startedAt = new Date().toISOString();
+  await appendTaskHistory(userDataPath, {
+    taskId: task.id, provider: payload.provider, risk: payload.risk, status: "running", at: startedAt
+  });
   activeDirector = director;
   try {
-    return await director.execute(task);
+    const result = await director.execute(task);
+    try {
+      await appendTaskHistory(userDataPath, {
+        taskId: task.id,
+        provider: payload.provider,
+        risk: payload.risk,
+        status: result.status,
+        at: new Date().toISOString(),
+        changedFileCount: result.changedFiles.length,
+        verificationPassed: result.verification.every(check => check.passed)
+      });
+    } catch {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("agent:event", {
+          type: "warning", taskId: task.id, timestamp: new Date().toISOString(),
+          message: "Task finished, but its local history record could not be saved."
+        } satisfies AgentEvent);
+      }
+    }
+    return result;
+  } catch (error) {
+    try {
+      await appendTaskHistory(userDataPath, {
+        taskId: task.id, provider: payload.provider, risk: payload.risk,
+        status: director.state.status === "cancelled" ? "cancelled" : "failed",
+        at: new Date().toISOString()
+      });
+    } catch { /* Preserve the original provider or Director error. */ }
+    throw error;
   } finally {
     if (activeDirector === director) activeDirector = null;
   }
