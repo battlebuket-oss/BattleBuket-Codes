@@ -405,7 +405,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
         const options = {
           type: "warning" as const,
           title: "Run project quality checks?",
-          message: "Allow BattleBuket Codes to execute the detected test, lint, typecheck, and build scripts?",
+          message: "Allow BattleBuket Codes to execute the detected test, lint, typecheck, build, and dependency/security checks?",
           detail,
           buttons: ["Skip checks (task fails verification)", "Run checks"],
           defaultId: 0,
