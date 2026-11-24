@@ -22,7 +22,7 @@ type TerminalSessionEvent = {
   sessionId: string;
   type: "output" | "error" | "exit";
   text?: string;
-  exitCode?: number;
+  exitCode?: number | null;
 };
 
 
