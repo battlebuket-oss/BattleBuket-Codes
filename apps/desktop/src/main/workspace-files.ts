@@ -146,18 +146,21 @@ export async function searchWorkspaceContent(rootPath: string, query: string): P
   const needle = query.trim().toLocaleLowerCase();
   const matches: WorkspaceContentMatch[] = [];
   let scannedFiles = 0;
+  let scannedEntries = 0;
   let bytesRead = 0;
   const maxScannedFiles = 3000;
+  const maxScannedEntries = 20_000;
   const maxTotalBytes = 64 * 1024 * 1024;
   const maxMatches = 200;
 
   const walk = async (directory: string, depth: number): Promise<void> => {
-    if (depth > 12 || scannedFiles >= maxScannedFiles || bytesRead >= maxTotalBytes || matches.length >= maxMatches) return;
+    if (depth > 12 || scannedFiles >= maxScannedFiles || scannedEntries >= maxScannedEntries || bytesRead >= maxTotalBytes || matches.length >= maxMatches) return;
     let entries;
     try { entries = await fs.readdir(directory, { withFileTypes: true }); }
     catch { return; }
     for (const entry of entries) {
-      if (scannedFiles >= maxScannedFiles || bytesRead >= maxTotalBytes || matches.length >= maxMatches) break;
+      if (scannedFiles >= maxScannedFiles || scannedEntries >= maxScannedEntries || bytesRead >= maxTotalBytes || matches.length >= maxMatches) break;
+      scannedEntries++;
       if (entry.isSymbolicLink()) continue;
       const fullPath = join(directory, entry.name);
       if (entry.isDirectory()) {
