@@ -51,10 +51,10 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add a basic Git diff whitespace gate for Git workspaces.
 - [x] Add CI dependency vulnerability auditing for high-severity findings.
 - [x] Add CodeQL static analysis and full-history secret scanning.
-- [ ] Add project-aware test/lint/typecheck/build runners in a sandbox, with structured outputs and timeouts.
+- [x] Add consent-gated project test/lint/typecheck/build and supported dependency-audit runners with bounded timeouts/output. These commands still run with the user account permissions and are not a sandbox.
 - [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
-- [ ] Add end-to-end tests for the whole app, real provider sessions, approval/cancellation, file recovery, and corrupted workspaces.
+- [x] Add opt-in live provider conformance tests for authenticated read-only and workspace-write boundaries, plus a manual self-hosted runner workflow. They have not yet been executed on an authenticated provider runner.\n- [ ] Add end-to-end tests for the whole app, approval/cancellation, installed-app recovery, corrupted workspaces, and upgrade/uninstall.
 
 ## Phase 6 — Production release operations
 - [ ] Add telemetry with opt-in/privacy controls, crash reporting, diagnostics export, and support logs.
