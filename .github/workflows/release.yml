@@ -66,6 +66,35 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm --filter @battlebuket/desktop ${{ matrix.script }}
+      - name: Verify Windows Authenticode signature
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem "apps/desktop/release" -Filter "*.exe"
+          if (-not $files) { throw "No Windows installer was produced." }
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne "Valid") { throw "Installer signature is not valid: $($file.Name) ($($signature.Status))" }
+          }
+      - name: Verify macOS signature and notarization ticket
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          dmg="$(find apps/desktop/release -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          xcrun stapler validate "$dmg"
+          mkdir -p /tmp/battlebuket-dmg
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint /tmp/battlebuket-dmg
+          app="$(find /tmp/battlebuket-dmg -maxdepth 2 -name '*.app' -print -quit)"
+          test -n "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          hdiutil detach /tmp/battlebuket-dmg
+      - name: Generate Linux installer checksum
+        if: runner.os == 'Linux'
+        run: |
+          cd apps/desktop/release
+          sha256sum *.AppImage > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: BattleBuket-Codes-${{ matrix.label }}
