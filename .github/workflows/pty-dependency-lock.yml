@@ -81,6 +81,9 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@10.0.0 --activate
+      - name: Install bubblewrap for Linux sandbox tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level high
       - name: Run unit tests with the Node ABI
