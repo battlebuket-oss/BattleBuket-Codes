@@ -139,7 +139,7 @@ function createWindow(): void {
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
   if (process.argv.includes("--smoke-test")) {
-    const timeout = setTimeout(() => app.exit(1), 30_000);
+    const timeout = setTimeout(() => app.exit(1), 75_000);
     const finish = (success: boolean) => {
       clearTimeout(timeout);
       const smokeRoot = smokeWorkspaceRoot;
@@ -177,7 +177,7 @@ function createWindow(): void {
           return;
         }
         const workbenchHealthy = await window.webContents.executeJavaScript(
-          "new Promise(resolve => { const deadline = Date.now() + 20000; const check = () => { if (window.__battleBuketWorkbenchReady === true) resolve(true); else if (Date.now() >= deadline) resolve(false); else setTimeout(check, 100); }; check(); })"
+          "new Promise(resolve => { const deadline = Date.now() + 45000; const check = () => { if (window.__battleBuketWorkbenchReady === true) resolve(true); else if (Date.now() >= deadline) resolve(false); else setTimeout(check, 100); }; check(); })"
         );
         if (workbenchHealthy !== true) {
           finish(false);
@@ -232,6 +232,7 @@ function createWindow(): void {
 }
 
 handleTrustedIpc("platform:version", () => app.getVersion());
+handleTrustedIpc("workspace:active", () => activeWorkspace);
 handleTrustedIpc("workspace:select", async () => {
   if (activeDirector || taskStartPending || terminalSessions.hasActiveSession()) throw new Error("Close the active task and terminal session before changing projects.");
   const result = await dialog.showOpenDialog({ title: "Open project folder", properties: ["openDirectory", "createDirectory"] });

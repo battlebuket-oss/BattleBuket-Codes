@@ -50,6 +50,7 @@ declare global {
   interface Window {
     battleBuket?: {
       getVersion: () => Promise<string>;
+      getActiveWorkspace: () => Promise<string | null>;
       selectWorkspace: () => Promise<string | null>;
       getRecentWorkspaces: () => Promise<RecentWorkspace[]>;
       openRecentWorkspace: (path: string) => Promise<string>;
@@ -367,6 +368,12 @@ export default function App() {
   useEffect(() => {
     window.battleBuket?.getVersion().then(setVersion).catch(() => {});
     window.battleBuket?.getAgentAvailability().then(setAvailability).catch(() => {});
+    window.battleBuket?.getActiveWorkspace().then(selected => {
+      if (!selected) return;
+      setWorkspace(selected);
+      setCurrentDirectory("");
+      void refreshFiles("");
+    }).catch(() => {});
     void refreshHistory();
     void refreshRecentWorkspaces();
     const unsubscribe = window.battleBuket?.onAgentEvent(event => {

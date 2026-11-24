@@ -40,6 +40,7 @@ type AgentResult = {
 
 contextBridge.exposeInMainWorld("battleBuket", {
   getVersion: (): Promise<string> => ipcRenderer.invoke("platform:version"),
+  getActiveWorkspace: (): Promise<string | null> => ipcRenderer.invoke("workspace:active"),
   selectWorkspace: (): Promise<string | null> => ipcRenderer.invoke("workspace:select"),
   getRecentWorkspaces: (): Promise<RecentWorkspace[]> => ipcRenderer.invoke("workspace:recent"),
   openRecentWorkspace: (path: string): Promise<string> => ipcRenderer.invoke("workspace:open-recent", { path }),
