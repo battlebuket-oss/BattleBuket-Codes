@@ -117,7 +117,6 @@ export async function prepareSandboxedCommand(
         "--tmpfs", "/run",
         "--tmpfs", "/mnt",
         "--tmpfs", "/media",
-        "--tmpfs", "/var/tmp",
         "--proc", "/proc",
         "--dev", "/dev",
         "--dir", "/tmp/battlebuket-sandbox",
@@ -126,7 +125,7 @@ export async function prepareSandboxedCommand(
         "--chdir", "/tmp/battlebuket-sandbox/workspace"
       ];
   
-      const mounted = new Set<string>(["/home", "/root", "/tmp", "/run", "/mnt", "/media", "/var/tmp"]);
+      const mounted = new Set<string>(["/home", "/root", "/tmp", "/run", "/mnt", "/media"]);
       const home = resolve(homedir());
       for (const directory of pathDirectories) {
         if (isInside(home, directory)) appendReadOnlyHomeMount(args, home, directory, mounted);
