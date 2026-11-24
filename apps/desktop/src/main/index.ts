@@ -317,9 +317,10 @@ handleTrustedIpc("workspace:write", async (_event, payload: { path: string; cont
   return writeWorkspaceFile(activeWorkspace, payload.path, payload.content, payload.expectedMtimeMs);
 });
 
-handleTrustedIpc("workspace:write-file", async (_event, payload: { path: string; content: string; create: boolean; overwrite: boolean }) => {
+handleTrustedIpc("workspace:write-file", async (_event, payload: { path: string; content: Uint8Array; create: boolean; overwrite: boolean }) => {
   if (!payload || typeof payload.path !== "string" || payload.path.length > 4096 ||
-      typeof payload.content !== "string" || typeof payload.create !== "boolean" || typeof payload.overwrite !== "boolean" ||
+      !(payload.content instanceof Uint8Array) || payload.content.byteLength > 64 * 1024 * 1024 ||
+      typeof payload.create !== "boolean" || typeof payload.overwrite !== "boolean" ||
       !activeWorkspace) throw new Error("Invalid workspace file write request.");
   return writeWorkspaceFileSystemFile(activeWorkspace, payload.path, payload.content, payload.create, payload.overwrite);
 });
