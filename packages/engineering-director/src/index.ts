@@ -36,7 +36,7 @@ export class EngineeringDirector {
       this.activeAdapter = adapter;
       this.activeTaskId = task.id;
       this.current = { status: "running", task, provider: adapter.provider };
-      const result = await adapter.run({ task, provider: adapter.provider, workingDirectory: task.workspacePath, approvalMode: task.risk === "high" ? "read-only" : "workspace-write" }, event => this.hooks.emit(event));
+      const result = await adapter.run({ task, provider: adapter.provider, workingDirectory: task.workspacePath, approvalMode: task.risk === "medium" ? "workspace-write" : "read-only" }, event => this.hooks.emit(event));
       if (result.status !== "succeeded") {
         if (result.status === "cancelled") this.current = { status: "cancelled", task };
         else this.current = { status: "failed", task, reason: result.summary };
