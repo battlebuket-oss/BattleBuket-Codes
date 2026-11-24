@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { once } from "node:events";
 import { promises as fs } from "node:fs";
 
 export const TERMINAL_MAX_INPUT_BYTES = 16 * 1024;
@@ -17,6 +18,7 @@ type Session = {
   child: ChildProcessWithoutNullStreams;
   bytes: number;
   emit: (event: TerminalSessionEvent) => void;
+  overflowed: boolean;
 };
 
 function terminalEnvironment(): NodeJS.ProcessEnv {
@@ -44,7 +46,7 @@ export class WorkspaceTerminalSessions {
     const cwd = await fs.realpath(workspacePath);
     const isWindows = process.platform === "win32";
     const shell = isWindows ? (process.env.ComSpec || "cmd.exe") : "/bin/sh";
-    const args = isWindows ? ["/Q"] : ["-i"];
+    const args = isWindows ? ["/D", "/Q"] : ["-i"];
     const child = spawn(shell, args, {
       cwd,
       env: terminalEnvironment(),
@@ -52,13 +54,15 @@ export class WorkspaceTerminalSessions {
       windowsHide: true,
       detached: !isWindows
     });
-    const session: Session = { child, bytes: 0, emit };
+    const session: Session = { child, bytes: 0, emit, overflowed: false };
     this.sessions.set(sessionId, session);
 
     const forward = (stream: "stdout" | "stderr", chunk: Buffer | string) => {
       const text = String(chunk);
       session.bytes += Buffer.byteLength(text, "utf8");
+      if (session.overflowed) return;
       if (session.bytes > TERMINAL_MAX_SESSION_OUTPUT_BYTES) {
+        session.overflowed = true;
         emit({ sessionId, type: "error", text: "Terminal output exceeded the 4 MB session limit; the shell was terminated." });
         void this.close(sessionId);
         return;
@@ -72,6 +76,13 @@ export class WorkspaceTerminalSessions {
       this.sessions.delete(sessionId);
       emit({ sessionId, type: "exit", exitCode, signal });
     });
+    try {
+      await once(child, "spawn");
+    } catch (error) {
+      this.sessions.delete(sessionId);
+      const detail = error instanceof Error ? error.message : "Unable to start the configured shell.";
+      throw new Error("Terminal shell failed to start: " + detail.slice(0, 1000));
+    }
   }
 
   write(sessionId: string, input: unknown): void {
