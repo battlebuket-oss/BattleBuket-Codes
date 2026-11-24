@@ -15,7 +15,8 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add native project-folder selection and workspace-bounded directory browsing.
 - [x] Add bounded text-file preview, atomic saves, stale-write detection, and path/symlink safety tests.
 - [x] Add the task composer, provider selection, risk/permission selection, streamed task status, and cancellation controls.
-- [ ] Embed a tested Code - OSS workbench and complete the full editor experience: tabs, diagnostics, command palette, project search, and recent projects. The current editor remains a lightweight textarea preview.
+- [x] Add Monaco Editor with bundled offline runtime and language workers, syntax-aware languages, minimap, per-file models, multi-file tabs, unsaved-draft preservation and save shortcuts.
+- [ ] Embed a tested Code - OSS workbench and complete workbench services, native extension host, diagnostics integration, command palette, project search, recent projects and upstream notices. Monaco is only the editor component.
 - [ ] Verify the native `node-pty` / xterm.js terminal implementation in draft PR #11: Electron ABI rebuild, interactive input/output, resize and process cleanup tests on Windows/macOS/Linux. The source implementation exists; the required cross-platform test evidence is not yet green.
 - [x] Add a tag-triggered signed installer build and draft-release workflow with required Windows/macOS signing secrets.
 - [ ] Configure real signing secrets and verify signed installers on Windows, macOS, and Linux; no production release has been published.
