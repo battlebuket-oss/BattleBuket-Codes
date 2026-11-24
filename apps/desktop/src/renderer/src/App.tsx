@@ -483,6 +483,7 @@ export default function App() {
   const quickCommands = [
     { id: "open-project", label: "Open Project", description: "Choose a workspace folder" },
     { id: "quick-open", label: "Quick Open File", description: "Search files in the selected workspace · Ctrl/Cmd+P" },
+    { id: "find-in-files", label: "Find in Files", description: "Search text in project files · Ctrl/Cmd+Shift+F" },
     { id: "toggle-terminal", label: "Toggle Integrated Terminal", description: "Show or hide the PTY terminal" },
     { id: "save-file", label: "Save Active File", description: "Write the current editor tab" },
     { id: "refresh-files", label: "Refresh Project Explorer", description: "Reload the workspace file tree" },
