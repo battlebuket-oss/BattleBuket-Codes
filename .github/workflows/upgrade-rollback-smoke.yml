@@ -118,14 +118,14 @@ jobs:
           app="$RUNNER_TEMP/BattleBuket Codes.app"
           mount_and_copy "$baseline_dmg" "$RUNNER_TEMP/baseline-mount"
           baseline_version="$(printf '%s' "$BASELINE_TAG" | cut -c 2-)"
-          open -n -W -a "$app" --args --smoke-test --smoke-seed-state "--smoke-expect-version=$baseline_version"
+          "$app/Contents/MacOS/battlebuket-codes" --smoke-test --smoke-seed-state "--smoke-expect-version=$baseline_version"
 
           mount_and_copy "$candidate_dmg" "$RUNNER_TEMP/candidate-mount"
           candidate_version="$(printf '%s' "$CANDIDATE_TAG" | cut -c 2-)"
-          open -n -W -a "$app" --args --smoke-test --smoke-verify-state "--smoke-expect-version=$candidate_version"
+          "$app/Contents/MacOS/battlebuket-codes" --smoke-test --smoke-verify-state "--smoke-expect-version=$candidate_version"
 
           mount_and_copy "$baseline_dmg" "$RUNNER_TEMP/rollback-mount"
-          open -n -W -a "$app" --args --smoke-test --smoke-verify-state --smoke-clear-state "--smoke-expect-version=$baseline_version"
+          "$app/Contents/MacOS/battlebuket-codes" --smoke-test --smoke-verify-state --smoke-clear-state "--smoke-expect-version=$baseline_version"
 
           rm -rf "$app"
           test ! -e "$app"
