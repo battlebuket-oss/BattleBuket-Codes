@@ -57,7 +57,8 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
 - [x] Add opt-in live Codex/Claude read-only smoke tests and a manual self-hosted runner workflow. The tests require real sign-in and have not yet been executed on authenticated runners.
-- [x] Add packaged-app smoke mode and release workflow steps for clean install, launch and uninstall on all three OS targets. These steps have not run yet.
+- [x] Add packaged-app smoke mode with Monaco worker and expected-version checks, plus release workflow steps for clean install, launch and uninstall on all three OS targets. These steps have not run yet.
+- [x] Add manual cross-platform installer upgrade/rollback tests that verify a user-data marker survives baseline → candidate → rollback. The workflow requires two existing signed releases and has not yet run.
 - [ ] Execute authenticated provider and signed-installer workflows; add workspace-write/escalation smoke tests, upgrade/rollback, crash-recovery and broader UI end-to-end tests.
 
 ## Phase 6 — Production release operations
