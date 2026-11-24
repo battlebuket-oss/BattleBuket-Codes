@@ -9,6 +9,7 @@ type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; 
 type WorkspaceContentMatch = { path: string; lineNumber: number; preview: string };
 type EditorTab = { path: string; content: string; mtimeMs: number; draft: string };
 type EditorDiagnostic = { message: string; line: number; column: number; severity: number };
+type EditorJump = { path: string; lineNumber: number };
 type AgentProvider = "codex" | "claude";
 type TaskRisk = "low" | "medium" | "high";
 type AgentEvent = {
@@ -92,6 +93,8 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState<{ path: string; content: string; mtimeMs: number } | null>(null);
   const [editorTabs, setEditorTabs] = useState<EditorTab[]>([]);
   const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnostic[]>([]);
+  const [pendingEditorJump, setPendingEditorJump] = useState<EditorJump | null>(null);
+  const editorRef = useRef<{ revealLineInCenter(lineNumber: number): void; setPosition(position: { lineNumber: number; column: number }): void; focus(): void } | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
@@ -169,6 +172,11 @@ export default function App() {
         setSaveMessage("");
       }
     } catch (e) { setError(e instanceof Error ? e.message : "Could not read file"); }
+  };
+  const openContentMatch = (match: WorkspaceContentMatch) => {
+    setPendingEditorJump({ path: match.path, lineNumber: match.lineNumber });
+    setPaletteOpen(false);
+    void openFile(match.path);
   };
   const activateEditorTab = (tab: EditorTab) => {
     setSelectedFile({ path: tab.path, content: tab.content, mtimeMs: tab.mtimeMs });
@@ -401,6 +409,19 @@ export default function App() {
   }, [terminalOpen, workspace, terminalStatus, paletteOpen, selectedFile, saving, draft]);
 
   useEffect(() => {
+    if (!pendingEditorJump || selectedFile?.path !== pendingEditorJump.path || !editorRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.revealLineInCenter(pendingEditorJump.lineNumber);
+      editor.setPosition({ lineNumber: pendingEditorJump.lineNumber, column: 1 });
+      editor.focus();
+      setPendingEditorJump(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingEditorJump, selectedFile?.path]);
+
+  useEffect(() => {
     const hasUnsavedChanges = editorTabs.some(tab => tab.draft !== tab.content);
     const warnBeforeClose = (event: BeforeUnloadEvent) => {
       if (!hasUnsavedChanges) return;
@@ -508,10 +529,7 @@ export default function App() {
       }
     } else {
       const match = contentSearchResults[paletteIndex];
-      if (match) {
-        setPaletteOpen(false);
-        void openFile(match.path);
-      }
+      if (match) openContentMatch(match);
     }
   };
 
@@ -569,7 +587,7 @@ export default function App() {
                     <FileCode2 size={13}/><span>{file.path}</span><small>{Math.ceil(file.size / 1024)} KB</small>
                   </button>)
                 : paletteMode === "content"
-                  ? contentSearchResults.map((match, index) => <button key={match.path + ":" + match.lineNumber} className={index === paletteIndex ? "selected" : ""} onMouseEnter={() => setPaletteIndex(index)} onClick={() => { setPaletteOpen(false); void openFile(match.path); }}>
+                  ? contentSearchResults.map((match, index) => <button key={match.path + ":" + match.lineNumber} className={index === paletteIndex ? "selected" : ""} onMouseEnter={() => setPaletteIndex(index)} onClick={() => openContentMatch(match)}>
                       <FileCode2 size={13}/><span>{match.path}:{match.lineNumber} · {match.preview}</span>
                     </button>)
                   : filteredCommands.map((command, index) => <button key={command.id} className={index === paletteIndex ? "selected" : ""} onMouseEnter={() => setPaletteIndex(index)} onClick={() => runPaletteCommand(command.id)}>
@@ -601,6 +619,7 @@ export default function App() {
               path={selectedFile.path}
               language={editorLanguageForPath(selectedFile.path)}
               theme="vs-dark"
+              onMount={editor => { editorRef.current = editor; }}
               value={draft}
               onChange={value => { const nextDraft = value ?? ""; setDraft(nextDraft); setEditorTabs(current => current.map(tab => tab.path === selectedFile.path ? { ...tab, draft: nextDraft } : tab)); setSaveMessage(""); }}
               onValidate={markers => setEditorDiagnostics(markers.map(marker => ({
