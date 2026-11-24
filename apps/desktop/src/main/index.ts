@@ -155,7 +155,7 @@ function createWindow(): void {
     window.webContents.once("did-fail-load", () => finish(false));
     window.webContents.once("did-finish-load", () => {
       void (async () => {
-        const marker = "battlebuket-upgrade-smoke-v1";
+        const stateMarker = "battlebuket-upgrade-smoke-v1";
         const statePath = join(app.getPath("userData"), "upgrade-smoke-state.json");
         if (process.argv.includes("--smoke-seed-state")) {
           await fs.mkdir(app.getPath("userData"), { recursive: true });
