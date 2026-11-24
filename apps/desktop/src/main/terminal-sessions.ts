@@ -59,6 +59,7 @@ export function validateTerminalSize(columns: unknown, rows: unknown): asserts c
 
 export class WorkspaceTerminalSessions {
   private readonly sessions = new Map<string, Session>();
+  private readonly starting = new Set<string>();
   private readonly closing = new Map<string, Promise<boolean>>();
 
   async start(
@@ -69,46 +70,52 @@ export class WorkspaceTerminalSessions {
     rows = 28
   ): Promise<void> {
     if (!/^[a-f0-9-]{36}$/i.test(sessionId)) throw new Error("Invalid terminal session identifier.");
-    if (this.sessions.has(sessionId)) throw new Error("Terminal session already exists.");
-    if (this.hasActiveSession()) throw new Error("A workspace terminal session is already active or closing.");
+    if (this.sessions.has(sessionId) || this.starting.has(sessionId)) throw new Error("Terminal session already exists.");
+    if (this.hasActiveSession()) throw new Error("A workspace terminal session is already active, starting, or closing.");
     validateTerminalSize(columns, rows);
 
-    const cwd = await fs.realpath(workspacePath);
-    const cwdStat = await fs.stat(cwd);
-    if (!cwdStat.isDirectory()) throw new Error("Workspace terminal working directory must be a directory.");
-    const isWindows = process.platform === "win32";
-    const shell = isWindows ? (process.env.ComSpec || "cmd.exe") : (process.env.SHELL || "/bin/sh");
-    const args = isWindows ? ["/D"] : ["-i"];
-    const terminal = pty.spawn(shell, args, {
-      name: "xterm-256color",
-      cols: columns,
-      rows,
-      cwd,
-      env: terminalEnvironment(),
-    });
+    // Reserve the single terminal slot before the first await so concurrent starts cannot both spawn a PTY.
+    this.starting.add(sessionId);
+    try {
+      const cwd = await fs.realpath(workspacePath);
+      const cwdStat = await fs.stat(cwd);
+      if (!cwdStat.isDirectory()) throw new Error("Workspace terminal working directory must be a directory.");
+      const isWindows = process.platform === "win32";
+      const shell = isWindows ? (process.env.ComSpec || "cmd.exe") : (process.env.SHELL || "/bin/sh");
+      const args = isWindows ? ["/D"] : ["-i"];
+      const terminal = pty.spawn(shell, args, {
+        name: "xterm-256color",
+        cols: columns,
+        rows,
+        cwd,
+        env: terminalEnvironment(),
+      });
 
-    let resolveExit!: () => void;
-    const exited = new Promise<void>(resolve => { resolveExit = resolve; });
-    const session: Session = { terminal, bytes: 0, emit, overflowed: false, exited, resolveExit };
-    this.sessions.set(sessionId, session);
+      let resolveExit!: () => void;
+      const exited = new Promise<void>(resolve => { resolveExit = resolve; });
+      const session: Session = { terminal, bytes: 0, emit, overflowed: false, exited, resolveExit };
+      this.sessions.set(sessionId, session);
 
-    terminal.onData(data => {
-      if (session.overflowed) return;
-      session.bytes += Buffer.byteLength(data, "utf8");
-      if (session.bytes > TERMINAL_MAX_SESSION_OUTPUT_BYTES) {
-        session.overflowed = true;
-        emit({ sessionId, type: "error", text: "Terminal output exceeded the 32 MB session limit; the process was terminated." });
-        void this.close(sessionId);
-        return;
-      }
-      emit({ sessionId, type: "output", text: data });
-    });
+      terminal.onData(data => {
+        if (session.overflowed) return;
+        session.bytes += Buffer.byteLength(data, "utf8");
+        if (session.bytes > TERMINAL_MAX_SESSION_OUTPUT_BYTES) {
+          session.overflowed = true;
+          emit({ sessionId, type: "error", text: "Terminal output exceeded the 32 MB session limit; the process was terminated." });
+          void this.close(sessionId);
+          return;
+        }
+        emit({ sessionId, type: "output", text: data });
+      });
 
-    terminal.onExit(event => {
-      this.sessions.delete(sessionId);
-      emit({ sessionId, type: "exit", exitCode: event.exitCode, signal: event.signal });
-      session.resolveExit();
-    });
+      terminal.onExit(event => {
+        this.sessions.delete(sessionId);
+        emit({ sessionId, type: "exit", exitCode: event.exitCode, signal: event.signal });
+        session.resolveExit();
+      });
+    } finally {
+      this.starting.delete(sessionId);
+    }
   }
 
   write(sessionId: string, input: unknown): void {
@@ -162,6 +169,6 @@ export class WorkspaceTerminalSessions {
   }
 
   hasActiveSession(): boolean {
-    return this.sessions.size > 0 || this.closing.size > 0;
+    return this.sessions.size > 0 || this.starting.size > 0 || this.closing.size > 0;
   }
 }
