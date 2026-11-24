@@ -159,11 +159,11 @@ function createWindow(): void {
         const statePath = join(app.getPath("userData"), "upgrade-smoke-state.json");
         if (process.argv.includes("--smoke-seed-state")) {
           await fs.mkdir(app.getPath("userData"), { recursive: true });
-          await fs.writeFile(statePath, JSON.stringify({ marker, schemaVersion: 1 }), { encoding: "utf8", mode: 0o600 });
+          await fs.writeFile(statePath, JSON.stringify({ marker: stateMarker, schemaVersion: 1 }), { encoding: "utf8", mode: 0o600 });
         }
         if (process.argv.includes("--smoke-verify-state")) {
           const state = JSON.parse(await fs.readFile(statePath, "utf8")) as { marker?: unknown; schemaVersion?: unknown };
-          if (state.marker !== marker || state.schemaVersion !== 1) {
+          if (state.marker !== stateMarker || state.schemaVersion !== 1) {
             finish(false);
             return;
           }
