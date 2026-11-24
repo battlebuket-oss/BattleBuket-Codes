@@ -15,6 +15,7 @@ type TaskHistoryItem = {
   taskId: string;
   provider: AgentProvider;
   risk: TaskRisk;
+  title?: string;
   status: "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
   startedAt: string;
   finishedAt?: string;
@@ -254,7 +255,7 @@ export default function App() {
         <div className="history-list">
           {taskHistory.slice(0, 5).map(item => <div className="history-item" key={item.taskId}>
             <span className={"history-status " + item.status}>{item.status}</span>
-            <b>{item.provider === "codex" ? "Codex" : "Claude"} · {item.risk}</b>
+            <b>{item.title || ((item.provider === "codex" ? "Codex" : "Claude") + " · " + item.risk)}</b>
             <small>{new Date(item.startedAt).toLocaleString()} {item.changedFileCount !== undefined ? "· " + item.changedFileCount + " changed" : ""}</small>
           </div>)}
           {taskHistory.length === 0 && <p className="history-empty">Completed task summaries appear here. Prompts and model output are not stored.</p>}
