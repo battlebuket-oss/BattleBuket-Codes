@@ -203,12 +203,13 @@ export default function App() {
     setPaletteOpen(false);
     switch (id) {
       case "open-project": void openWorkspace(); break;
+      case "quick-open": openPalette("files"); break;
       case "toggle-terminal":
         if (terminalOpen) setTerminalOpen(false);
         else void openTerminal();
         break;
       case "save-file": void saveFile(); break;
-      case "refresh-files": void refreshFiles(""); break;
+      case "refresh-files": void refreshFiles(); break;
       case "cancel-task": void cancelTask(); break;
     }
   };
@@ -344,8 +345,20 @@ export default function App() {
 
   useEffect(() => {
     const onGlobalShortcut = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && paletteOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        setPaletteOpen(false);
+        return;
+      }
       const commandKey = event.ctrlKey || event.metaKey;
       if (!commandKey) return;
+      if (!event.shiftKey && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (selectedFile && !saving) void saveFile();
+        return;
+      }
       if (event.shiftKey && event.key.toLowerCase() === "p") {
         event.preventDefault();
         event.stopPropagation();
@@ -363,7 +376,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onGlobalShortcut, true);
     return () => window.removeEventListener("keydown", onGlobalShortcut, true);
-  }, [terminalOpen, workspace, terminalStatus]);
+  }, [terminalOpen, workspace, terminalStatus, paletteOpen, selectedFile, saving, draft]);
 
   useEffect(() => {
     const hasUnsavedChanges = editorTabs.some(tab => tab.draft !== tab.content);
@@ -377,7 +390,7 @@ export default function App() {
   }, [editorTabs]);
 
   useEffect(() => {
-    if (!terminalOpen || !terminalHostRef.current || terminalRef.current) return;
+    if (!(terminalOpen || Boolean(terminalSessionId)) || !terminalHostRef.current || terminalRef.current) return;
     const terminal = new Terminal({
       cursorBlink: true,
       convertEol: true,
@@ -440,18 +453,20 @@ export default function App() {
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [terminalOpen]);
+  }, [terminalOpen || Boolean(terminalSessionId)]);
 
   const workspaceName = workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : "Director workspace";
   const activeProviderName = provider === "codex" ? "Codex" : "Claude";
 
   const quickCommands = [
     { id: "open-project", label: "Open Project", description: "Choose a workspace folder" },
+    { id: "quick-open", label: "Quick Open File", description: "Search files in the selected workspace · Ctrl/Cmd+P" },
     { id: "toggle-terminal", label: "Toggle Integrated Terminal", description: "Show or hide the PTY terminal" },
     { id: "save-file", label: "Save Active File", description: "Write the current editor tab" },
     { id: "refresh-files", label: "Refresh Project Explorer", description: "Reload the workspace file tree" },
     { id: "cancel-task", label: "Cancel Active Task", description: "Stop provider execution or verification" }
-  ];
+  ].filter(command => command.id !== "save-file" || Boolean(selectedFile))
+   .filter(command => command.id !== "cancel-task" || running);
   const filteredCommands = quickCommands.filter(command =>
     (command.label + " " + command.description).toLowerCase().includes(paletteQuery.toLowerCase())
   );
@@ -551,9 +566,6 @@ export default function App() {
               path={selectedFile.path}
               language={editorLanguageForPath(selectedFile.path)}
               theme="vs-dark"
-              onMount={(editor, monaco) => {
-                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => { void saveFile(); });
-              }}
               value={draft}
               onChange={value => { const nextDraft = value ?? ""; setDraft(nextDraft); setEditorTabs(current => current.map(tab => tab.path === selectedFile.path ? { ...tab, draft: nextDraft } : tab)); setSaveMessage(""); }}
               options={{
