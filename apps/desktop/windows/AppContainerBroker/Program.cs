@@ -26,9 +26,7 @@ internal static class Program
     private const uint JobObjectLimitKillOnJobClose = 0x00002000;
     private const uint Infinite = 0xFFFFFFFF;
     private const int ErrorBrokenPipe = 109;
-    private const int ErrorAlreadyExistsHResult = unchecked((int)0x800700B7);
-    private const string AppContainerProfileName = "BattleBuketCodesProjectVerification";
-    private const string AppContainerProfileMutexName = @"Local\BattleBuketCodes-AppContainerProfile-Lock";
+    private const string AppContainerProfileNamePrefix = "BattleBuketCodes_";
     private const string AppContainerExecutionMutexName = @"Local\BattleBuketCodes-AppContainerExecution-Lock";
     private static bool DiagnosticsEnabled;
 
@@ -39,11 +37,18 @@ internal static class Program
 
     private sealed class BrokerRequest
     {
+        public string AppContainerProfileName { get; set; } = "";
         public string Workspace { get; set; } = "";
         public string Scratch { get; set; } = "";
         public string Executable { get; set; } = "";
         public string[] Args { get; set; } = [];
         public Dictionary<string, string> Environment { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class SandboxPreparation
+    {
+        public string AppContainerProfileName { get; set; } = "";
+        public string SandboxRoot { get; set; } = "";
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -181,6 +186,9 @@ internal static class Program
         IntPtr capabilities,
         uint capabilityCount,
         out IntPtr appContainerSid);
+
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+    private static extern int DeleteAppContainerProfile(string appContainerName);
 
     [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
     private static extern int DeriveAppContainerSidFromAppContainerName(
@@ -368,8 +376,10 @@ internal static class Program
         {
             if (args.Length == 1 && args[0] == "--prepare")
                 return PrepareSandboxRoot();
+            if (args.Length == 2 && args[0] == "--cleanup")
+                return CleanupPreparedProfile(args[1]);
             if (args.Length != 2 || args[0] != "--request")
-                throw new ArgumentException("Usage: AppContainerBroker.exe --prepare | --request <request.json>");
+                throw new ArgumentException("Usage: AppContainerBroker.exe --prepare | --cleanup <profile-name> | --request <request.json>");
 
             var requestPath = Path.GetFullPath(args[1]);
             var requestJson = File.ReadAllText(requestPath, Encoding.UTF8);
@@ -378,6 +388,20 @@ internal static class Program
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                 ?? throw new InvalidDataException("The sandbox request file is empty.");
 
+            return ExecuteRequest(request);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine("Windows AppContainer broker refused execution: " + exception.Message);
+            return 125;
+        }
+    }
+
+    private static int ExecuteRequest(BrokerRequest request)
+    {
+        var exitCode = 125;
+        try
+        {
             ValidateRequest(request);
             using var executionMutex = new Mutex(false, AppContainerExecutionMutexName);
             var acquired = false;
@@ -387,7 +411,7 @@ internal static class Program
                 catch (AbandonedMutexException) { acquired = true; }
                 if (!acquired)
                     throw new TimeoutException("Timed out waiting for the Windows AppContainer execution lock.");
-                return RunInAppContainer(request);
+                exitCode = RunInAppContainer(request);
             }
             finally
             {
@@ -397,12 +421,46 @@ internal static class Program
         catch (Exception exception)
         {
             Console.Error.WriteLine("Windows AppContainer broker refused execution: " + exception.Message);
-            return 125;
+            exitCode = 125;
         }
+        finally
+        {
+            if (IsValidAppContainerProfileName(request.AppContainerProfileName))
+            {
+                var cleanupResult = DeleteAppContainerProfile(request.AppContainerProfileName);
+                if (cleanupResult != 0)
+                {
+                    Console.Error.WriteLine(
+                        "Windows AppContainer broker could not delete temporary profile " +
+                        request.AppContainerProfileName + " (HRESULT 0x" + cleanupResult.ToString("X8") + ").");
+                    exitCode = 125;
+                }
+            }
+        }
+        return exitCode;
+    }
+
+    private static bool IsValidAppContainerProfileName(string profileName)
+    {
+        if (!profileName.StartsWith(AppContainerProfileNamePrefix, StringComparison.Ordinal))
+            return false;
+        return Guid.TryParseExact(profileName[AppContainerProfileNamePrefix.Length..], "N", out _);
+    }
+
+    private static int CleanupPreparedProfile(string profileName)
+    {
+        if (!IsValidAppContainerProfileName(profileName))
+            throw new InvalidDataException("The temporary AppContainer profile name is invalid.");
+        var result = DeleteAppContainerProfile(profileName);
+        if (result != 0)
+            throw new SecurityException("DeleteAppContainerProfile failed with HRESULT 0x" + result.ToString("X8") + ".");
+        return 0;
     }
 
     private static void ValidateRequest(BrokerRequest request)
     {
+        if (!IsValidAppContainerProfileName(request.AppContainerProfileName))
+            throw new InvalidDataException("The request does not name a valid per-run AppContainer profile.");
         if (string.IsNullOrWhiteSpace(request.Workspace) || !Directory.Exists(request.Workspace))
             throw new InvalidDataException("The requested workspace does not exist.");
         if (string.IsNullOrWhiteSpace(request.Scratch) || !Directory.Exists(request.Scratch))
@@ -418,12 +476,20 @@ internal static class Program
 
         request.Workspace = Path.GetFullPath(request.Workspace);
         request.Scratch = Path.GetFullPath(request.Scratch);
-        var profileFolder = GetAppContainerDataRoot();
-        var profileTempRoot = Path.Combine(profileFolder, "Temp");
-        if (!IsSameOrAncestor(profileTempRoot, request.Scratch) || IsSamePath(profileTempRoot, request.Scratch))
-            throw new InvalidDataException("The scratch directory must be a child of this AppContainer profile's private Temp directory.");
-        if (!string.Equals(request.Workspace, Path.Combine(request.Scratch, "workspace"), StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("The requested workspace must be the designated workspace folder inside the private AppContainer Temp directory.");
+        if (DeriveAppContainerSidFromAppContainerName(request.AppContainerProfileName, out var sid) != 0)
+            throw new SecurityException("Could not derive the temporary AppContainer SID for this run.");
+        try
+        {
+            var profileTempRoot = Path.Combine(GetAppContainerDataRoot(sid), "Temp");
+            if (!IsSameOrAncestor(profileTempRoot, request.Scratch) || IsSamePath(profileTempRoot, request.Scratch))
+                throw new InvalidDataException("The scratch directory must be a child of this run's AppContainer private Temp directory.");
+            if (!string.Equals(request.Workspace, Path.Combine(request.Scratch, "workspace"), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("The requested workspace must be the designated workspace folder inside this run's private Temp directory.");
+        }
+        finally
+        {
+            FreeSid(sid);
+        }
     }
 
     private static int RunInAppContainer(BrokerRequest request)
@@ -445,9 +511,10 @@ internal static class Program
         var aclGrants = new List<AclGrant>();
         try
         {
-            Trace("Ensuring AppContainer profile.");
-            appContainerSid = EnsureAppContainerProfile();
-            Trace("AppContainer profile ready.");
+            Trace("Deriving the per-run AppContainer profile.");
+            if (DeriveAppContainerSidFromAppContainerName(request.AppContainerProfileName, out appContainerSid) != 0)
+                throw new SecurityException("Could not derive the per-run AppContainer SID.");
+            Trace("Per-run AppContainer profile ready.");
             var profileFolder = GetProfileFolderPath(appContainerSid);
             Trace("Resolved AppContainer profile storage.");
             var profileTempRoot = Path.Combine(profileFolder, "Temp");
@@ -694,20 +761,39 @@ internal static class Program
 
     private static int PrepareSandboxRoot()
     {
-        var profileFolder = GetProfileFolderPath();
-        var tempRoot = Path.Combine(profileFolder, "Temp");
-        Directory.CreateDirectory(tempRoot);
-        var sandboxRoot = Path.Combine(tempRoot, "BattleBuketCodes_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(sandboxRoot);
-        Console.Out.WriteLine(sandboxRoot);
-        return 0;
-    }
+        var profileName = AppContainerProfileNamePrefix + Guid.NewGuid().ToString("N");
+        var result = CreateAppContainerProfile(
+            profileName,
+            "BattleBuket Codes isolated project verification",
+            "Disposable no-network AppContainer for one isolated project quality-check run.",
+            IntPtr.Zero,
+            0,
+            out var sid);
+        if (result != 0)
+            throw new SecurityException("CreateAppContainerProfile failed with HRESULT 0x" + result.ToString("X8") + ".");
 
-    private static string GetAppContainerDataRoot()
-    {
-        var sid = EnsureAppContainerProfile();
-        try { return GetAppContainerDataRoot(sid); }
-        finally { FreeSid(sid); }
+        try
+        {
+            var tempRoot = Path.Combine(GetAppContainerDataRoot(sid), "Temp");
+            Directory.CreateDirectory(tempRoot);
+            var sandboxRoot = Path.Combine(tempRoot, AppContainerProfileNamePrefix + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(sandboxRoot);
+            Console.Out.WriteLine(JsonSerializer.Serialize(new SandboxPreparation
+            {
+                AppContainerProfileName = profileName,
+                SandboxRoot = sandboxRoot
+            }));
+            return 0;
+        }
+        catch
+        {
+            _ = DeleteAppContainerProfile(profileName);
+            throw;
+        }
+        finally
+        {
+            FreeSid(sid);
+        }
     }
 
     private static string GetAppContainerDataRoot(IntPtr sid)
@@ -716,54 +802,6 @@ internal static class Program
         return string.Equals(Path.GetFileName(profileFolder), "AC", StringComparison.OrdinalIgnoreCase)
             ? profileFolder
             : Path.Combine(profileFolder, "AC");
-    }
-
-    private static IntPtr EnsureAppContainerProfile()
-    {
-        using var mutex = new Mutex(false, AppContainerProfileMutexName);
-        var acquired = false;
-        try
-        {
-            try
-            {
-                acquired = mutex.WaitOne(TimeSpan.FromSeconds(120));
-            }
-            catch (AbandonedMutexException)
-            {
-                acquired = true;
-            }
-
-            if (!acquired)
-                throw new TimeoutException("Timed out waiting for the AppContainer profile initialization lock.");
-
-            var result = CreateAppContainerProfile(
-                AppContainerProfileName,
-                "BattleBuket Codes project verification",
-                "Persistent no-network AppContainer for isolated project quality checks.",
-                IntPtr.Zero,
-                0,
-                out var sid);
-            if (result == 0)
-                return sid;
-            if (result == ErrorAlreadyExistsHResult)
-            {
-                if (DeriveAppContainerSidFromAppContainerName(AppContainerProfileName, out sid) != 0)
-                    throw new SecurityException("Could not derive the existing BattleBuket Codes AppContainer SID.");
-                return sid;
-            }
-            throw new SecurityException("CreateAppContainerProfile failed with HRESULT 0x" + result.ToString("X8") + ".");
-        }
-        finally
-        {
-            if (acquired) mutex.ReleaseMutex();
-        }
-    }
-
-    private static string GetProfileFolderPath()
-    {
-        var sid = EnsureAppContainerProfile();
-        try { return GetProfileFolderPath(sid); }
-        finally { FreeSid(sid); }
     }
 
     private static string GetProfileFolderPath(IntPtr sid)
