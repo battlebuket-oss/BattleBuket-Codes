@@ -30,6 +30,13 @@ Classify actions as:
 
 Start with conservative defaults. The user can grant scoped approvals; agents cannot grant permissions to themselves.
 
+
+## Software bill of materials and license inventory
+
+The `.github/workflows/security-inventory.yml` workflow generates an SPDX JSON SBOM using a pinned Syft release and creates a CSV inventory of package versions and declared/concluded SPDX license expressions. It publishes those files and a manual-review summary as workflow artifacts. Components without a usable license expression are explicitly listed for review.
+
+The generated inventory is evidence to support a release review, not a legal opinion or automated license-compatibility approval. Review direct and transitive obligations, notices, copyleft/reciprocal terms, dual-licensing conditions, vendored code and distribution obligations before publishing installers.
+
 ## Release requirements
 
 Before a production release, complete threat modeling, dependency and license review, secret scanning, signing/notarization planning, update integrity checks, and an incident/rollback procedure.
