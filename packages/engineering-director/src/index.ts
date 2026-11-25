@@ -33,6 +33,49 @@ export class EngineeringDirector {
     try {
       const decision = await this.hooks.decide(task);
       if (cancellation.signal.aborted) { this.current = { status: "cancelled", task }; return cancelledResult(); }
+
+      // Medium-risk tasks are the only write-capable mode. They must have a
+      // genuinely separate, available reviewer before the implementation
+      // provider is allowed to make any workspace changes.
+      if (task.risk === "medium") {
+        let reviewBlocker: string | undefined;
+        if (!decision.reviewer) {
+          reviewBlocker = "No alternate provider is available for the required independent read-only review. The write-capable task was not started.";
+        } else if (decision.reviewer === decision.primary) {
+          reviewBlocker = "The reviewer must be a different provider from the implementation provider. The write-capable task was not started.";
+        } else if (!this.hooks.review) {
+          reviewBlocker = "The independent read-only review hook is not configured. The write-capable task was not started.";
+        } else {
+          const reviewerAdapter = this.adapters.find(item => item.provider === decision.reviewer);
+          if (!reviewerAdapter) {
+            reviewBlocker = "The selected independent review provider is not configured. The write-capable task was not started.";
+          } else {
+            let reviewerAvailable = false;
+            try { reviewerAvailable = await reviewerAdapter.isAvailable(); }
+            catch { reviewerAvailable = false; }
+            if (!reviewerAvailable) {
+              reviewBlocker = "The selected independent review provider is unavailable. The write-capable task was not started.";
+            }
+          }
+        }
+        if (reviewBlocker) {
+          const failedReview: VerificationResult = {
+            name: "Independent read-only provider review",
+            passed: false,
+            output: reviewBlocker
+          };
+          this.current = { status: "failed", task, reason: reviewBlocker };
+          return {
+            taskId: task.id,
+            status: "failed",
+            summary: "Task blocked before implementation because independent review is unavailable.",
+            changedFiles: [],
+            verification: [failedReview]
+          };
+        }
+        if (cancellation.signal.aborted) { this.current = { status: "cancelled", task }; return cancelledResult(); }
+      }
+
       if (decision.requiresHumanApproval) {
         const approved = await this.hooks.approve?.(task, decision);
         if (cancellation.signal.aborted || !approved) { this.current = { status: "cancelled", task }; return cancelledResult(); }
