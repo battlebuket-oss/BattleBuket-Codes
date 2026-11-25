@@ -17,6 +17,10 @@ jobs:
     name: Validate source before release
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,6 +47,10 @@ jobs:
           upload-release-assets: false
       - name: Generate release dependency license inventory
         run: node scripts/build-license-inventory.mjs release-sbom/battlebuket-codes.spdx.json release-sbom/LICENSE-INVENTORY.csv release-sbom/LICENSE-INVENTORY-SUMMARY.md
+      - name: Attest release SBOM and license inventory
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
+        with:
+          subject-path: release-sbom/*
       - uses: actions/upload-artifact@v4
         with:
           name: BattleBuket-Codes-SBOM
