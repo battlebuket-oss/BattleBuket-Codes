@@ -83,7 +83,7 @@ test("OS command sandbox allows workspace writes but blocks host-home writes and
 
 test("Windows AppContainer writes only in its managed profile storage and blocks host access/network", {
   skip: process.platform !== "win32",
-  timeout: 30_000
+  timeout: 60_000
 }, async () => {
   const workspace = await fs.mkdtemp(join(tmpdir(), "bb-appcontainer-workspace-"));
   const outside = join(tmpdir(), "battlebuket-appcontainer-sentinel-" + randomUUID() + ".txt");
@@ -101,7 +101,7 @@ test("Windows AppContainer writes only in its managed profile storage and blocks
     const script = [
       "const fs = require('node:fs');",
       "const net = require('node:net');",
-      "const [outside, portText] = process.argv.slice(1);",
+      "const [outside, portText] = process.argv.slice(2);",
       "fs.writeFileSync('workspace-write-proof.txt', 'workspace-write-allowed');",
       "let outsideReadBlocked = false;",
       "try { fs.readFileSync(outside, 'utf8'); } catch { outsideReadBlocked = true; }",
@@ -118,10 +118,12 @@ test("Windows AppContainer writes only in its managed profile storage and blocks
       "socket.once('connect', () => { socket.destroy(); finish(false); });",
       "socket.once('error', () => finish(true));"
     ].join("\n");
+    const scriptPath = join(workspace, "appcontainer-probe.cjs");
+    await fs.writeFile(scriptPath, script, { encoding: "utf8", flag: "wx" });
     const command = await prepareSandboxedCommand(
       workspace,
       process.execPath,
-      ["-e", script, outside, String(address.port)],
+      ["appcontainer-probe.cjs", outside, String(address.port)],
       {
         PATH: process.env.PATH,
         SystemRoot: process.env.SystemRoot,
@@ -151,8 +153,13 @@ test("Windows AppContainer writes only in its managed profile storage and blocks
       assert.ok(stdout.includes('"outsideReadBlocked":true'), stdout);
       assert.ok(stdout.includes('"outsideWriteBlocked":true'), stdout);
       assert.ok(stdout.includes('"networkBlocked":true'), stdout);
+      assert.equal(await fs.readFile(join(command.cwd, "workspace-write-proof.txt"), "utf8"), "workspace-write-allowed");
       assert.equal(await fs.readFile(outside, "utf8"), sentinel);
-      assert.deepEqual(await fs.readdir(workspace), [], "the selected workspace must remain unchanged");
+      assert.deepEqual(
+        (await fs.readdir(workspace)).sort(),
+        ["appcontainer-probe.cjs"],
+        "the selected workspace must remain unchanged"
+      );
     } finally {
       await command.dispose();
     }
