@@ -26,7 +26,7 @@ export function claudeAllowedTools(mode: AgentRunRequest["approvalMode"]): strin
     : ["Read", "Edit", "Write", "Glob", "Grep"];
 }
 
-async function changedFiles(cwd: string): Promise<string[]> {
+export async function changedFiles(cwd: string): Promise<string[]> {
   const result = await execa("git", ["status", "--porcelain", "--untracked-files=all"], {
     cwd, reject: false, maxBuffer: 2 * 1024 * 1024, timeout: 15_000
   });
