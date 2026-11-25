@@ -103,6 +103,30 @@ export async function prepareSandboxedCommand(
     const pathDirectories = await existingPathDirectories();
 
     if (process.platform === "win32") {
+      // Never lower the integrity label on the user's actual project. Windows AppContainer
+      // tokens run at low integrity, so commands execute against a private, disposable copy.
+      await fs.rm(scratchWorkspace, { recursive: true, force: true });
+      let externalSymlink: string | null = null;
+      await fs.cp(workspace, scratchWorkspace, {
+        recursive: true,
+        dereference: true,
+        filter: async source => {
+          let stat;
+          try { stat = await fs.lstat(source); }
+          catch { return false; }
+          if (!stat.isSymbolicLink()) return true;
+          const target = await fs.realpath(source).catch(() => null);
+          if (!target || !isInside(workspace, target)) {
+            externalSymlink = source;
+            return false;
+          }
+          return true;
+        }
+      });
+      if (externalSymlink) {
+        throw new Error("Windows AppContainer verification is blocked because the project copy contains a symbolic link outside the selected workspace: " + externalSymlink);
+      }
+
       const brokerCandidates = [
         process.env.BATTLEBUKET_APPCONTAINER_BROKER,
         join(process.cwd(), "apps", "desktop", "resources", "windows", "publish", "BattleBuket.AppContainerBroker.exe"),
@@ -135,7 +159,7 @@ export async function prepareSandboxedCommand(
 
       const requestPath = join(scratch, "appcontainer-request.json");
       await fs.writeFile(requestPath, JSON.stringify({
-        workspace,
+        workspace: scratchWorkspace,
         scratch,
         executable,
         args: commandArgs,
@@ -147,7 +171,7 @@ export async function prepareSandboxedCommand(
       return {
         executable: broker,
         args: ["--request", requestPath],
-        cwd: workspace,
+        cwd: scratchWorkspace,
         env: {
           PATH: process.env.PATH ?? "",
           SystemRoot: process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows",
