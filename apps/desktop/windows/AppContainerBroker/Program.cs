@@ -13,6 +13,11 @@ internal static class Program
     private const uint DaclSecurityInformation = 0x00000004;
     private const uint LabelSecurityInformation = 0x00000010;
     private const uint HandleFlagInherit = 0x00000001;
+    private const uint GenericRead = 0x80000000;
+    private const uint FileShareRead = 0x00000001;
+    private const uint FileShareWrite = 0x00000002;
+    private const uint OpenExisting = 3;
+    private const uint FileAttributeNormal = 0x00000080;
     private const uint ProcThreadAttributeHandleList = 0x00020002;
     private const uint ProcThreadAttributeSecurityCapabilities = 0x00020009;
     private const uint ExtendedStartupInfoPresent = 0x00080000;
@@ -223,6 +228,16 @@ internal static class Program
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern IntPtr FreeSid(IntPtr sid);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CreateFile(
+        string fileName,
+        uint desiredAccess,
+        uint shareMode,
+        ref SecurityAttributes securityAttributes,
+        uint creationDisposition,
+        uint flagsAndAttributes,
+        IntPtr templateFile);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CreatePipe(
@@ -385,6 +400,7 @@ internal static class Program
         IntPtr threadHandle = IntPtr.Zero;
         IntPtr pipeRead = IntPtr.Zero;
         IntPtr pipeWrite = IntPtr.Zero;
+        IntPtr standardInput = IntPtr.Zero;
         IntPtr attributeList = IntPtr.Zero;
         IntPtr securityCapabilitiesPointer = IntPtr.Zero;
         IntPtr handleListPointer = IntPtr.Zero;
@@ -411,15 +427,15 @@ internal static class Program
             var pathDirectories = GetPathDirectories(request.Environment).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var directory in pathDirectories)
             {
-                if (IsSameOrAncestor(directory, request.Scratch) ||
-                    IsSameOrAncestor(directory, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)))
+                if (IsSameOrAncestor(directory, request.Scratch) || IsReadOnlySystemPath(directory))
                     continue;
                 AddGrant(directory, appContainerSid, FileGenericRead | FileGenericExecute, SubContainersAndObjectsInherit, grants, true);
             }
             var executableDirectory = Path.GetDirectoryName(executable);
             if (!string.IsNullOrWhiteSpace(executableDirectory) &&
                 !pathDirectories.Any(path => IsSamePath(path, executableDirectory)) &&
-                !IsSameOrAncestor(executableDirectory, request.Scratch))
+                !IsSameOrAncestor(executableDirectory, request.Scratch) &&
+                !IsReadOnlySystemPath(executableDirectory))
             {
                 AddGrant(executableDirectory, appContainerSid, FileGenericRead | FileGenericExecute, SubContainersAndObjectsInherit, grants, true);
             }
@@ -434,6 +450,16 @@ internal static class Program
                 ThrowLastError("CreatePipe");
             if (!SetHandleInformation(pipeRead, HandleFlagInherit, 0))
                 ThrowLastError("SetHandleInformation");
+            standardInput = CreateFile(
+                "NUL",
+                GenericRead,
+                FileShareRead | FileShareWrite,
+                ref securityAttributes,
+                OpenExisting,
+                FileAttributeNormal,
+                IntPtr.Zero);
+            if (standardInput == new IntPtr(-1))
+                ThrowLastError("CreateFile(NUL)");
 
             IntPtr attributeListSize = IntPtr.Zero;
             _ = InitializeProcThreadAttributeList(IntPtr.Zero, 2, 0, ref attributeListSize);
@@ -462,14 +488,15 @@ internal static class Program
                 IntPtr.Zero))
                 ThrowLastError("UpdateProcThreadAttribute(SECURITY_CAPABILITIES)");
 
-            handleListPointer = Marshal.AllocHGlobal(IntPtr.Size);
-            Marshal.WriteIntPtr(handleListPointer, pipeWrite);
+            handleListPointer = Marshal.AllocHGlobal(IntPtr.Size * 2);
+            Marshal.WriteIntPtr(handleListPointer, 0, standardInput);
+            Marshal.WriteIntPtr(handleListPointer, IntPtr.Size, pipeWrite);
             if (!UpdateProcThreadAttribute(
                 attributeList,
                 0,
                 new IntPtr(ProcThreadAttributeHandleList),
                 handleListPointer,
-                new IntPtr(IntPtr.Size),
+                new IntPtr(IntPtr.Size * 2),
                 IntPtr.Zero,
                 IntPtr.Zero))
                 ThrowLastError("UpdateProcThreadAttribute(HANDLE_LIST)");
@@ -478,7 +505,7 @@ internal static class Program
             {
                 Cb = (uint)Marshal.SizeOf<StartupInfoEx>(),
                 Flags = StartfUseStdHandles,
-                StdInput = IntPtr.Zero,
+                StdInput = standardInput,
                 StdOutput = pipeWrite,
                 StdError = pipeWrite
             };
@@ -569,6 +596,7 @@ internal static class Program
             if (threadHandle != IntPtr.Zero) CloseHandle(threadHandle);
             if (pipeRead != IntPtr.Zero) CloseHandle(pipeRead);
             if (pipeWrite != IntPtr.Zero) CloseHandle(pipeWrite);
+            if (standardInput != IntPtr.Zero && standardInput != new IntPtr(-1)) CloseHandle(standardInput);
             if (attributeList != IntPtr.Zero)
             {
                 DeleteProcThreadAttributeList(attributeList);
@@ -682,6 +710,7 @@ internal static class Program
         if (directory)
         {
             if (!Directory.Exists(fullPath)) return;
+            if (IsReadOnlySystemPath(fullPath)) return;
         }
         else if (!File.Exists(fullPath))
         {
@@ -797,9 +826,19 @@ internal static class Program
             }
             catch { continue; }
             if (!Directory.Exists(fullPath)) continue;
-            if (IsSamePath(fullPath, userProfile)) continue;
+            if (IsSamePath(fullPath, userProfile) || IsReadOnlySystemPath(fullPath)) continue;
             yield return fullPath;
         }
+    }
+
+    private static bool IsReadOnlySystemPath(string path)
+    {
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        return IsSameOrAncestor(windows, path) ||
+            IsSameOrAncestor(programFiles, path) ||
+            IsSameOrAncestor(programFilesX86, path);
     }
 
     private static bool IsSamePath(string left, string right)
