@@ -150,10 +150,15 @@ export async function prepareSandboxedCommand(
       appContainerScratch = containerRoot;
       const localAppData = baseEnvironment.LOCALAPPDATA ?? process.env.LOCALAPPDATA;
       if (!localAppData) throw new Error("Windows LOCALAPPDATA is unavailable; AppContainer storage cannot be verified.");
-      const expectedTempRoot = join(localAppData, "Packages", "BattleBuketCodesProjectVerification", "AC", "Temp");
-      const expectedTempReal = await fs.realpath(expectedTempRoot);
-      if (!isInside(expectedTempReal, containerRoot) || resolve(expectedTempReal) === resolve(containerRoot)) {
-        throw new Error("Windows AppContainer storage was not created under the expected per-profile Temp directory.");
+      const packagesRoot = await fs.realpath(join(localAppData, "Packages"));
+      const profileRelative = relative(packagesRoot, containerRoot);
+      const profileSegments = profileRelative.split(sep).filter(Boolean);
+      if (!isInside(packagesRoot, containerRoot) ||
+          profileSegments.length !== 4 ||
+          profileSegments[1] !== "AC" ||
+          profileSegments[2] !== "Temp" ||
+          !profileSegments[3].startsWith("BattleBuketCodes_")) {
+        throw new Error("Windows AppContainer storage was not created under the expected per-profile Packages/<container>/AC/Temp directory.");
       }
 
       // The profile's own AC\\Temp directory is provisioned for this AppContainer by Windows.
