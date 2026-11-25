@@ -598,7 +598,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
             ? "Scripts run inside a bubblewrap namespace with networking disabled, the selected workspace as the only writable project path, and a temporary isolated home/cache."
             : process.platform === "darwin"
               ? "Scripts run inside a macOS Seatbelt profile with networking denied, workspace/scratch-only writes, and a temporary isolated home/cache."
-              : "Windows project scripts run in a no-network AppContainer. Writes are limited to the selected workspace and temporary sandbox; toolchain directories are read-only. Network-dependent dependency audits are omitted from this local sandbox.",
+              : "Windows project scripts run in a no-network AppContainer against a disposable copy of the selected workspace. The original project remains read-only to the sandbox; generated build/test files are discarded after each check. Toolchain directories are read-only, and network-dependent dependency audits are omitted.",
           "Checks have a five-minute timeout per command and a bounded output buffer. Interactive terminal sessions are separate and continue to run with your signed-in OS account permissions. Approve only if you trust the project content."
         ].join("\n");
         const options = {
