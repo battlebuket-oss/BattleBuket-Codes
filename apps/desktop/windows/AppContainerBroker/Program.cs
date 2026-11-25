@@ -7,6 +7,7 @@ using System.Text.Json;
 internal static class Program
 {
     private const uint FileGenericRead = 0x00120089;
+    private const uint FileGenericWrite = 0x00120116;
     private const uint FileGenericExecute = 0x001200A0;
     private const uint SubContainersAndObjectsInherit = 0x00000003;
     private const uint DaclSecurityInformation = 0x00000004;
@@ -382,7 +383,7 @@ internal static class Program
             if (hr != 0)
                 throw new SecurityException("CreateAppContainerProfile failed with HRESULT 0x" + hr.ToString("X8") + ".");
 
-            const uint workspaceRights = FileGenericRead | 0x00120116 | FileGenericExecute | 0x00010000;
+            const uint workspaceRights = FileGenericRead | FileGenericWrite | FileGenericExecute | 0x00010000;
             AddGrant(request.Workspace, appContainerSid, workspaceRights, SubContainersAndObjectsInherit, grants, true);
             AddGrant(request.Scratch, appContainerSid, workspaceRights, SubContainersAndObjectsInherit, grants, true);
             foreach (var directory in GetPathDirectories(request.Environment))
@@ -714,7 +715,7 @@ internal static class Program
         var path = environment.TryGetValue("PATH", out var value) ? value : "";
         var buffer = new StringBuilder(32_768);
         var length = SearchPath(path, executable, null, (uint)buffer.Capacity, buffer, out _);
-        if (length == 0 || length >= buffer.Capacity)
+        if (length == 0 || length >= (uint)buffer.Capacity)
             throw new FileNotFoundException("Could not resolve executable from the approved PATH.", executable);
         var resolved = Path.GetFullPath(buffer.ToString());
         if (!File.Exists(resolved))
@@ -732,7 +733,7 @@ internal static class Program
         var lines = normalized
             .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
             .Select(pair => pair.Key + "=" + pair.Value);
-        var block = string.Join('\0', lines) + "\0\0";
+        var block = string.Join("\0", lines) + "\0\0";
         return Marshal.StringToHGlobalUni(block);
     }
 
