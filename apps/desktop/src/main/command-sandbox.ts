@@ -66,11 +66,14 @@ async function existingPathDirectories(): Promise<string[]> {
       }
     } catch { /* Ignore stale PATH entries. */ }
   }
-  const executableDirectory = dirname(process.execPath);
-  if (await isDirectory(executableDirectory)) {
-    candidates.add(resolve(executableDirectory));
-    candidates.add(await fs.realpath(executableDirectory));
-  }
+  const executablePath = await fs.realpath(process.execPath).catch(() => process.execPath);
+  const executableDirectory = dirname(executablePath);
+  if (await isDirectory(executableDirectory)) candidates.add(executableDirectory);
+  const nodeInstallationRoot = dirname(executableDirectory);
+  const globalModules = join(nodeInstallationRoot, "lib", "node_modules");
+  if (await isDirectory(globalModules)) candidates.add(globalModules);
+  const nodeModulesBin = join(nodeInstallationRoot, "bin");
+  if (await isDirectory(nodeModulesBin)) candidates.add(nodeModulesBin);
   return [...candidates];
 }
 
