@@ -52,9 +52,9 @@ test("pnpm audit reporter keeps installed versions, dependency paths and upstrea
     const summaryText = await readFile(summary, "utf8");
 
     assert.match(csvText, /"dompurify","low","transitive","apps\/desktop > @codingame\/example@1\.0\.0 > dompurify@3\.4\.15","3\.4\.15"/);
-    assert.match(csvText, /">=3\.4\.17","Upgrade to version 3\.4\.17 or later","3\.4\.17 or later","https:\/\/example\.invalid\/dompurify"/);
+    assert.match(csvText, /">=3\.4\.17","DOMPurify test advisory","Upgrade to version 3\.4\.17 or later","3\.4\.17 or later","https:\/\/example\.invalid\/dompurify"/);
     assert.match(csvText, /"minimatch","moderate","transitive","apps\/desktop > tool@1\.0\.0 > minimatch@10\.2\.6","10\.2\.6"/);
-    assert.match(csvText, /">=11\.0\.1","Upgrade to version 11\.0\.1 or later"/);
+    assert.match(csvText, /">=11\.0\.1","minimatch test advisory","Upgrade to version 11\.0\.1 or later","11\.0\.1 or later","https:\/\/example\.invalid\/minimatch"/);
     assert.match(summaryText, /Moderate: 1/);
     assert.match(summaryText, /Low: 1/);
     assert.match(summaryText, /Packages with an upstream remediation recommendation: 2/);
