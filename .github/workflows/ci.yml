@@ -17,10 +17,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/setup-dotnet@v4
-        if: runner.os == 'Windows'
-        with:
-          dotnet-version: '8.0.x'
       - run: corepack enable
       - run: corepack prepare pnpm@10.0.0 --activate
       - name: Install bubblewrap for OS-isolated command tests
