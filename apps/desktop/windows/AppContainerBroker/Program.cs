@@ -8,7 +8,6 @@ internal static class Program
 {
     private const uint FileGenericRead = 0x00120089;
     private const uint FileGenericExecute = 0x001200A0;
-    private const uint FileTraverseAndReadAttributes = 0x000000A0;
     private const uint SubContainersAndObjectsInherit = 0x00000003;
     private const uint DaclSecurityInformation = 0x00000004;
     private const uint HandleFlagInherit = 0x00000001;
@@ -441,31 +440,34 @@ internal static class Program
                 throw new SecurityException("The sandbox scratch directory is outside the AppContainer-managed profile Temp location.");
 
             var pathDirectories = GetPathDirectories(request.Environment).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            Trace("Preparing read/execute access for " + pathDirectories.Count + " PATH directories.");
+            Trace("Preparing narrowly scoped read/execute access for " + pathDirectories.Count + " PATH directories.");
             foreach (var directory in pathDirectories)
             {
                 if (IsSameOrAncestor(request.Scratch, directory) || IsReadOnlySystemPath(directory))
                     continue;
-                EnsureToolchainTraversal(directory, appContainerSid);
+
+                // Grant only on the actual tool directory. Applying explicit ACL changes to
+                // every ancestor can trigger expensive inheritance recalculation across
+                // very large tool-cache trees and grants no additional executable capability.
                 EnsureReadExecuteGrant(directory, appContainerSid);
             }
+
             var executableDirectory = Path.GetDirectoryName(executable);
             if (!string.IsNullOrWhiteSpace(executableDirectory) &&
                 !pathDirectories.Any(path => IsSamePath(path, executableDirectory)) &&
                 !IsSameOrAncestor(request.Scratch, executableDirectory) &&
                 !IsReadOnlySystemPath(executableDirectory))
             {
-                EnsureToolchainTraversal(executableDirectory, appContainerSid);
                 EnsureReadExecuteGrant(executableDirectory, appContainerSid);
             }
+
             if (!IsReadOnlySystemPath(executable) &&
                 !IsSameOrAncestor(request.Scratch, executable))
             {
-                EnsureToolchainTraversal(executable, appContainerSid);
                 EnsureReadExecuteGrant(executable, appContainerSid);
             }
 
-            Trace("Toolchain access prepared.");
+            Trace("Narrowly scoped toolchain access prepared.");
             var securityAttributes = new SecurityAttributes
             {
                 Length = Marshal.SizeOf<SecurityAttributes>(),
@@ -775,25 +777,6 @@ internal static class Program
         finally
         {
             CoTaskMemFree(folderPointer);
-        }
-    }
-
-    private static void EnsureToolchainTraversal(string path, IntPtr sid)
-    {
-        var fullPath = Path.GetFullPath(path);
-        var current = Directory.Exists(fullPath) ? fullPath : Path.GetDirectoryName(fullPath);
-        while (!string.IsNullOrWhiteSpace(current))
-        {
-            if (!IsReadOnlySystemPath(current))
-            {
-                Trace("Traverse ACL: " + current);
-                EnsureSpecificRights(current, sid, FileTraverseAndReadAttributes, false);
-                Trace("Traverse ACL completed: " + current);
-            }
-            var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(current));
-            if (string.IsNullOrWhiteSpace(parent) || string.Equals(parent, current, StringComparison.OrdinalIgnoreCase))
-                break;
-            current = parent;
         }
     }
 
