@@ -30,6 +30,25 @@ jobs:
           corepack prepare pnpm@10.0.0 --activate
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level high
+      - name: Prepare release SBOM directory
+        run: mkdir -p release-sbom
+      - name: Generate SPDX release SBOM with pinned Syft
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        with:
+          path: .
+          format: spdx-json
+          output-file: release-sbom/battlebuket-codes.spdx.json
+          syft-version: v1.42.3
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Generate release dependency license inventory
+        run: node scripts/build-license-inventory.mjs release-sbom/battlebuket-codes.spdx.json release-sbom/LICENSE-INVENTORY.csv release-sbom/LICENSE-INVENTORY-SUMMARY.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BattleBuket-Codes-SBOM
+          path: release-sbom/*
+          if-no-files-found: error
+          retention-days: 90
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
