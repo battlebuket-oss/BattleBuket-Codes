@@ -33,6 +33,12 @@ jobs:
           test "$BASELINE_TAG" != "$CANDIDATE_TAG"
           case "$BASELINE_TAG" in v*) ;; *) echo "baseline_tag must be a version tag beginning with v"; exit 1;; esac
           case "$CANDIDATE_TAG" in v*) ;; *) echo "candidate_tag must be a version tag beginning with v"; exit 1;; esac
+          baseline_version="${BASELINE_TAG#v}"
+          candidate_version="${CANDIDATE_TAG#v}"
+          if [[ "$(printf '%s\n%s\n' "$baseline_version" "$candidate_version" | sort -V | head -n 1)" != "$baseline_version" || "$baseline_version" == "$candidate_version" ]]; then
+            echo "baseline_tag must be an older semantic version than candidate_tag."
+            exit 1
+          fi
 
   windows-upgrade-rollback:
     needs: validate-inputs
@@ -77,14 +83,22 @@ jobs:
           & $application --smoke-test --smoke-verify-state "--smoke-expect-version=$candidateVersion"
           if ($LASTEXITCODE -ne 0) { throw "Upgrade failed to preserve app user data or launch the candidate." }
 
+          # NSIS blocks downgrades by default. Uninstall the candidate first, then
+          # install the older baseline while keeping the user's AppData untouched.
+          $candidateUninstaller = Join-Path $installDir "Uninstall BattleBuket Codes.exe"
+          if (-not (Test-Path $candidateUninstaller)) { throw "Candidate NSIS uninstaller was not found." }
+          Start-Process -FilePath $candidateUninstaller -ArgumentList "/S" -Wait
+          if (Test-Path $application) { throw "Candidate application remains after uninstall." }
+
           Start-Process -FilePath $baselineInstaller.FullName -ArgumentList @("/S", "/D=$installDir") -Wait
+          if (-not (Test-Path $application)) { throw "Baseline application was not reinstalled after rollback." }
           & $application --smoke-test --smoke-verify-state --smoke-clear-state "--smoke-expect-version=$baselineVersion"
           if ($LASTEXITCODE -ne 0) { throw "Rollback failed to preserve app user data or launch the baseline." }
 
-          $uninstaller = Join-Path $installDir "Uninstall BattleBuket Codes.exe"
-          if (-not (Test-Path $uninstaller)) { throw "NSIS uninstaller was not found." }
-          Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait
-          if (Test-Path $application) { throw "Application executable remains after uninstall." }
+          $baselineUninstaller = Join-Path $installDir "Uninstall BattleBuket Codes.exe"
+          if (-not (Test-Path $baselineUninstaller)) { throw "Baseline NSIS uninstaller was not found." }
+          Start-Process -FilePath $baselineUninstaller -ArgumentList "/S" -Wait
+          if (Test-Path $application) { throw "Application executable remains after final uninstall." }
 
   macos-upgrade-rollback:
     needs: validate-inputs
