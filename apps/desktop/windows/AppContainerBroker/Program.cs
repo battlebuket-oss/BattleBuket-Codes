@@ -319,6 +319,16 @@ internal static class Program
         IntPtr overlapped);
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PeekNamedPipe(
+        IntPtr pipe,
+        IntPtr buffer,
+        uint bytesToRead,
+        out uint bytesRead,
+        out uint totalBytesAvailable,
+        out uint bytesLeftThisMessage);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -572,15 +582,41 @@ internal static class Program
             var buffer = new byte[32 * 1024];
             while (true)
             {
-                if (!ReadFile(pipeRead, buffer, (uint)buffer.Length, out var bytesRead, IntPtr.Zero))
+                if (!PeekNamedPipe(
+                    pipeRead,
+                    IntPtr.Zero,
+                    0,
+                    out _,
+                    out var availableBytes,
+                    out _))
                 {
                     var error = Marshal.GetLastWin32Error();
                     if (error == ErrorBrokenPipe) break;
-                    throw new Win32Exception(error, "ReadFile(child output) failed.");
+                    throw new Win32Exception(error, "PeekNamedPipe(child output) failed.");
                 }
-                if (bytesRead == 0) break;
-                output.Write(buffer, 0, (int)bytesRead);
-                output.Flush();
+
+                if (availableBytes > 0)
+                {
+                    var requestedBytes = Math.Min((uint)buffer.Length, availableBytes);
+                    if (!ReadFile(pipeRead, buffer, requestedBytes, out var bytesRead, IntPtr.Zero))
+                    {
+                        var error = Marshal.GetLastWin32Error();
+                        if (error == ErrorBrokenPipe) break;
+                        throw new Win32Exception(error, "ReadFile(child output) failed.");
+                    }
+                    if (bytesRead > 0)
+                    {
+                        output.Write(buffer, 0, (int)bytesRead);
+                        output.Flush();
+                    }
+                    continue;
+                }
+
+                var childState = WaitForSingleObject(processHandle, 0);
+                if (childState == 0) break;
+                if (childState != 258)
+                    ThrowLastError("WaitForSingleObject(child poll)");
+                Thread.Sleep(10);
             }
 
             var wait = WaitForSingleObject(processHandle, Infinite);
