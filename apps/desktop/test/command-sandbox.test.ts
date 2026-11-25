@@ -81,13 +81,13 @@ test("OS command sandbox allows workspace writes but blocks host-home writes and
   }
 });
 
-test("Windows AppContainer allows workspace writes while blocking host-temp writes and loopback networking", {
+test("Windows AppContainer writes only in a disposable workspace copy and blocks host access/network", {
   skip: process.platform !== "win32",
   timeout: 30_000
 }, async () => {
   const workspace = await fs.mkdtemp(join(tmpdir(), "bb-appcontainer-workspace-"));
   const outside = join(tmpdir(), "battlebuket-appcontainer-sentinel-" + randomUUID() + ".txt");
-  const resultPath = join(workspace, "appcontainer-result.json");
+  const resultName = "appcontainer-result.json";
   const sentinel = "host-sentinel-must-not-change-" + randomUUID();
   const server = createServer(socket => socket.end("host-network-reached"));
   await new Promise<void>((resolve, reject) => {
@@ -104,11 +104,13 @@ test("Windows AppContainer allows workspace writes while blocking host-temp writ
       "const net = require('node:net');",
       "const [outside, resultPath, portText] = process.argv.slice(1);",
       "fs.writeFileSync('workspace-write-proof.txt', 'workspace-write-allowed');",
+      "let outsideReadBlocked = false;",
+      "try { fs.readFileSync(outside, 'utf8'); } catch { outsideReadBlocked = true; }",
       "let outsideWriteBlocked = false;",
       "try { fs.writeFileSync(outside, 'host-write-forbidden'); } catch { outsideWriteBlocked = true; }",
       "const finish = networkBlocked => {",
-      "  if (!networkBlocked || !outsideWriteBlocked) process.exit(7);",
-      "  fs.writeFileSync(resultPath, JSON.stringify({ outsideWriteBlocked, networkBlocked }));",
+      "  if (!networkBlocked || !outsideReadBlocked || !outsideWriteBlocked) process.exit(7);",
+      "  fs.writeFileSync(resultPath, JSON.stringify({ outsideReadBlocked, outsideWriteBlocked, networkBlocked }));",
       "  process.exit(0);",
       "};",
       "const socket = net.createConnection({ host: '127.0.0.1', port: Number(portText) });",
@@ -119,7 +121,7 @@ test("Windows AppContainer allows workspace writes while blocking host-temp writ
     const command = await prepareSandboxedCommand(
       workspace,
       process.execPath,
-      ["-e", script, outside, resultPath, String(address.port)],
+      ["-e", script, outside, resultName, String(address.port)],
       {
         PATH: process.env.PATH,
         SystemRoot: process.env.SystemRoot,
@@ -144,12 +146,14 @@ test("Windows AppContainer allows workspace writes while blocking host-temp writ
         child.once("close", code => resolve(code));
       });
       assert.equal(exitCode, 0, "AppContainer probe failed: " + stdout + "\n" + stderr);
-      assert.equal(await fs.readFile(join(workspace, "workspace-write-proof.txt"), "utf8"), "workspace-write-allowed");
-      assert.deepEqual(JSON.parse(await fs.readFile(resultPath, "utf8")), {
+      assert.equal(await fs.readFile(join(command.cwd, "workspace-write-proof.txt"), "utf8"), "workspace-write-allowed");
+      assert.deepEqual(JSON.parse(await fs.readFile(join(command.cwd, resultName), "utf8")), {
+        outsideReadBlocked: true,
         outsideWriteBlocked: true,
         networkBlocked: true
       });
       assert.equal(await fs.readFile(outside, "utf8"), sentinel);
+      assert.deepEqual(await fs.readdir(workspace), [], "the selected workspace must remain unchanged");
     } finally {
       await command.dispose();
     }
