@@ -25,7 +25,7 @@ internal static class Program
     private const uint CreateSuspended = 0x00000004;
     private const uint CreateNoWindow = 0x08000000;
     private const uint StartfUseStdHandles = 0x00000100;
-    private const uint JobObjectExtendedLimitInformation = 9;
+    private const uint JobObjectExtendedLimitInformationClass = 9;
     private const uint JobObjectLimitKillOnJobClose = 0x00002000;
     private const uint Infinite = 0xFFFFFFFF;
     private const int ErrorBrokenPipe = 109;
@@ -524,7 +524,7 @@ internal static class Program
                 Marshal.StructureToPtr(jobLimits, jobLimitsPointer, false);
                 if (!SetInformationJobObject(
                     job,
-                    JobObjectExtendedLimitInformation,
+                    JobObjectExtendedLimitInformationClass,
                     jobLimitsPointer,
                     (uint)Marshal.SizeOf<JobObjectExtendedLimitInformation>()))
                     ThrowLastError("SetInformationJobObject");
