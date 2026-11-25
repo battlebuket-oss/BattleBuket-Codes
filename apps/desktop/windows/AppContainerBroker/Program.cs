@@ -30,7 +30,7 @@ internal static class Program
     private const int ErrorBrokenPipe = 109;
     private const int ErrorAlreadyExistsHResult = unchecked((int)0x800700B7);
     private const string AppContainerProfileName = "BattleBuketCodesProjectVerification";
-    private const string AppContainerProfileMutexName = @"Local\\BattleBuketCodes-AppContainerProfile-Lock";
+    private const string AppContainerProfileMutexName = @"Local\BattleBuketCodes-AppContainerProfile-Lock";
 
     private sealed class BrokerRequest
     {
