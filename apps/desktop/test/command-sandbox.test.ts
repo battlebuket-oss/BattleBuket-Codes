@@ -29,6 +29,8 @@ test("OS command sandbox allows workspace writes but blocks host-home writes and
       "const net = require('node:net');",
       "const [outside, resultPath, portText] = process.argv.slice(1);",
       "fs.writeFileSync('write-proof.txt', 'workspace-write-allowed');",
+      "const outsideContents = fs.readFileSync(outside, 'utf8');",
+      "if (outsideContents !== 'host-sentinel-must-not-change') process.exit(8);",
       "let outsideWriteBlocked = false;",
       "try { fs.writeFileSync(outside, 'host-write-forbidden'); } catch { outsideWriteBlocked = true; }",
       "const finish = networkBlocked => {",
