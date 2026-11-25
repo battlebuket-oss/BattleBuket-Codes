@@ -149,6 +149,7 @@ jobs:
                 APPDATA = $sandboxRoot
                 LOCALAPPDATA = $sandboxRoot
                 PATHEXT = ".COM;.EXE;.BAT;.CMD"
+                BATTLEBUKET_APPCONTAINER_DIAGNOSTICS = "1"
               }
             }
             $request | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $requestPath -Encoding utf8
