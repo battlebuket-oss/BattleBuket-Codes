@@ -56,6 +56,102 @@ function appendReadOnlyHomeMount(args: string[], home: string, path: string, mou
   mounted.add(absolute);
 }
 
+async function copyRuntimeTree(
+  sourcePath: string,
+  destinationPath: string,
+  sourceRoot: string,
+  ancestors = new Set<string>()
+): Promise<void> {
+  const stat = await fs.lstat(sourcePath);
+  const realSource = await fs.realpath(sourcePath);
+  if (!isInside(sourceRoot, realSource)) {
+    throw new Error("A Node runtime component resolves outside its installation directory: " + sourcePath);
+  }
+
+  if (stat.isSymbolicLink() || stat.isDirectory()) {
+    if (ancestors.has(realSource)) {
+      throw new Error("A cyclic directory link was found in the Node runtime: " + sourcePath);
+    }
+    const nextAncestors = new Set(ancestors);
+    nextAncestors.add(realSource);
+    await fs.mkdir(destinationPath, { recursive: true });
+    const entries = await fs.readdir(realSource);
+    for (const entry of entries) {
+      await copyRuntimeTree(
+        join(realSource, entry),
+        join(destinationPath, entry),
+        sourceRoot,
+        nextAncestors
+      );
+    }
+    return;
+  }
+
+  if (stat.isFile()) {
+    await fs.mkdir(dirname(destinationPath), { recursive: true });
+    await fs.copyFile(realSource, destinationPath);
+  }
+}
+
+async function findWindowsNodeExecutable(pathValue: string): Promise<string | null> {
+  for (const entry of pathValue.split(delimiter).filter(Boolean)) {
+    const candidate = join(entry, "node.exe");
+    try {
+      if ((await fs.stat(candidate)).isFile()) return await fs.realpath(candidate);
+    } catch { /* Try the next PATH entry. */ }
+  }
+  return null;
+}
+
+async function stageWindowsNodeRuntime(
+  pathValue: string,
+  containerRoot: string
+): Promise<{ directory: string; executable: string; originalDirectory: string } | null> {
+  const sourceExecutable = await findWindowsNodeExecutable(pathValue);
+  if (!sourceExecutable) return null;
+
+  const sourceDirectory = await fs.realpath(dirname(sourceExecutable));
+  const destinationDirectory = join(containerRoot, "toolchain", "node");
+  await fs.mkdir(destinationDirectory, { recursive: true });
+  await copyRuntimeTree(sourceExecutable, join(destinationDirectory, "node.exe"), sourceDirectory);
+
+  // npm and Corepack launchers resolve their JavaScript entrypoints relative to this
+  // installation directory. Stage the bundled package trees beside node.exe so the
+  // AppContainer never has to traverse the host drive to load a CLI entrypoint.
+  for (const packageName of ["npm", "corepack"]) {
+    const packageSource = join(sourceDirectory, "node_modules", packageName);
+    try {
+      if ((await fs.stat(packageSource)).isDirectory()) {
+        await copyRuntimeTree(
+          packageSource,
+          join(destinationDirectory, "node_modules", packageName),
+          sourceDirectory
+        );
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+
+  const launchers = await fs.readdir(sourceDirectory);
+  for (const launcher of launchers.filter(name => /\.(cmd|ps1)$/i.test(name))) {
+    const source = join(sourceDirectory, launcher);
+    try {
+      if ((await fs.stat(source)).isFile()) {
+        await copyRuntimeTree(source, join(destinationDirectory, launcher), sourceDirectory);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+
+  return {
+    directory: destinationDirectory,
+    executable: join(destinationDirectory, "node.exe"),
+    originalDirectory: sourceDirectory
+  };
+}
+
 async function existingPathDirectories(): Promise<string[]> {
   const candidates = new Set<string>();
   for (const entry of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
@@ -98,10 +194,21 @@ export async function prepareSandboxedCommand(
   };
   try {
     await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack, scratchRoaming, scratchLocal].map(path => fs.mkdir(path, { recursive: true })));
-    const corepackHome = process.env.COREPACK_HOME || join(homedir(), ".cache", "node", "corepack");
-    const hasCorepackHome = await isDirectory(corepackHome);
-    if (hasCorepackHome) {
-      await fs.cp(corepackHome, scratchCorepack, { recursive: true, dereference: false, force: true });
+    const corepackCandidates = [
+      process.env.COREPACK_HOME,
+      baseEnvironment.LOCALAPPDATA ? join(baseEnvironment.LOCALAPPDATA, "node", "corepack") : null,
+      join(homedir(), ".cache", "node", "corepack")
+    ].filter((value): value is string => typeof value === "string" && value.length > 0);
+    let corepackHome: string | null = null;
+    for (const candidate of corepackCandidates) {
+      if (await isDirectory(candidate)) {
+        corepackHome = candidate;
+        break;
+      }
+    }
+    const hasCorepackHome = corepackHome !== null;
+    if (corepackHome) {
+      await fs.cp(corepackHome, scratchCorepack, { recursive: true, dereference: true, force: true });
     }
     const pathDirectories = await existingPathDirectories();
 
@@ -174,6 +281,10 @@ export async function prepareSandboxedCommand(
       const sandboxWorkspace = join(containerRoot, "workspace");
       const sandboxRoaming = join(sandboxHome, "AppData", "Roaming");
       const sandboxLocal = join(sandboxHome, "AppData", "Local");
+      const stagedNode = await stageWindowsNodeRuntime(
+        (baseEnvironment.PATH ?? baseEnvironment.Path ?? process.env.PATH ?? ""),
+        containerRoot
+      );
       await Promise.all([
         sandboxHome, sandboxTmp, sandboxCache, sandboxCorepack, sandboxWorkspace,
         sandboxRoaming, sandboxLocal
@@ -205,7 +316,16 @@ export async function prepareSandboxedCommand(
       }
 
       const windowsEnvironment: NodeJS.ProcessEnv = { ...baseEnvironment };
-      windowsEnvironment.PATH = baseEnvironment.PATH ?? baseEnvironment.Path ?? process.env.PATH ?? "";
+      const originalWindowsPath = baseEnvironment.PATH ?? baseEnvironment.Path ?? process.env.PATH ?? "";
+      const filteredWindowsPath: string[] = [];
+      for (const entry of originalWindowsPath.split(delimiter).filter(Boolean)) {
+        const resolvedEntry = await fs.realpath(entry).catch(() => resolve(entry));
+        if (stagedNode && resolvedEntry.toLowerCase() === stagedNode.originalDirectory.toLowerCase()) continue;
+        filteredWindowsPath.push(entry);
+      }
+      windowsEnvironment.PATH = stagedNode
+        ? [stagedNode.directory, ...filteredWindowsPath].join(delimiter)
+        : originalWindowsPath;
       delete windowsEnvironment.Path;
       windowsEnvironment.HOME = sandboxHome;
       windowsEnvironment.USERPROFILE = sandboxHome;
@@ -222,12 +342,18 @@ export async function prepareSandboxedCommand(
       await fs.writeFile(requestPath, JSON.stringify({
         workspace: sandboxWorkspace,
         scratch: containerRoot,
-        executable,
+        executable: sandboxExecutable,
         args: commandArgs,
         environment: Object.fromEntries(
           Object.entries(windowsEnvironment).filter((entry): entry is [string, string] => typeof entry[1] === "string")
         )
       }), { encoding: "utf8", mode: 0o600 });
+
+      const resolvedRequestedExecutable = await fs.realpath(executable).catch(() => executable);
+      const sandboxExecutable = stagedNode &&
+        resolvedRequestedExecutable.toLowerCase() === (await fs.realpath(findWindowsNodeExecutable(originalWindowsPath) ?? stagedNode.executable)).toLowerCase()
+          ? stagedNode.executable
+          : executable;
 
       return {
         executable: broker,
