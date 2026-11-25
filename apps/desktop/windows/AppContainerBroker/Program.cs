@@ -29,6 +29,7 @@ internal static class Program
     private const int ErrorAlreadyExistsHResult = unchecked((int)0x800700B7);
     private const string AppContainerProfileName = "BattleBuketCodesProjectVerification";
     private const string AppContainerProfileMutexName = @"Local\BattleBuketCodes-AppContainerProfile-Lock";
+    private const string AppContainerExecutionMutexName = @"Local\BattleBuketCodes-AppContainerExecution-Lock";
     private static bool DiagnosticsEnabled;
 
     private static void Trace(string message)
@@ -378,7 +379,20 @@ internal static class Program
                 ?? throw new InvalidDataException("The sandbox request file is empty.");
 
             ValidateRequest(request);
-            return RunInAppContainer(request);
+            using var executionMutex = new Mutex(false, AppContainerExecutionMutexName);
+            var acquired = false;
+            try
+            {
+                try { acquired = executionMutex.WaitOne(TimeSpan.FromSeconds(120)); }
+                catch (AbandonedMutexException) { acquired = true; }
+                if (!acquired)
+                    throw new TimeoutException("Timed out waiting for the Windows AppContainer execution lock.");
+                return RunInAppContainer(request);
+            }
+            finally
+            {
+                if (acquired) executionMutex.ReleaseMutex();
+            }
         }
         catch (Exception exception)
         {
@@ -428,6 +442,7 @@ internal static class Program
         IntPtr attributeList = IntPtr.Zero;
         IntPtr securityCapabilitiesPointer = IntPtr.Zero;
         IntPtr handleListPointer = IntPtr.Zero;
+        var aclGrants = new List<AclGrant>();
         try
         {
             Trace("Ensuring AppContainer profile.");
@@ -449,7 +464,7 @@ internal static class Program
                 // Grant only on the actual tool directory. Applying explicit ACL changes to
                 // every ancestor can trigger expensive inheritance recalculation across
                 // very large tool-cache trees and grants no additional executable capability.
-                EnsureReadExecuteGrant(directory, appContainerSid);
+                EnsureReadExecuteGrant(directory, appContainerSid, aclGrants);
             }
 
             var executableDirectory = Path.GetDirectoryName(executable);
@@ -458,13 +473,13 @@ internal static class Program
                 !IsSameOrAncestor(request.Scratch, executableDirectory) &&
                 !IsReadOnlySystemPath(executableDirectory))
             {
-                EnsureReadExecuteGrant(executableDirectory, appContainerSid);
+                EnsureReadExecuteGrant(executableDirectory, appContainerSid, aclGrants);
             }
 
             if (!IsReadOnlySystemPath(executable) &&
                 !IsSameOrAncestor(request.Scratch, executable))
             {
-                EnsureReadExecuteGrant(executable, appContainerSid);
+                EnsureReadExecuteGrant(executable, appContainerSid, aclGrants);
             }
 
             Trace("Narrowly scoped toolchain access prepared.");
@@ -672,6 +687,7 @@ internal static class Program
             if (securityCapabilitiesPointer != IntPtr.Zero) Marshal.FreeHGlobal(securityCapabilitiesPointer);
             if (handleListPointer != IntPtr.Zero) Marshal.FreeHGlobal(handleListPointer);
 
+            RestoreTemporaryAclGrants(aclGrants);
             if (appContainerSid != IntPtr.Zero) FreeSid(appContainerSid);
         }
     }
@@ -780,20 +796,37 @@ internal static class Program
         }
     }
 
-    private static void EnsureReadExecuteGrant(string path, IntPtr sid)
+    private static void EnsureReadExecuteGrant(string path, IntPtr sid, List<AclGrant> grants)
     {
         Trace("Read/execute ACL: " + path);
-        EnsureSpecificRights(path, sid, FileGenericRead | FileGenericExecute, true);
+        EnsureSpecificRights(path, sid, FileGenericRead | FileGenericExecute, true, grants);
         Trace("Read/execute ACL completed: " + path);
     }
 
-    private static void EnsureSpecificRights(string path, IntPtr sid, uint requiredRights, bool allowInheritance)
+    private static byte[] CopyAclBytes(IntPtr acl)
+    {
+        if (acl == IntPtr.Zero) return [];
+        var length = unchecked((ushort)Marshal.ReadInt16(acl, 2));
+        if (length < 8) throw new InvalidDataException("Windows returned an invalid ACL size.");
+        var bytes = new byte[length];
+        Marshal.Copy(acl, bytes, 0, length);
+        return bytes;
+    }
+
+    private static void EnsureSpecificRights(
+        string path,
+        IntPtr sid,
+        uint requiredRights,
+        bool allowInheritance,
+        List<AclGrant> grants)
     {
         var fullPath = Path.GetFullPath(path);
         var isDirectory = Directory.Exists(fullPath);
         if (!isDirectory && !File.Exists(fullPath))
             throw new FileNotFoundException("A required toolchain path does not exist.", fullPath);
         if (IsReadOnlySystemPath(fullPath))
+            return;
+        if (grants.Any(grant => IsSamePath(grant.Path, fullPath)))
             return;
 
         const uint objectType = 1;
@@ -812,6 +845,7 @@ internal static class Program
         Trace("GetNamedSecurityInfo completed: " + fullPath);
 
         IntPtr newDacl = IntPtr.Zero;
+        var descriptorTransferred = false;
         try
         {
             var trustee = new Trustee
@@ -844,6 +878,8 @@ internal static class Program
             error = SetEntriesInAcl(1, ref access, oldDacl, out newDacl);
             if (error != 0)
                 throw new Win32Exception((int)error, "SetEntriesInAcl failed for " + fullPath);
+            var appliedDacl = CopyAclBytes(newDacl);
+
             Trace("SetNamedSecurityInfo: " + fullPath);
             error = SetNamedSecurityInfo(
                 fullPath,
@@ -855,13 +891,71 @@ internal static class Program
                 IntPtr.Zero);
             if (error != 0)
                 throw new Win32Exception((int)error, "SetNamedSecurityInfo failed for " + fullPath);
+
+            // Retain the original security descriptor until the child process tree is
+            // terminated. The exact DACL written above is compared before restoration so
+            // unrelated ACL changes made by the user are not overwritten.
+            grants.Add(new AclGrant(fullPath, securityDescriptor, oldDacl, appliedDacl));
+            descriptorTransferred = true;
             Trace("SetNamedSecurityInfo completed: " + fullPath);
         }
         finally
         {
             if (newDacl != IntPtr.Zero) LocalFree(newDacl);
-            if (securityDescriptor != IntPtr.Zero) LocalFree(securityDescriptor);
+            if (!descriptorTransferred && securityDescriptor != IntPtr.Zero) LocalFree(securityDescriptor);
         }
+    }
+
+    private static void RestoreTemporaryAclGrants(List<AclGrant> grants)
+    {
+        for (var index = grants.Count - 1; index >= 0; index--)
+        {
+            var grant = grants[index];
+            IntPtr currentDescriptor = IntPtr.Zero;
+            try
+            {
+                var error = GetNamedSecurityInfo(
+                    grant.Path,
+                    1,
+                    DaclSecurityInformation,
+                    out _,
+                    out _,
+                    out var currentDacl,
+                    out _,
+                    out currentDescriptor);
+                if (error != 0)
+                    throw new Win32Exception((int)error, "Could not inspect the temporary ACL before restoration: " + grant.Path);
+
+                var currentBytes = CopyAclBytes(currentDacl);
+                if (!currentBytes.AsSpan().SequenceEqual(grant.AppliedDacl))
+                {
+                    Trace("Skipped ACL restoration because another actor changed the DACL: " + grant.Path);
+                    continue;
+                }
+
+                error = SetNamedSecurityInfo(
+                    grant.Path,
+                    1,
+                    DaclSecurityInformation,
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    grant.OriginalDacl,
+                    IntPtr.Zero);
+                if (error != 0)
+                    throw new Win32Exception((int)error, "Could not restore the original DACL: " + grant.Path);
+                Trace("Restored original DACL: " + grant.Path);
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine("AppContainer broker could not restore a temporary toolchain ACL for " + grant.Path + ": " + exception.Message);
+            }
+            finally
+            {
+                if (currentDescriptor != IntPtr.Zero) LocalFree(currentDescriptor);
+                if (grant.OriginalSecurityDescriptor != IntPtr.Zero) LocalFree(grant.OriginalSecurityDescriptor);
+            }
+        }
+        grants.Clear();
     }
 
     private static IEnumerable<string> GetPathDirectories(Dictionary<string, string> environment)
