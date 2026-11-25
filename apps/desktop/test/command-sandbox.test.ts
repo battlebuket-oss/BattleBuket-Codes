@@ -28,7 +28,7 @@ test("OS command sandbox allows workspace writes but blocks host-home writes and
       "const fs = require('node:fs');",
       "const net = require('node:net');",
       "const [outside, resultPath, portText] = process.argv.slice(1);",
-      "fs.writeFileSync('/tmp/battlebuket-sandbox/workspace/write-proof.txt', 'workspace-write-allowed');",
+      "fs.writeFileSync('write-proof.txt', 'workspace-write-allowed');",
       "let outsideWriteBlocked = false;",
       "try { fs.writeFileSync(outside, 'host-write-forbidden'); } catch { outsideWriteBlocked = true; }",
       "const finish = networkBlocked => {",
@@ -44,7 +44,7 @@ test("OS command sandbox allows workspace writes but blocks host-home writes and
     const command = await prepareSandboxedCommand(
       workspace,
       process.execPath,
-      ["-e", script, outside, "/tmp/battlebuket-sandbox/workspace/sandbox-result.json", String(address.port)],
+      ["-e", script, outside, "sandbox-result.json", String(address.port)],
       { PATH: process.env.PATH, CI: "1" }
     );
     try {
