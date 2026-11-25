@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
 *{box-sizing:border-box}
 body{margin:0;background:#080b10;color:#e8edf7;font-family:Inter,ui-sans-serif,system-ui,sans-serif;min-width:1100px}
 button,select,textarea{font:inherit}
@@ -10,7 +9,7 @@ button:disabled,select:disabled,textarea:disabled{opacity:.5;cursor:not-allowed}
 .brand b{color:#9b8aff}
 .brand small{font:9px 'DM Mono';color:#65718a;margin-left:8px}
 .mark{background:#211b3b;color:#ad9fff;border:1px solid #6252b9;border-radius:6px;padding:4px;display:flex}
-.workspace-name{display:flex;gap:8px;align-items:center;color:#8591a7;max-width:40%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.workspace-name{display:flex;gap:8px;align-items:center;color:#8591a7;max-width:40%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;border:0;background:transparent;padding:6px 10px;border-radius:5px}.workspace-name:hover{background:#151d2c;color:#c7d2e6}
 .workspace-name i{width:7px;height:7px;background:#9988ff;border-radius:50%;box-shadow:0 0 9px #9988ff;flex:none}
 .top-right{display:flex;gap:15px;color:#78849a}
 .layout{display:flex;height:calc(100% - 48px)}
@@ -25,10 +24,18 @@ button:disabled,select:disabled,textarea:disabled{opacity:.5;cursor:not-allowed}
 .empty b{display:block;font-size:11px}
 .empty p{font-size:10px;line-height:1.7;color:#78869d}
 .empty .open{margin:12px auto;background:#191f30;border:1px solid #3c4962;color:#cbd4e4;padding:8px 11px;border-radius:5px;display:flex;align-items:center;gap:6px;font-size:10px}
+.recent-projects{margin:12px 4px 18px;display:flex;flex-direction:column;gap:4px;max-height:220px;overflow:auto}
+.recent-projects>label{margin:0 4px 5px;color:#77859b;font:8px 'DM Mono';letter-spacing:1.2px}
+.recent-projects>button{min-height:32px;display:flex;align-items:center;gap:7px;padding:6px 8px;border:1px solid transparent;border-radius:4px;background:transparent;color:#b2bfd3;text-align:left;font:9px 'DM Mono';cursor:pointer}
+.recent-projects>button:hover{background:#151e2e;border-color:#29364a;color:#eef2fa}
+.recent-projects>button svg{flex:none;color:#9588df}
+.recent-projects>button span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recent-projects>button small{flex:none;color:#6f7d94;font:8px 'DM Mono'}
+
 .projects footer{border-top:1px solid #202a3a;padding-top:13px;color:#9aa7bb;font:9px 'DM Mono'}
-.center{flex:1;min-width:0;position:relative;overflow:auto}
-.tab{height:39px;position:sticky;top:0;z-index:3;border-bottom:1px solid #202a3a;background:#0c111a;padding:0 15px;display:flex;align-items:center;gap:8px;color:#c3cce0;font-size:10px;border-top:1px solid #9b8aff}
-article{width:min(820px,94%);margin:0 auto;padding:48px 15px 60px}
+.center{flex:1;min-width:0;min-height:0;position:relative;display:flex;flex-direction:column;overflow:hidden}
+.tab{height:39px;min-height:39px;flex:none;position:relative;top:0;z-index:3;border-bottom:1px solid #202a3a;background:#0c111a;padding:0 15px;display:flex;align-items:center;gap:8px;color:#c3cce0;font-size:10px;border-top:1px solid #9b8aff}
+article{width:min(820px,94%);min-height:0;flex:1;overflow:auto;margin:0 auto;padding:48px 15px 60px}
 .eyebrow{font:10px 'DM Mono';letter-spacing:1.8px;color:#9b8aff}
 .eyebrow:before{content:'';display:inline-block;width:22px;height:1px;background:#9b8aff;vertical-align:middle;margin-right:10px}
 h1{font-size:46px;line-height:1.12;letter-spacing:-2.2px;margin:18px 0 10px}
@@ -69,7 +76,7 @@ h1 em{color:#9b8aff;font-style:normal}
 .verification span{font-size:9px;color:#c6d0e0}
 .verification small{font-size:8px;color:#8492a8;line-height:1.5}
 .prototype-note{margin-top:18px;color:#78869c;font-size:9px;line-height:1.7}
-.status{position:sticky;bottom:0;height:25px;border-top:1px solid #253044;background:#111a27;width:100%;display:flex;align-items:center;gap:18px;padding:0 12px;font:9px 'DM Mono';color:#9ba9bf}
+.status{position:relative;bottom:auto;height:25px;min-height:25px;flex:none;border-top:1px solid #253044;background:#111a27;width:100%;display:flex;align-items:center;gap:18px;padding:0 12px;font:9px 'DM Mono';color:#9ba9bf}
 .status span:last-child{margin-left:auto}
 .director{width:280px;flex:none;border-left:1px solid #202a3a;background:#0c121c;padding:19px 15px;overflow:auto}
 .director>label{color:#9b8aff}
@@ -84,6 +91,7 @@ h1 em{color:#9b8aff;font-style:normal}
 .gate{font-size:9px;color:#aab5c8;border-bottom:1px solid #202a3a;padding:10px 0}
 .gate b{float:right;font:8px 'DM Mono';color:#69d5a5}
 .gate b.pending{color:#d6ad6e}
+.gate b.failed{color:#ff9b9b}
 .note{margin-top:28px;padding:12px;background:#17182b;border:1px solid #30314c;border-radius:6px;color:#a89aff;font-size:9px;line-height:1.7}
 .file-list{margin-top:16px;overflow:auto;flex:1;min-height:0}
 .file-heading{display:flex;align-items:center;gap:7px;color:#aab6ca;font:10px 'DM Mono';padding:7px 5px;border-bottom:1px solid #202a3a;cursor:pointer}
@@ -94,12 +102,23 @@ h1 em{color:#9b8aff;font-style:normal}
 .file-entry span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .file-list>small{display:block;color:#8290a7;font-size:9px;padding:10px 5px}
 .workspace-error{font-size:9px;color:#ff9b9b;line-height:1.5;overflow-wrap:anywhere}
-.editor-preview{height:calc(100% - 64px);overflow:auto;background:#0b1018}
-.editor-toolbar{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#101722;border-bottom:1px solid #253044;color:#bdc8da;font:10px 'DM Mono'}
-.editor-toolbar span{color:#d6ad6e;margin-left:auto}
-.editor-toolbar button{margin-left:12px;background:#30285a;border:1px solid #6252a0;color:#f0edff;border-radius:4px;padding:5px 12px;font:10px 'DM Mono';cursor:pointer}
+.editor-tabs{height:32px;min-height:32px;flex:none;display:flex;align-items:stretch;overflow-x:auto;overflow-y:hidden;background:#0c111a;border-bottom:1px solid #202a3a}
+.editor-tab{display:flex;align-items:center;gap:0;max-width:240px;min-width:120px;border-right:1px solid #202a3a;background:#0e1420}
+.editor-tab.active{background:#141d2c;border-top:2px solid #9b8aff}
+.editor-tab-name{display:flex;align-items:center;gap:7px;flex:1;min-width:0;height:100%;padding:0 9px;border:0;background:transparent;color:#98a5bb;text-align:left;font:9px 'DM Mono';cursor:pointer}
+.editor-tab.active .editor-tab-name{color:#e1e8f5}
+.editor-tab-name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.editor-tab-name i{width:6px;height:6px;flex:none;border-radius:50%;background:#d6ad6e}
+.editor-tab-close{width:25px;height:24px;flex:none;border:0;border-radius:3px;background:transparent;color:#74829a;font:16px/1 'DM Mono';cursor:pointer}
+.editor-tab-close:hover{background:#273149;color:#f0edff}
+.editor-preview{height:auto;min-height:0;flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0b1018}
+.editor-toolbar{height:38px;min-height:38px;display:flex;align-items:center;gap:12px;padding:0 14px;background:#101722;border-bottom:1px solid #253044;color:#bdc8da;font:10px 'DM Mono'}
+.editor-toolbar .editor-file-path{min-width:0;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#bdc8da;margin-right:auto}
+.editor-toolbar span:not(.editor-file-path){color:#d6ad6e;white-space:nowrap}
+.editor-toolbar button{background:#30285a;border:1px solid #6252a0;color:#f0edff;border-radius:4px;padding:5px 12px;font:10px 'DM Mono';cursor:pointer}
 .editor-toolbar button:disabled{opacity:.45;cursor:not-allowed}
-.code-editor{display:block;width:100%;height:calc(100% - 38px);resize:none;border:0;outline:0;background:#0b1018;color:#c8d3e5;padding:20px;font:12px/1.7 'DM Mono',monospace;tab-size:2;white-space:pre;overflow:auto}
+.monaco-editor-host{flex:1;min-height:0;overflow:hidden;background:#1e1e1e}
+.monaco-editor-host .monaco-editor{outline:none}
 @media(max-height:780px){article{padding-top:28px}h1{font-size:38px}.cards{margin-top:16px}.director h4{padding-top:15px}.note{margin-top:16px}}
 
 .history-list{display:flex;flex-direction:column;gap:7px}
@@ -119,14 +138,63 @@ h1 em{color:#9b8aff;font-style:normal}
 
 
 .terminal-toggle{margin-left:auto;background:#171d2b;border:1px solid #35415a;color:#bfcbe0;border-radius:4px;padding:5px 10px;font:9px 'DM Mono';cursor:pointer}
-.terminal-panel{height:245px;display:flex;flex-direction:column;border-top:1px solid #343052;background:#080b10}
+.terminal-panel{height:310px;min-height:180px;max-height:45%;flex:none;display:flex;flex-direction:column;border-top:1px solid #343052;background:#080b10}
 .terminal-title{height:31px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #202a3a;color:#8996ad;font:8px 'DM Mono';letter-spacing:1px}
+.terminal-title>div{display:flex;align-items:center;gap:10px}
 .terminal-title button{background:transparent;border:0;color:#9b8aff;font:9px 'DM Mono';cursor:pointer}
-.terminal-output{flex:1;min-height:0;overflow:auto;padding:8px 12px;color:#c3cde0;font:10px/1.6 'DM Mono',monospace}
-.terminal-output pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 8px;color:#c3cde0}
-.terminal-output p{color:#718099}
-.terminal-input{height:38px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;border-top:1px solid #202a3a}
-.terminal-input span{color:#9b8aff;font:11px 'DM Mono'}
-.terminal-input input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#e8edf7;font:10px 'DM Mono'}
-.terminal-input button{background:#30285a;border:1px solid #6252a0;color:#f0edff;border-radius:4px;padding:5px 12px;font:9px 'DM Mono'}
-.terminal-input button:disabled{opacity:.45;cursor:not-allowed}
+.terminal-canvas{flex:1;min-height:0;overflow:hidden;padding:7px 10px}
+.terminal-canvas .xterm{height:100%}
+.terminal-canvas .xterm-viewport{overscroll-behavior:contain}
+.terminal-footnote{height:22px;flex:none;padding:4px 12px;border-top:1px solid #202a3a;color:#73819a;font:8px 'DM Mono';letter-spacing:.3px}
+
+
+.terminal-panel-hidden{display:none}
+
+
+.rail-action{display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:6px;background:transparent;color:#78869d;cursor:pointer}
+.rail-action:hover{background:#1a2232;color:#c7d2e6}
+.palette-overlay{position:fixed;inset:0;z-index:80;display:flex;justify-content:center;align-items:flex-start;padding:12vh 18px 24px;background:#02050bcf;backdrop-filter:blur(5px)}
+.palette-dialog{width:min(680px,100%);overflow:hidden;border:1px solid #414d66;border-radius:10px;background:#0e1420;box-shadow:0 22px 90px #000b;color:#dce5f5}
+.palette-input-row{height:54px;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid #293449;color:#a99aff}
+.palette-input-row input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#eff3fb;font:13px 'DM Mono',monospace}
+.palette-input-row input::placeholder{color:#66738a}
+.palette-input-row kbd{padding:3px 6px;border:1px solid #344056;border-radius:4px;color:#8e9bb2;font:9px 'DM Mono'}
+.palette-caption{padding:10px 14px 6px;color:#75839c;font:8px 'DM Mono';letter-spacing:1.2px}
+.palette-results{max-height:48vh;min-height:80px;overflow:auto;padding:3px 7px 8px}
+.palette-results button{width:100%;min-height:38px;display:flex;align-items:center;gap:10px;padding:7px 9px;border:0;border-radius:5px;background:transparent;color:#bfcbe0;text-align:left;font:10px 'DM Mono';cursor:pointer}
+.palette-results button.selected,.palette-results button:hover{background:#252d45;color:#f1f4fb}
+.palette-results button svg{flex:none;color:#9b8aff}
+.palette-results button span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette-results button small{max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#76849c;font:8px 'DM Mono'}
+.palette-results p{margin:0;padding:24px 12px;text-align:center;color:#7c8aa2;font:10px 'DM Mono'}
+.palette-footer{height:29px;display:flex;align-items:center;padding:0 14px;border-top:1px solid #293449;color:#77849a;font:8px 'DM Mono';letter-spacing:.3px}
+
+
+.problems-panel{height:132px;min-height:92px;flex:none;display:flex;flex-direction:column;border-top:1px solid #293449;background:#0b1018;overflow:hidden}
+.problems-heading{height:27px;min-height:27px;display:flex;align-items:center;gap:10px;padding:0 13px;border-bottom:1px solid #202a3a;color:#aebbd0;font:8px 'DM Mono';letter-spacing:1px}
+.problems-heading small{color:#78869e;font:8px 'DM Mono';letter-spacing:0}
+.problems-empty{margin:0;padding:14px;color:#718099;font:9px 'DM Mono'}
+.problems-list{flex:1;min-height:0;overflow:auto;padding:3px 7px}
+.problem-item{width:100%;min-height:25px;display:flex;align-items:center;gap:9px;padding:4px 7px;border:0;border-radius:3px;background:transparent;color:#b9c5d8;text-align:left;font:9px 'DM Mono';cursor:pointer}
+.problem-item:hover{background:#161f30}
+.problem-item>span:first-child{width:52px;flex:none;font-size:7px;letter-spacing:.7px}
+.problem-error{color:#ff9b9b}
+.problem-warning{color:#d6ad6e}
+.problem-info{color:#8eb8d8}
+.problem-message{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.problem-item small{flex:none;color:#73819a;font:8px 'DM Mono'}
+
+.rail-hidden,.projects-hidden{display:none!important}
+.vscode-workbench-shell{position:relative;display:flex;flex:1;min-width:0;min-height:0;width:100%;height:100%;overflow:hidden;background:#0b1018}
+.vscode-workbench-root{flex:1;min-width:0;min-height:0;width:100%;height:100%;overflow:hidden}
+.vscode-workbench-status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0b1018;color:#9aa8be;font:12px "DM Mono",monospace;z-index:10;pointer-events:none}
+.director-task-composer{display:flex;flex-direction:column;gap:8px;margin:0 0 14px;padding:11px;border:1px solid #343052;border-radius:7px;background:#121828}
+.director-task-composer>label:not(.director-consent){font:8px "DM Mono";letter-spacing:1px;color:#8895ad;margin:4px 0 0}
+.director-task-composer textarea{min-height:90px;resize:vertical;padding:9px;border:1px solid #303d53;border-radius:5px;background:#090f19;color:#e8edf7;font:10px "DM Mono";outline:none}
+.director-task-composer select{width:100%;padding:7px;border:1px solid #303d53;border-radius:5px;background:#0d1420;color:#cbd5e6;font-size:10px}
+.director-consent{display:flex;align-items:flex-start;gap:6px;color:#96a4b9;font-size:8px;line-height:1.45}
+.director-consent input{margin:1px 0 0;flex:none}
+.director-task-composer .run-button{width:100%;justify-content:center;padding:8px;font-size:10px}
+.director-task-result{padding:8px;border-top:1px solid #303d53;color:#d2dbeb;font-size:9px;overflow-wrap:anywhere}
+.director-task-result p{color:#9eacc1;line-height:1.45}
+.director-task-result small{color:#8c9ab0;font:8px "DM Mono"}

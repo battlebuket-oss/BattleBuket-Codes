@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 
-type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number };
+type WorkspaceEntry = { name: string; path: string; kind: "directory" | "file"; size: number; mtimeMs: number };
+type WorkspaceContentMatch = { path: string; lineNumber: number; preview: string };
+type RecentWorkspace = { path: string; lastOpenedAt: string };
 type AgentProvider = "codex" | "claude";
 type TaskRisk = "low" | "medium" | "high";
 type AgentEvent = {
@@ -13,10 +15,9 @@ type AgentEvent = {
 type TerminalSessionEvent = {
   sessionId: string;
   type: "output" | "error" | "exit";
-  stream?: "stdout" | "stderr";
   text?: string;
   exitCode?: number | null;
-  signal?: NodeJS.Signals | null;
+  signal?: number;
 };
 
 type TaskHistoryItem = {
@@ -39,15 +40,32 @@ type AgentResult = {
 
 contextBridge.exposeInMainWorld("battleBuket", {
   getVersion: (): Promise<string> => ipcRenderer.invoke("platform:version"),
+  isSmokeTest: (): Promise<boolean> => ipcRenderer.invoke("platform:is-smoke-test"),
+  getActiveWorkspace: (): Promise<string | null> => ipcRenderer.invoke("workspace:active"),
   selectWorkspace: (): Promise<string | null> => ipcRenderer.invoke("workspace:select"),
+  getRecentWorkspaces: (): Promise<RecentWorkspace[]> => ipcRenderer.invoke("workspace:recent"),
+  openRecentWorkspace: (path: string): Promise<string> => ipcRenderer.invoke("workspace:open-recent", { path }),
   listWorkspace: (path = ""): Promise<WorkspaceEntry[]> => ipcRenderer.invoke("workspace:list", path),
+  searchWorkspaceFiles: (query: string): Promise<WorkspaceEntry[]> => ipcRenderer.invoke("workspace:search", query),
+  searchWorkspaceContent: (query: string): Promise<WorkspaceContentMatch[]> => ipcRenderer.invoke("workspace:search-content", query),
   readWorkspaceFile: (path: string): Promise<{ path: string; content: string; mtimeMs: number }> => ipcRenderer.invoke("workspace:read", path),
   saveWorkspaceFile: (payload: { path: string; content: string; expectedMtimeMs: number }): Promise<{ path: string; mtimeMs: number }> => ipcRenderer.invoke("workspace:write", payload),
+  readWorkspaceFileSystemFile: (path: string): Promise<{ path: string; content: Uint8Array; mtimeMs: number; size: number }> => ipcRenderer.invoke("workspace:read-file", path),
+  writeWorkspaceFileSystemFile: (payload: { path: string; content: Uint8Array; create: boolean; overwrite: boolean }): Promise<{ path: string; mtimeMs: number }> => ipcRenderer.invoke("workspace:write-file", payload),
+  createWorkspaceDirectory: (path: string): Promise<boolean> => ipcRenderer.invoke("workspace:mkdir", { path }),
+  deleteWorkspacePath: (path: string, recursive: boolean): Promise<boolean> => ipcRenderer.invoke("workspace:delete", { path, recursive }),
+  renameWorkspacePath: (oldPath: string, newPath: string, overwrite: boolean): Promise<boolean> => ipcRenderer.invoke("workspace:rename", { oldPath, newPath, overwrite }),
   getAgentAvailability: (): Promise<Record<AgentProvider, boolean>> => ipcRenderer.invoke("agents:availability"),
   getTaskHistory: (): Promise<TaskHistoryItem[]> => ipcRenderer.invoke("tasks:history"),
   startTerminal: (): Promise<string> => ipcRenderer.invoke("terminal:start"),
   writeTerminal: (sessionId: string, input: string): Promise<boolean> => ipcRenderer.invoke("terminal:write", { sessionId, input }),
   closeTerminal: (sessionId: string): Promise<boolean> => ipcRenderer.invoke("terminal:close", { sessionId }),
+  resizeTerminal: (sessionId: string, columns: number, rows: number): Promise<boolean> => ipcRenderer.invoke("terminal:resize", { sessionId, columns, rows }),
+  onWorkspaceFileSystemChange: (listener: (event: { path: string; eventType: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { path: string; eventType: string }) => listener(payload);
+    ipcRenderer.on("workspace:fs-event", handler);
+    return () => ipcRenderer.removeListener("workspace:fs-event", handler);
+  },
   onTerminalEvent: (listener: (event: TerminalSessionEvent) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: TerminalSessionEvent) => listener(payload);
     ipcRenderer.on("terminal:event", handler);

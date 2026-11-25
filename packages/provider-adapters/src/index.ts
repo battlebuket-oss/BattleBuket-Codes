@@ -7,6 +7,14 @@ const active = new Map<string, ActiveRun>();
 const now = () => new Date().toISOString();
 const MAX_AGENT_RUNTIME_MS = 45 * 60 * 1000;
 
+export function linkAbortSignal(parent: AbortSignal | undefined, child: AbortController): () => void {
+  if (!parent) return () => {};
+  const abortChild = () => child.abort(parent.reason);
+  if (parent.aborted) abortChild();
+  else parent.addEventListener("abort", abortChild, { once: true });
+  return () => parent.removeEventListener("abort", abortChild);
+}
+
 function emit(request: AgentRunRequest, send: (event: AgentEvent) => void, type: AgentEvent["type"], message: string, data?: Record<string, unknown>) {
   send({ taskId: request.task.id, timestamp: now(), type, message, ...(data ? { data } : {}) });
 }
@@ -18,7 +26,7 @@ export function claudeAllowedTools(mode: AgentRunRequest["approvalMode"]): strin
     : ["Read", "Edit", "Write", "Glob", "Grep"];
 }
 
-async function changedFiles(cwd: string): Promise<string[]> {
+export async function changedFiles(cwd: string): Promise<string[]> {
   const result = await execa("git", ["status", "--porcelain", "--untracked-files=all"], {
     cwd, reject: false, maxBuffer: 2 * 1024 * 1024, timeout: 15_000
   });
@@ -62,7 +70,9 @@ export class CodexCliAdapter implements AgentAdapter {
   }
   async run(request: AgentRunRequest, send: (event: AgentEvent) => void): Promise<AgentResult> {
     if (active.has(request.task.id)) throw new Error("Task is already running");
+    if (request.abortSignal?.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled before startup", changedFiles: [], verification: [] };
     const controller = new AbortController();
+    const unlinkAbort = linkAbortSignal(request.abortSignal, controller);
     const run: ActiveRun = { abort: controller };
     active.set(request.task.id, run);
     emit(request, send, "progress", "Starting Codex CLI in the selected workspace");
@@ -127,17 +137,18 @@ export class CodexCliAdapter implements AgentAdapter {
       if (pendingLine.trim()) processLine(pendingLine);
 
       if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Codex task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
-      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled", changedFiles: [], verification: [] };
+      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled; partial workspace changes are included for review", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       if (result.exitCode !== 0) return { taskId: request.task.id, status: "failed", summary: (stderrTail || "Codex exited with code " + result.exitCode).slice(-4000), changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       const files = await changedFiles(request.workingDirectory);
       emit(request, send, "completed", "Codex finished; review the resulting workspace diff");
       return { taskId: request.task.id, status: "succeeded", summary: (assistantSummary || "Codex completed successfully").slice(-4000), changedFiles: files, verification: [] };
     } catch (error) {
       if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Codex task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
-      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled", changedFiles: [], verification: [] };
+      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled; partial workspace changes are included for review", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       throw error;
     } finally {
       clearTimeout(timeoutHandle);
+      unlinkAbort();
       active.delete(request.task.id);
     }
   }
@@ -166,7 +177,9 @@ export class ClaudeAgentSdkAdapter implements AgentAdapter {
   async run(request: AgentRunRequest, send: (event: AgentEvent) => void): Promise<AgentResult> {
     if (active.has(request.task.id)) throw new Error("Task is already running");
     if (request.approvalMode === "full-access") throw new Error("Full-access agent execution is disabled");
+    if (request.abortSignal?.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled before startup", changedFiles: [], verification: [] };
     const controller = new AbortController();
+    const unlinkAbort = linkAbortSignal(request.abortSignal, controller);
     active.set(request.task.id, { abort: controller });
     emit(request, send, "progress", "Starting Claude Agent SDK in the selected workspace");
     let summary = "";
@@ -211,16 +224,17 @@ export class ClaudeAgentSdkAdapter implements AgentAdapter {
         }
       }
       if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Claude task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
-      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled", changedFiles: [], verification: [] };
+      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled; partial workspace changes are included for review", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       const files = await changedFiles(request.workingDirectory);
       emit(request, send, "completed", "Claude finished; review the resulting workspace diff");
       return { taskId: request.task.id, status: "succeeded", summary: summary || "Claude completed successfully", changedFiles: files, verification: [] };
     } catch (error) {
       if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Claude task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
-      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled", changedFiles: [], verification: [] };
+      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled; partial workspace changes are included for review", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       throw error;
     } finally {
       clearTimeout(timeoutHandle);
+      unlinkAbort();
       active.delete(request.task.id);
     }
   }

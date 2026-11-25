@@ -1,48 +1,106 @@
 import test from "node:test";
+import { accessSync, constants as fsConstants } from "node:fs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { validateTerminalInput, WorkspaceTerminalSessions } from "../src/main/terminal-sessions";
+import { resolvePosixShell, validateTerminalInput, validateTerminalSize, WorkspaceTerminalSessions } from "../src/main/terminal-sessions";
 
-test("validates terminal input length and rejects NUL characters", () => {
-  assert.throws(() => validateTerminalInput(""), /Terminal input/);
-  assert.throws(() => validateTerminalInput("bad\0input"), /Terminal input/);
-  assert.doesNotThrow(() => validateTerminalInput("echo hello\n"));
+test("resolves a verified executable POSIX shell", { skip: process.platform === "win32" }, async () => {
+  const shell = await resolvePosixShell();
+  assert.equal(shell.startsWith("/"), true);
+  assert.doesNotThrow(() => accessSync(shell, fsConstants.X_OK));
 });
 
-test("maintains one shell session across multiple commands and closes it", async () => {
-  const root = await mkdtemp(join(tmpdir(), "bb-terminal-session-"));
+test("validates PTY input and resize bounds", () => {
+  assert.throws(() => validateTerminalInput(""), /Terminal input/);
+  assert.throws(() => validateTerminalInput("x".repeat(64 * 1024 + 1)), /Terminal input/);
+  assert.doesNotThrow(() => validateTerminalInput("\u0003"));
+  assert.throws(() => validateTerminalSize(10, 28), /Terminal size/);
+  assert.throws(() => validateTerminalSize(100, 500), /Terminal size/);
+  assert.doesNotThrow(() => validateTerminalSize(100, 28));
+});
+
+test("PTY session preserves shell state, streams output, resizes and exits", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-pty-session-"));
   const sessions = new WorkspaceTerminalSessions();
   const sessionId = randomUUID();
   const seen = new Set<string>();
+  let exitSeen = false;
   const waitFor = async (marker: string) => {
-    const deadline = Date.now() + 8000;
+    const deadline = Date.now() + 10000;
     while (!seen.has(marker) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 25));
-    assert.ok(seen.has(marker), "terminal output did not contain " + marker);
+    assert.ok(seen.has(marker), "PTY output did not contain " + marker);
   };
   try {
     await sessions.start(sessionId, root, event => {
       if (event.type === "output" && event.text) {
-        if (event.text.includes("BB_SESSION_FIRST")) seen.add("first");
-        if (event.text.includes("SESSION_STATE_OK")) seen.add("state");
-        if (event.text.includes("BB_SESSION_SECOND")) seen.add("second");
+        if (event.text.includes("BB_PTY_FIRST")) seen.add("first");
+        if (event.text.includes("BB_PTY_STATE_OK")) seen.add("state");
+        if (event.text.includes("BB_PTY_SECOND")) seen.add("second");
       }
+      if (event.type === "exit") exitSeen = true;
     });
+    sessions.resize(sessionId, 120, 32);
     const first = process.platform === "win32"
-      ? "set BB_SESSION_MARKER=SESSION_STATE_OK\r\necho BB_SESSION_FIRST\r\n"
-      : "export BB_SESSION_MARKER=SESSION_STATE_OK; printf 'BB_SESSION_FIRST\\n'\n";
+      ? "set BB_PTY_MARKER=BB_PTY_\r\necho BB_PTY_FIRST\r"
+      : "export BB_PTY_MARKER=BB_PTY_; printf 'BB_PTY_FIRST\\n'\r";
     const second = process.platform === "win32"
-      ? "echo %BB_SESSION_MARKER% & echo BB_SESSION_SECOND\r\n"
-      : "printf '%s\\n' \"$BB_SESSION_MARKER\"; printf 'BB_SESSION_SECOND\\n'\n";
+      ? "set BB_PTY_MARKER=%BB_PTY_MARKER%STATE_OK\r\necho %BB_PTY_MARKER% & echo BB_PTY_SECOND\r"
+      : "printf '%s\\n' \"\${BB_PTY_MARKER}STATE_OK\"; printf 'BB_PTY_SECOND\\n'\r";
     sessions.write(sessionId, first);
     await waitFor("first");
     sessions.write(sessionId, second);
     await waitFor("state");
     await waitFor("second");
-    assert.equal(await sessions.close(sessionId), true);
+    const firstClose = sessions.close(sessionId);
+    assert.equal(sessions.hasActiveSession(), true, "a terminating PTY remains active until its exit is confirmed");
+    const concurrentClose = sessions.close(sessionId);
+    assert.equal(await firstClose, true);
+    assert.equal(await concurrentClose, true);
+    await sessions.closeAll();
+    assert.equal(exitSeen, true);
     assert.equal(sessions.hasActiveSession(), false);
+  } finally {
+    await sessions.closeAll();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reserves the single terminal slot across concurrent asynchronous starts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-pty-concurrent-start-"));
+  const sessions = new WorkspaceTerminalSessions();
+  try {
+    const results = await Promise.allSettled([
+      sessions.start(randomUUID(), root, () => {}),
+      sessions.start(randomUUID(), root, () => {})
+    ]);
+    assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
+    assert.equal(results.filter(result => result.status === "rejected").length, 1);
+    assert.equal(sessions.hasActiveSession(), true);
+    await sessions.closeAll();
+    assert.equal(sessions.hasActiveSession(), false);
+  } finally {
+    await sessions.closeAll();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("closeAll waits for an in-flight PTY start and prevents new sessions during shutdown", async () => {
+  const root = await mkdtemp(join(tmpdir(), "bb-pty-shutdown-race-"));
+  const sessions = new WorkspaceTerminalSessions();
+  const sessionId = randomUUID();
+  try {
+    const starting = sessions.start(sessionId, root, () => {});
+    const closing = sessions.closeAll();
+    await assert.rejects(
+      () => sessions.start(randomUUID(), root, () => {}),
+      /shutting down/
+    );
+    await Promise.all([starting, closing]);
+    assert.equal(sessions.hasActiveSession(), false);
+    assert.equal(await sessions.close(sessionId), true);
   } finally {
     await sessions.closeAll();
     await rm(root, { recursive: true, force: true });

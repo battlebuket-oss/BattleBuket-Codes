@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -16,6 +19,8 @@ jobs:
           node-version: 22
       - run: corepack enable
       - run: corepack prepare pnpm@10.0.0 --activate
+      - name: Install bubblewrap for OS-isolated command tests
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level high
       - run: pnpm lint

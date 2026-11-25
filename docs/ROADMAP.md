@@ -15,9 +15,12 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add native project-folder selection and workspace-bounded directory browsing.
 - [x] Add bounded text-file preview, atomic saves, stale-write detection, and path/symlink safety tests.
 - [x] Add the task composer, provider selection, risk/permission selection, streamed task status, and cancellation controls.
-- [ ] Embed a tested Code - OSS workbench and complete the full editor experience: tabs, diagnostics, command palette, project search, and recent projects. The current editor remains a lightweight textarea preview.
-- [x] Add a persistent pipe-based workspace shell session with session lifecycle, streamed output, bounds, and explicit OS-permission disclosure.
-- [ ] Replace the pipe-based shell with a native PTY, xterm terminal UI, interactive TTY support, resize handling, and a permission broker.
+- [x] Add Monaco Editor with bundled offline runtime and language workers, syntax-aware languages, minimap, per-file models, multi-file tabs, unsaved-draft preservation and Ctrl/Cmd+S.
+- [x] Add bounded Quick Open filename/path search, project-wide bounded text search (Ctrl/Cmd+Shift+F), Monaco language diagnostics in a Problems panel, and a keyboard command palette for BattleBuket desktop actions (Ctrl/Cmd+Shift+P); add Ctrl/Cmd+S active-file save and Ctrl/Cmd+J terminal toggle. This is not the VS Code command registry or symbol/reference search.
+- [x] Add a persistent recent-project list with canonical-path validation, missing-project cleanup, bounded retention and serialized writes; users can switch projects from the sidebar.
+- [x] Embed the VS Code workbench service through the MIT-licensed Monaco VS Code API packages with file-system, explorer, quick-access, search, marker, language extension and native terminal bridges. The integration does not vendor the full Code - OSS desktop source or Marketplace catalog.
+- [x] Add packaged-app smoke coverage for workbench startup, built-in TypeScript extension activation, workspace filesystem lifecycle and integrated terminal/PTY input/output/exit. Linux packaged-app smoke passed on a prior feature-head run; the macOS smoke step also passed on an earlier run that was later cancelled. Windows packaged-app smoke has not yet completed, and the latest feature-head matrix is pending. Do not treat this as complete three-OS release acceptance.
+- [x] Add the native `node-pty` / xterm.js terminal implementation in draft PR #11. The Linux, macOS and Windows jobs passed the Node ABI tests, Electron native-dependency rebuild and direct Electron PTY smoke on the earlier run. Packaged workbench/PTY smoke passed on Linux and the macOS smoke step passed before that run was cancelled; Windows packaged-app smoke and a complete three-OS matrix on the latest head remain outstanding.
 - [x] Add a tag-triggered signed installer build and draft-release workflow with required Windows/macOS signing secrets.
 - [ ] Configure real signing secrets and verify signed installers on Windows, macOS, and Linux; no production release has been published.
 
@@ -32,6 +35,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Accept one task, select a provider explicitly, enforce risk-based permissions, stream events, and support cancellation.
 - [x] Gate a successful result on the current Git whitespace check.
 - [ ] Implement prompt enhancement, acceptance-criteria generation, planning, dependency graphs, delegation, and scheduling.
+- [x] Add an independent read-only review through the alternate authenticated provider when available; reviewer rejection prevents task completion. Write-capable tasks fail closed when the alternate provider is unavailable; low-risk runs record that review was not performed.
 - [ ] Implement real specialist-agent delegation rather than role descriptions or simulated teams.
 - [ ] Implement observation, review loops, replanning, retries, timeouts, checkpoints, and resumable tasks.
 - [ ] Add multi-task isolation, worktree ownership, merge/conflict resolution, and human review of final diffs.
@@ -44,19 +48,21 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [ ] Verify exact CLI/SDK versions, account authentication, supported models, license terms, platform packaging, and failure behavior.
 - [ ] Add a credential setup/status flow; never log or persist provider secrets.
 - [ ] Add quota/cost visibility, capability benchmarks, model selection, and deterministic integration tests on each supported OS.
-- [ ] Add a proper permission broker for terminal, network, dependency installation, deletion, and other sensitive operations.
+- [ ] Implement and adversarially verify the Windows AppContainer broker. Linux project commands already run in Bubblewrap namespaces and macOS project commands in Seatbelt; both disable network and confine writes. Windows project commands currently fail closed. The interactive terminal remains an explicit, user-controlled shell outside the project-verification sandbox.
 
 ## Phase 5 — Quality and safety
 - [x] Add workspace path/symlink, stale-save, binary-file, size-limit, and provider-permission tests.
 - [x] Add a basic Git diff whitespace gate for Git workspaces.
 - [x] Add CI dependency vulnerability auditing for high-severity findings.
 - [x] Add CodeQL static analysis and full-history secret scanning.
-- [x] Add consent-gated project test/lint/typecheck/build and supported dependency-audit runners with bounded timeouts/output. These commands still run with the user account permissions and are not a sandbox.
-- [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
+- [x] Add consent-gated, fail-closed project quality runners for Node.js, Go, Rust, Python and .NET, including npm, pnpm, Yarn Classic/Berry and Bun audits alongside Go, Rust, Python and .NET security checks, bounded timeouts/output and approval of the exact commands. These commands still run with the user account permissions and are not a sandbox.
+- [x] Generate a pinned Syft SPDX SBOM and package/license inventory artifact with explicit missing-license review reporting.
+- [ ] Complete human review of all direct/transitive license obligations, provenance, SAST, adversarial prompt-injection tests, and independent diff review.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
-- [x] Add opt-in live provider conformance tests and a manual self-hosted runner workflow. The live provider tests have not yet been executed on authenticated runners.
-- [x] Add packaged-app smoke mode and release workflow steps for clean install, launch and uninstall on all three OS targets. These steps have not run yet.
-- [ ] Execute authenticated provider and signed-installer workflows; add upgrade/rollback, crash-recovery and broader UI end-to-end tests.
+- [x] Add opt-in live Codex/Claude read-only and single-file workspace-write boundary smoke tests, including an outside-workspace sentinel check, plus a manual self-hosted runner workflow. The tests require real sign-in and have not yet been executed on authenticated runners.
+- [x] Add packaged-app smoke mode with expected-version and bundled-worker checks, VS Code workbench startup, workspace filesystem lifecycle and integrated-terminal PTY input/output/exit. Linux smoke passed; the macOS smoke step passed on an earlier run, but Windows packaged-app smoke has not yet completed and the latest feature-head matrix is pending. Signed-installer install/uninstall and two-release upgrade/rollback remain separate release gates.
+- [x] Add manual cross-platform installer upgrade/rollback tests that verify a user-data marker survives baseline → candidate → rollback. The workflow requires two existing signed releases and has not yet run.
+- [ ] Execute authenticated provider and signed-installer workflows; add permission-escalation and longer-session tests, run the two-release upgrade/rollback workflow, and add crash-recovery and broader UI end-to-end tests.
 
 ## Phase 6 — Production release operations
 - [ ] Add telemetry with opt-in/privacy controls, crash reporting, diagnostics export, and support logs.

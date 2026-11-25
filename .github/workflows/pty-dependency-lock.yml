@@ -1,0 +1,149 @@
+name: Native PTY dependency and platform verification
+
+on:
+  push:
+    branches:
+      - feature/pty-terminal
+    paths-ignore:
+      - pnpm-lock.yaml
+  workflow_dispatch:
+
+concurrency:
+  group: pty-terminal
+  cancel-in-progress: true
+permissions:
+  contents: read
+
+jobs:
+  resolve-lockfile:
+    name: Resolve and commit native dependency lockfile
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pty-terminal
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Activate pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.0.0 --activate
+      - name: Resolve the native PTY dependency graph
+        run: pnpm install --lockfile-only --no-frozen-lockfile
+      - name: Commit the reproducible lockfile
+        run: |
+          if git diff --quiet -- pnpm-lock.yaml; then
+            echo "Lockfile is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "build(deps): lock native PTY and xterm dependencies"
+          git push origin HEAD:refs/heads/feature/pty-terminal
+
+      - name: Run source security and quality checks against the updated branch head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: feature/pty-terminal
+        run: |
+          gh workflow run ci.yml --ref "$REF"
+          gh workflow run codeql.yml --ref "$REF"
+          gh workflow run secret-scan.yml --ref "$REF"
+
+  verify-native:
+    name: Native PTY on ${{ matrix.label }}
+    needs: resolve-lockfile
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux
+          - os: macos-latest
+            label: macOS
+          - os: windows-latest
+            label: Windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pty-terminal
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Activate pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.0.0 --activate
+      - name: Install bubblewrap for Linux sandbox tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - run: pnpm install --frozen-lockfile
+      - name: Verify macOS native PTY helper executable permission
+        if: runner.os == 'macOS'
+        run: pnpm --filter @battlebuket/desktop exec node scripts/verify-node-pty-helper.cjs
+      - run: pnpm audit --audit-level high
+      - name: Run unit tests with the Node ABI
+        run: pnpm test
+      - name: Typecheck and lint
+        run: |
+          pnpm lint
+          pnpm typecheck
+      - name: Rebuild native dependencies for Electron
+        run: pnpm --filter @battlebuket/desktop exec electron-builder install-app-deps
+      - name: Verify node-pty against the bundled Electron runtime
+        env:
+          ELECTRON_RUN_AS_NODE: "1"
+        run: pnpm --filter @battlebuket/desktop exec electron scripts/pty-smoke.cjs
+      - name: Build desktop bundle
+        run: pnpm --filter @battlebuket/desktop build
+      - name: Package unsigned desktop application for installed-runtime smoke
+        run: pnpm --filter @battlebuket/desktop exec electron-builder --dir --config electron-builder.smoke.config.cjs --publish never
+      - name: Launch packaged app and run workbench/PTY smoke on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $application = Get-ChildItem "apps/desktop/release-smoke" -Recurse -Filter "battlebuket-codes.exe" | Select-Object -First 1
+          if (-not $application) { throw "Packaged Windows application executable was not produced." }
+          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-packaged-smoke.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-packaged-smoke.stderr.log"
+          $smoke = Start-Process -FilePath $application.FullName -ArgumentList @("--smoke-test", "--enable-logging=stderr") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if ($smoke.ExitCode -ne 0) {
+            Write-Host "===== Packaged app stdout ====="
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 250 }
+            Write-Host "===== Packaged app stderr ====="
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 500 }
+            throw "Packaged Windows workbench/PTY smoke test failed with exit code $($smoke.ExitCode)."
+          }
+          if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+      - name: Launch packaged app and run workbench/PTY smoke on macOS
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          app="$(find apps/desktop/release-smoke -maxdepth 5 -type d -name '*.app' -print -quit)"
+          test -n "$app"
+          executable="$app/Contents/MacOS/battlebuket-codes"
+          test -x "$executable"
+          "$executable" --smoke-test
+      - name: Launch packaged app and run workbench/PTY smoke on Linux
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          executable="$(find apps/desktop/release-smoke -type f -name 'battlebuket-codes' -perm -u+x -print -quit)"
+          test -n "$executable"
+          sandbox_helper="$(dirname "$executable")/chrome-sandbox"
+          test -f "$sandbox_helper"
+          sudo chown root:root "$sandbox_helper"
+          sudo chmod 4755 "$sandbox_helper"
+          test "$(stat -c '%U:%a' "$sandbox_helper")" = "root:4755"
+          if ! command -v dbus-run-session >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y dbus-daemon
+          fi
+          env -u DBUS_SESSION_BUS_ADDRESS dbus-run-session -- xvfb-run -a "$executable" --smoke-test

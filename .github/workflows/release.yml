@@ -17,20 +17,66 @@ jobs:
     name: Validate source before release
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install Linux sandbox and desktop smoke prerequisites
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap dbus-daemon xvfb
       - name: Configure pinned package manager
         run: |
           corepack enable
           corepack prepare pnpm@10.0.0 --activate
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level high
+      - name: Prepare release SBOM directory
+        run: mkdir -p release-sbom
+      - name: Capture full pnpm audit report for the release candidate
+        shell: bash
+        run: |
+          set +e
+          pnpm audit --json > release-sbom/pnpm-audit.json
+          audit_status=$?
+          set -e
+          printf '%s\\n' "$audit_status" > release-sbom/pnpm-audit-exit-code.txt
+      - name: Summarize lower-severity advisories and available fixes
+        run: node scripts/summarize-pnpm-audit.mjs release-sbom/pnpm-audit.json release-sbom/PNPM-AUDIT.csv release-sbom/PNPM-AUDIT-SUMMARY.md
+      - name: Generate SPDX release SBOM with pinned Syft
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        with:
+          path: .
+          format: spdx-json
+          output-file: release-sbom/battlebuket-codes.spdx.json
+          syft-version: v1.42.3
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Generate release dependency license inventory
+        run: node scripts/build-license-inventory.mjs release-sbom/battlebuket-codes.spdx.json release-sbom/LICENSE-INVENTORY.csv release-sbom/LICENSE-INVENTORY-SUMMARY.md
+      - name: Attest release SBOM and license inventory
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
+        with:
+          subject-path: release-sbom/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BattleBuket-Codes-SBOM
+          path: release-sbom/*
+          if-no-files-found: error
+          retention-days: 90
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Verify desktop package version matches the release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          expected="${RELEASE_TAG#v}"
+          actual="$(node -p "require('./apps/desktop/package.json').version")"
+          test "$actual" = "$expected" || { echo "Desktop package version $actual does not match release tag $RELEASE_TAG."; exit 1; }
       - run: pnpm build
 
   build:
@@ -126,8 +172,14 @@ jobs:
           Start-Process -FilePath $installer.FullName -ArgumentList @("/S", "/D=$installDir") -Wait
           $application = Join-Path $installDir "battlebuket-codes.exe"
           if (-not (Test-Path $application)) { throw "Installed application executable was not found." }
-          $smoke = Start-Process -FilePath $application -ArgumentList "--smoke-test" -Wait -PassThru
-          if ($smoke.ExitCode -ne 0) { throw "Installed application smoke test failed with exit code $($smoke.ExitCode)." }
+          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-installed-smoke.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-installed-smoke.stderr.log"
+          $smoke = Start-Process -FilePath $application -ArgumentList @("--smoke-test", "--enable-logging=stderr") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if ($smoke.ExitCode -ne 0) {
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 250 }
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 500 }
+            throw "Installed application smoke test failed with exit code $($smoke.ExitCode)."
+          }
           $uninstaller = Join-Path $installDir "Uninstall BattleBuket Codes.exe"
           if (-not (Test-Path $uninstaller)) { throw "NSIS uninstaller was not found." }
           Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait
@@ -145,10 +197,20 @@ jobs:
           installed_app="$RUNNER_TEMP/BattleBuket Codes.app"
           ditto "$source_app" "$installed_app"
           hdiutil detach /tmp/battlebuket-install-smoke
-          open -n -W -a "$installed_app" --args --smoke-test
+          stdout="$RUNNER_TEMP/battlebuket-macos-smoke.stdout.log"
+          stderr="$RUNNER_TEMP/battlebuket-macos-smoke.stderr.log"
+          set +e
+          "$installed_app/Contents/MacOS/battlebuket-codes" --smoke-test >"$stdout" 2>"$stderr"
+          smoke_status=$?
+          set -e
+          if [[ "$smoke_status" -ne 0 ]]; then
+            cat "$stdout"
+            cat "$stderr"
+            exit "$smoke_status"
+          fi
           rm -rf "$installed_app"
           test ! -e "$installed_app"
-      - name: Launch Linux AppImage and remove installed artifact
+      - name: Launch Linux AppImage with Chromium sandbox enabled
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
@@ -157,7 +219,7 @@ jobs:
           smoke_appimage="$RUNNER_TEMP/$(basename "$appimage")"
           cp "$appimage" "$smoke_appimage"
           chmod +x "$smoke_appimage"
-          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$smoke_appimage" --smoke-test
+          bash apps/desktop/scripts/run-appimage-smoke.sh "$smoke_appimage" --smoke-test
           rm -f "$smoke_appimage"
           test -e "$appimage"
       - uses: actions/upload-artifact@v4

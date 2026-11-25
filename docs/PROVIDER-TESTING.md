@@ -1,28 +1,41 @@
 # Authenticated provider testing
 
-The default CI suite deliberately does not sign in to Codex or Claude. It tests provider argument construction and runtime adapter logic without requiring accounts or spending model usage.
+The default CI suite deliberately does not use live provider accounts or consume model quota. It tests adapter argument construction, cancellation and local validation only.
 
-The live provider smoke tests are opt-in:
+The opt-in live suite uses two conformance scenarios for each selected provider:
 
-- `BATTLEBUKET_REAL_PROVIDER_SMOKE=1` enables live execution.
-- `BATTLEBUKET_SMOKE_PROVIDERS=codex`, `claude`, or `codex,claude` selects which adapters run.
+1. **Read-only:** verifies the provider is authenticated, returns the exact smoke marker, and leaves a temporary workspace empty.
+2. **Workspace-write boundary:** asks the provider to create exactly one marker file in a disposable Git workspace and verifies its contents, changed-file list, and an outside-workspace sentinel.
 
-Each selected provider is tested in a disposable Git workspace:
-1. Read-only task: asks the provider to inspect a README and verifies no workspace files were changed.
-2. Workspace-write task: asks the provider to create exactly one marker file, verifies its contents, and verifies an adjacent sentinel outside the workspace remains unchanged.
+These checks are intentionally small. They do not prove every prompt-injection scenario, model/version, provider permission escalation, long-running session, desktop UI interaction or OS escape path.
 
-## Running locally
+## GitHub Actions
 
-Use a dedicated test machine or disposable OS account. Install Node.js 22, pnpm 10, Git, the Codex CLI and/or Claude Agent SDK runtime. Authenticate each provider using its supported local sign-in process. Do not place credentials in the repository, commit them, or paste them into task prompts.
+Run the manual workflow `.github/workflows/provider-smoke.yml` from Actions → Authenticated provider smoke tests.
 
-Then run:
+Configure these repository Actions secrets first (Settings → Secrets and variables → Actions):
+
+- `OPENAI_API_KEY` — required when Codex is selected.
+- `ANTHROPIC_API_KEY` — required when Claude is selected.
+
+The workflow runs on a disposable hosted Linux runner. It installs Bubblewrap and the Codex CLI when requested, uses the Claude Agent SDK from the locked workspace dependency, and runs the real read-only and workspace-write tests. It fails before test execution when a selected provider's credential is missing. Do not paste API keys into this repository, issue comments, task prompts or chat.
+
+Real tests may consume provider quota or incur charges. Use dedicated, low-privilege test credentials and rotate them according to your organization's secret-management policy.
+
+The tests are considered passed only after a manually dispatched run completes successfully and the logs show all four selected tests (two per provider) passed. A skipped test is not a pass.
+
+## Local execution
+
+Install Node.js 22, pnpm 10, Git, the Codex CLI and/or the Claude Agent SDK runtime, then authenticate the selected provider using its supported local mechanism.
+
+Bash:
 
 ```sh
 BATTLEBUKET_REAL_PROVIDER_SMOKE=1 BATTLEBUKET_SMOKE_PROVIDERS=codex pnpm --filter @battlebuket/provider-adapters test
 BATTLEBUKET_REAL_PROVIDER_SMOKE=1 BATTLEBUKET_SMOKE_PROVIDERS=claude pnpm --filter @battlebuket/provider-adapters test
 ```
 
-For PowerShell:
+PowerShell:
 
 ```powershell
 $env:BATTLEBUKET_REAL_PROVIDER_SMOKE = "1"
@@ -30,19 +43,9 @@ $env:BATTLEBUKET_SMOKE_PROVIDERS = "codex,claude"
 pnpm --filter @battlebuket/provider-adapters test
 ```
 
-These are real provider requests. They may consume account quota or incur provider charges. Run them only with accounts authorized for testing.
+## Current limitations
 
-## GitHub Actions
-
-The manual workflow `.github/workflows/provider-smoke.yml` requires a dedicated self-hosted runner with both labels:
-
-- `self-hosted`
-- `battlebuket-provider-smoke`
-
-The runner must have both provider runtimes installed and authenticated for the runner service account, plus Node.js 22, Git and the required sandbox support. Start the workflow from Actions → Authenticated provider smoke tests and select which providers to exercise.
-
-Never attach this runner to untrusted pull-request workflows. It executes test prompts through authenticated local provider sessions. The smoke tests are not considered passed until the workflow has actually been run on the authenticated runner and the logs show all selected live tests succeeded.
-
-## Limitations
-
-These tests exercise the adapter CLI/SDK interfaces and simple workspace file boundaries. They do not certify every model, approval escalation, long-running task, network policy, desktop UI flow, OS release package, or future provider version. Repeat them when the provider CLI/SDK, Electron, operating system, or sandbox configuration changes.
+- The write test verifies one workspace file and one outside sentinel; it is not a complete filesystem attack suite.
+- Codex and Claude enforce their own provider sandbox policies; the app's local project verification sandbox is a separate boundary.
+- Live API-key tests do not certify user OAuth login flows, credential refresh UX, billing or provider outages.
+- Repeat these tests when the provider CLI/SDK, model, permission flags, Electron, operating system or sandbox configuration changes.

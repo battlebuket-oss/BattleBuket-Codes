@@ -19,14 +19,18 @@ Configure these in the repository's Settings → Secrets and variables → Actio
 
 Linux artifacts are not code-signed by this workflow. Add repository secrets only after confirming the certificate format and ownership.
 
+## SBOM and license review
+
+Every candidate release should retain the `security-inventory.yml` workflow artifacts for the exact release commit. Review `battlebuket-codes.spdx.json`, `LICENSE-INVENTORY.csv` and `LICENSE-INVENTORY-SUMMARY.md` before signing/publishing. The presence of an SPDX file is not itself license approval; resolve unknown license entries and review all distribution obligations.
+
 ## Release procedure
 
 1. Confirm the default branch is green for audit, lint, typecheck, tests, build, CodeQL, and secret scanning.
-2. Confirm Codex and Claude authenticated-runtime smoke tests have passed on real supported machines.
-3. Confirm the app's Code - OSS workbench and PTY terminal integration are complete before calling the product production-ready.
+2. Run the manual authenticated provider smoke workflow on the dedicated self-hosted runner and confirm Codex and Claude live read-only smoke tests pass with the intended local accounts.
+3. Confirm the embedded VS Code workbench and web extension host initialize in the packaged renderer, the VS Code integrated terminal completes a native PTY input/output/exit round trip, the bundled Monaco TypeScript worker starts, and clean Windows, macOS and Linux installs pass before calling the product production-ready.
 4. Configure and validate the signing secrets above.
 5. Push a version tag. The workflow must complete all platform builds and create a draft release.
-6. Inspect installer signatures, macOS notarization/stapling, artifact hashes, installation, upgrade, uninstall, and launch behavior on clean machines.
+6. Inspect installer signatures, macOS notarization/stapling, artifact hashes, installation, upgrade, rollback, uninstall, and launch behavior on clean machines. After two signed tags exist, run `.github/workflows/upgrade-rollback-smoke.yml` with the older and newer tags.
 7. Publish the draft manually only after the release owner signs off.
 
 A successful workflow run or draft release alone is not a production-readiness certification.
