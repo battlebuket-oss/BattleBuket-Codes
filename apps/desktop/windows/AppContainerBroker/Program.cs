@@ -20,7 +20,6 @@ internal static class Program
     private const uint ProcThreadAttributeHandleList = 0x00020002;
     private const uint ProcThreadAttributeSecurityCapabilities = 0x00020009;
     private const uint ExtendedStartupInfoPresent = 0x00080000;
-    private const uint CreateUnicodeEnvironment = 0x00000400;
     private const uint CreateSuspended = 0x00000004;
     private const uint CreateNoWindow = 0x08000000;
     private const uint StartfUseStdHandles = 0x00000100;
@@ -411,7 +410,6 @@ internal static class Program
         IntPtr attributeList = IntPtr.Zero;
         IntPtr securityCapabilitiesPointer = IntPtr.Zero;
         IntPtr handleListPointer = IntPtr.Zero;
-        IntPtr environmentPointer = IntPtr.Zero;
         try
         {
             appContainerSid = EnsureAppContainerProfile();
@@ -514,7 +512,11 @@ internal static class Program
             };
             var startupEx = new StartupInfoEx { StartupInfo = startup, AttributeList = attributeList };
             var commandLine = new StringBuilder(BuildCommandLine(executable, request.Args));
-            environmentPointer = BuildEnvironmentBlock(request.Environment, request.Workspace);
+            // The broker is launched with a deliberately sanitized host environment. Apply
+            // the per-task overrides to this one-shot broker process and let CreateProcess
+            // inherit its native block so Windows retains hidden =X: drive-current-directory entries.
+            foreach (var pair in request.Environment)
+                Environment.SetEnvironmentVariable(pair.Key, pair.Value, EnvironmentVariableTarget.Process);
 
             job = CreateJobObject(IntPtr.Zero, null);
             if (job == IntPtr.Zero) ThrowLastError("CreateJobObject");
@@ -542,8 +544,8 @@ internal static class Program
                 IntPtr.Zero,
                 IntPtr.Zero,
                 true,
-                ExtendedStartupInfoPresent | CreateUnicodeEnvironment | CreateSuspended | CreateNoWindow,
-                environmentPointer,
+                ExtendedStartupInfoPresent | CreateSuspended | CreateNoWindow,
+                IntPtr.Zero,
                 request.Workspace,
                 ref startupEx,
                 out var processInformation))
@@ -607,7 +609,6 @@ internal static class Program
             }
             if (securityCapabilitiesPointer != IntPtr.Zero) Marshal.FreeHGlobal(securityCapabilitiesPointer);
             if (handleListPointer != IntPtr.Zero) Marshal.FreeHGlobal(handleListPointer);
-            if (environmentPointer != IntPtr.Zero) Marshal.FreeHGlobal(environmentPointer);
 
             if (appContainerSid != IntPtr.Zero) FreeSid(appContainerSid);
         }
@@ -864,36 +865,6 @@ internal static class Program
         if (!File.Exists(resolved))
             throw new FileNotFoundException("Resolved executable does not exist.", resolved);
         return resolved;
-    }
-
-    private static IntPtr BuildEnvironmentBlock(Dictionary<string, string> environment, string currentDirectory)
-    {
-        var normalized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var pair in environment)
-        {
-            if (!string.IsNullOrWhiteSpace(pair.Key)) normalized[pair.Key] = pair.Value;
-        }
-
-        // Windows requires a hidden =X: environment entry for the current drive when a
-        // custom Unicode environment block is supplied to CreateProcess.
-        var currentPath = Path.GetFullPath(currentDirectory);
-        var driveRoot = Path.GetPathRoot(currentPath);
-        var entries = new List<string>();
-        if (driveRoot is { Length: 3 } &&
-            char.IsLetter(driveRoot[0]) &&
-            driveRoot[1] == ':' &&
-            driveRoot[2] == Path.DirectorySeparatorChar)
-        {
-            var driveVariable = "=" + char.ToUpperInvariant(driveRoot[0]) + ":";
-            entries.Add(driveVariable + "=" + currentPath);
-        }
-
-        entries.AddRange(normalized
-            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(pair => pair.Key + "=" + pair.Value));
-
-        var block = string.Join("\0", entries) + "\0\0";
-        return Marshal.StringToHGlobalUni(block);
     }
 
     private static string BuildCommandLine(string executable, IEnumerable<string> args)
