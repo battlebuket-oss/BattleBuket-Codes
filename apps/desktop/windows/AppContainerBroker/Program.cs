@@ -389,7 +389,7 @@ internal static class Program
 
         request.Workspace = Path.GetFullPath(request.Workspace);
         request.Scratch = Path.GetFullPath(request.Scratch);
-        var profileFolder = GetProfileFolderPath();
+        var profileFolder = GetAppContainerDataRoot();
         var profileTempRoot = Path.Combine(profileFolder, "Temp");
         if (!IsSameOrAncestor(profileTempRoot, request.Scratch) || IsSamePath(profileTempRoot, request.Scratch))
             throw new InvalidDataException("The scratch directory must be a child of this AppContainer profile's private Temp directory.");
@@ -621,6 +621,21 @@ internal static class Program
         Directory.CreateDirectory(sandboxRoot);
         Console.Out.WriteLine(sandboxRoot);
         return 0;
+    }
+
+    private static string GetAppContainerDataRoot()
+    {
+        var sid = EnsureAppContainerProfile();
+        try { return GetAppContainerDataRoot(sid); }
+        finally { FreeSid(sid); }
+    }
+
+    private static string GetAppContainerDataRoot(IntPtr sid)
+    {
+        var profileFolder = GetProfileFolderPath(sid);
+        return string.Equals(Path.GetFileName(profileFolder), "AC", StringComparison.OrdinalIgnoreCase)
+            ? profileFolder
+            : Path.Combine(profileFolder, "AC");
     }
 
     private static IntPtr EnsureAppContainerProfile()
