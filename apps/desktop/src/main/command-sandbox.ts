@@ -189,7 +189,26 @@ export async function prepareSandboxedCommand(
   const scratchRoaming = join(scratchHome, "AppData", "Roaming");
   const scratchLocal = join(scratchHome, "AppData", "Local");
   let appContainerScratch: string | null = null;
+  let appContainerBroker: string | null = null;
+  let appContainerProfileName: string | null = null;
+  let appContainerHostEnvironment: NodeJS.ProcessEnv | null = null;
   const dispose = async () => {
+    if (appContainerProfileName && appContainerBroker) {
+      const cleanup = spawnSync(appContainerBroker, ["--cleanup", appContainerProfileName], {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 15_000,
+        maxBuffer: 1024 * 1024,
+        env: appContainerHostEnvironment ?? process.env
+      });
+      if (cleanup.error || cleanup.status !== 0) {
+        throw new Error(
+          "Windows AppContainer profile cleanup failed. " +
+          (cleanup.error?.message ?? cleanup.stderr?.trim() ?? ("Broker exit code " + String(cleanup.status)))
+        );
+      }
+      appContainerProfileName = null;
+    }
     if (appContainerScratch) await fs.rm(appContainerScratch, { recursive: true, force: true });
     await fs.rm(scratch, { recursive: true, force: true });
   };
@@ -230,6 +249,7 @@ export async function prepareSandboxedCommand(
       if (!broker) {
         throw new Error("Windows project scripts are blocked because the signed-in desktop installation does not contain the Windows AppContainer broker. Rebuild the Windows app with the .NET 8 SDK; unrestricted execution is never used.");
       }
+      appContainerBroker = broker;
 
       const hostEnvironment: NodeJS.ProcessEnv = {
         ...baseEnvironment,
@@ -241,6 +261,7 @@ export async function prepareSandboxedCommand(
         TEMP: process.env.TEMP ?? baseEnvironment.TEMP ?? tmpdir(),
         TMP: process.env.TMP ?? baseEnvironment.TMP ?? tmpdir()
       };
+      appContainerHostEnvironment = hostEnvironment;
       const prepared = spawnSync(broker, ["--prepare"], {
         encoding: "utf8",
         windowsHide: true,
@@ -254,10 +275,25 @@ export async function prepareSandboxedCommand(
           (prepared.error?.message ?? prepared.stderr?.trim() ?? ("Broker exit code " + String(prepared.status)))
         );
       }
-      const containerRootText = prepared.stdout.trim();
-      if (!containerRootText || containerRootText.includes("\n")) {
-        throw new Error("The Windows AppContainer broker returned an invalid temporary workspace path.");
+      let preparation: {
+        AppContainerProfileName?: string;
+        SandboxRoot?: string;
+        appContainerProfileName?: string;
+        sandboxRoot?: string;
+      };
+      try {
+        preparation = JSON.parse(prepared.stdout) as typeof preparation;
+      } catch {
+        throw new Error("The Windows AppContainer broker returned an invalid profile preparation response.");
       }
+      const profileName = preparation.AppContainerProfileName ?? preparation.appContainerProfileName ?? "";
+      const containerRootText = preparation.SandboxRoot ?? preparation.sandboxRoot ?? "";
+      if (!/^BattleBuketCodes_[0-9a-f]{32}$/.test(profileName) ||
+          !containerRootText ||
+          containerRootText.includes("\n")) {
+        throw new Error("The Windows AppContainer broker returned an invalid per-run profile or temporary workspace path.");
+      }
+      appContainerProfileName = profileName;
       const containerRoot = await fs.realpath(containerRootText);
       appContainerScratch = containerRoot;
       const localAppData = baseEnvironment.LOCALAPPDATA ?? process.env.LOCALAPPDATA;
@@ -348,6 +384,7 @@ export async function prepareSandboxedCommand(
 
       const requestPath = join(scratch, "appcontainer-request.json");
       await fs.writeFile(requestPath, JSON.stringify({
+        appContainerProfileName,
         workspace: sandboxWorkspace,
         scratch: containerRoot,
         executable: sandboxExecutable,
