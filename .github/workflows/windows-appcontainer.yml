@@ -135,38 +135,49 @@ jobs:
           New-Item -ItemType Directory -Path $workspace -Force | Out-Null
           $requestPath = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-node-request.json"
           $system32 = Join-Path $env:SystemRoot "System32"
-          $request = @{
-            workspace = $workspace
-            scratch = $sandboxRoot
-            executable = $nodeExe
-            args = @("-e", "console.log('BATTLEBUKET_APP_CONTAINER_NODE_OK')")
-            environment = @{
-              PATH = ($nodeDirectory + ";" + $system32)
-              SystemRoot = $env:SystemRoot
-              TEMP = $sandboxRoot
-              TMP = $sandboxRoot
-              USERPROFILE = $sandboxRoot
-              APPDATA = $sandboxRoot
-              LOCALAPPDATA = $sandboxRoot
-              PATHEXT = ".COM;.EXE;.BAT;.CMD"
+          $environment = @{
+            PATH = ($nodeDirectory + ";" + $system32)
+            SystemRoot = $env:SystemRoot
+            TEMP = $sandboxRoot
+            TMP = $sandboxRoot
+            USERPROFILE = $sandboxRoot
+            APPDATA = $sandboxRoot
+            LOCALAPPDATA = $sandboxRoot
+            PATHEXT = ".COM;.EXE;.BAT;.CMD"
+          }
+          function Invoke-AppContainerNodeProbe([string[]]$Arguments, [string]$Name, [int]$TimeoutMs) {
+            $requestPath = Join-Path $env:RUNNER_TEMP ("battlebuket-appcontainer-node-" + $Name + ".json")
+            $request = @{
+              workspace = $workspace
+              scratch = $sandboxRoot
+              executable = $nodeExe
+              args = $Arguments
+              environment = $environment
             }
+            $request | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $requestPath -Encoding utf8
+            $stdout = Join-Path $env:RUNNER_TEMP ("battlebuket-appcontainer-node-" + $Name + ".stdout.log")
+            $stderr = Join-Path $env:RUNNER_TEMP ("battlebuket-appcontainer-node-" + $Name + ".stderr.log")
+            $child = Start-Process -FilePath $broker -ArgumentList @("--request", $requestPath) -Wait:$false -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+            if (-not $child.WaitForExit($TimeoutMs)) {
+              Write-Host "===== $Name stdout before timeout ====="
+              if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
+              Write-Host "===== $Name stderr before timeout ====="
+              if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+              $child.Kill($true)
+              throw "AppContainer Node probe '$Name' exceeded $TimeoutMs ms."
+            }
+            if ($child.ExitCode -ne 0) {
+              if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
+              if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+              throw "AppContainer Node probe '$Name' failed with exit code $($child.ExitCode)."
+            }
+            return (Get-Content $stdout -Raw)
           }
-          $request | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $requestPath -Encoding utf8
-          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-node.stdout.log"
-          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-node.stderr.log"
-          $child = Start-Process -FilePath $broker -ArgumentList @("--request", $requestPath) -Wait:$false -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-          if (-not $child.WaitForExit(30000)) {
-            $child.Kill($true)
-            throw "AppContainer Node runtime probe exceeded 30 seconds."
-          }
-          if ($child.ExitCode -ne 0) {
-            if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
-            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
-            throw "AppContainer Node runtime probe failed with exit code $($child.ExitCode)."
-          }
-          if (-not (Get-Content $stdout -Raw).Contains("BATTLEBUKET_APP_CONTAINER_NODE_OK")) {
-            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
-            throw "Node did not return its AppContainer probe marker."
+          $version = Invoke-AppContainerNodeProbe @("--version") "version" 10000
+          Write-Host "AppContainer Node version: $version"
+          $marker = Invoke-AppContainerNodeProbe @("-e", "console.log('BATTLEBUKET_APP_CONTAINER_NODE_OK'); process.exit(0)") "script" 10000
+          if (-not $marker.Contains("BATTLEBUKET_APP_CONTAINER_NODE_OK")) {
+            throw "Node did not return its AppContainer script marker. Output: $marker"
           }
           Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
       - name: Typecheck and lint
