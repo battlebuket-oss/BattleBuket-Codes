@@ -118,10 +118,10 @@ async function hasDirectory(path: string): Promise<boolean> {
 async function discoverAlternativeProject(root: string, entries: string[]): Promise<{ manager: PackageManager; scripts: string[] } | null> {
   const entrySet = new Set(entries);
   if (entrySet.has("go.mod") && await isRegularFile(join(root, "go.mod"))) {
-    return { manager: "go", scripts: ["test", "lint", "build", "security"] };
+    return { manager: "go", scripts: withoutNetworkSecurityChecks(["test", "lint", "build", "security"]) };
   }
   if (entrySet.has("Cargo.toml") && await isRegularFile(join(root, "Cargo.toml"))) {
-    return { manager: "cargo", scripts: ["test", "lint", "typecheck", "build", "security"] };
+    return { manager: "cargo", scripts: withoutNetworkSecurityChecks(["test", "lint", "typecheck", "build", "security"]) };
   }
   const hasPyproject = entrySet.has("pyproject.toml") && await isRegularFile(join(root, "pyproject.toml"));
   const hasRequirements = entrySet.has("requirements.txt") && await isRegularFile(join(root, "requirements.txt"));
@@ -139,12 +139,12 @@ async function discoverAlternativeProject(root: string, entries: string[]): Prom
     if (config.includes("[tool.mypy]")) scripts.push("typecheck");
     if (config.includes("[build-system]")) scripts.push("build");
     if (hasRequirements) scripts.push("security");
-    return { manager: "python", scripts };
+    return { manager: "python", scripts: withoutNetworkSecurityChecks(scripts) };
   }
   const dotnetCandidates = entries.filter(name => name.endsWith(".sln") || name.endsWith(".slnx") || name.endsWith(".csproj"));
   for (const candidate of dotnetCandidates) {
     if (await isRegularFile(join(root, candidate))) {
-      return { manager: "dotnet", scripts: ["test", "lint", "build", "security"] };
+      return { manager: "dotnet", scripts: withoutNetworkSecurityChecks(["test", "lint", "build", "security"]) };
     }
   }
   return null;
@@ -173,11 +173,18 @@ export async function discoverQualityScripts(workspacePath: string): Promise<{ m
       (manager === "npm" && entrySet.has("package-lock.json")) ||
       (manager === "yarn" && entrySet.has("yarn.lock")) ||
       (manager === "bun" && (entrySet.has("bun.lock") || entrySet.has("bun.lockb")));
-    if (hasSupportedAuditLock) scripts.push("audit");
-    if (scripts.length > 0) return { manager, scripts, ...(yarnMajor === undefined ? {} : { yarnMajor }) };
+    if (hasSupportedAuditLock && process.platform !== "win32") scripts.push("audit");
+    if (scripts.length > 0 || (hasSupportedAuditLock && process.platform === "win32")) {
+      return { manager, scripts, ...(yarnMajor === undefined ? {} : { yarnMajor }) };
+    }
   }
 
   return discoverAlternativeProject(root, entries);
+}
+
+function withoutNetworkSecurityChecks(scripts: string[]): string[] {
+  // Windows AppContainer deliberately has no network capability. Keep dependency/security scans out of this offline sandbox rather than silently adding internet access.
+  return process.platform === "win32" ? scripts.filter(script => script !== "audit" && script !== "security") : scripts;
 }
 
 export function hasExecutableQualityChecks(scripts: string[]): boolean {
@@ -190,7 +197,7 @@ export function formatQualityCommand(manager: string, script: string): string {
 
 function safeEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
-  const allowed = ["PATH", "Path", "HOME", "USERPROFILE", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL", "CI"];
+  const allowed = ["PATH", "Path", "PATHEXT", "COMSPEC", "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "SystemRoot", "SystemDrive", "WINDIR", "TEMP", "TMP", "TMPDIR", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL", "CI"];
   for (const key of allowed) if (process.env[key] !== undefined) env[key] = process.env[key];
   return env;
 }
