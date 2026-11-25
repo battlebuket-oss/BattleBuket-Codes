@@ -30,6 +30,17 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.0.0 --activate
       - run: pnpm install --frozen-lockfile
+      - name: Capture full pnpm audit report without suppressing lower-severity findings
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          set +e
+          pnpm audit --json > artifacts/pnpm-audit.json
+          audit_status=$?
+          set -e
+          printf '%s\\n' "$audit_status" > artifacts/pnpm-audit-exit-code.txt
+      - name: Summarize dependency advisories and fix availability
+        run: node scripts/summarize-pnpm-audit.mjs artifacts/pnpm-audit.json artifacts/PNPM-AUDIT.csv artifacts/PNPM-AUDIT-SUMMARY.md
       - name: Prepare SBOM output directory
         run: mkdir -p artifacts
       - name: Generate SPDX SBOM with pinned Syft
@@ -50,6 +61,10 @@ jobs:
             artifacts/battlebuket-codes.spdx.json
             artifacts/LICENSE-INVENTORY.csv
             artifacts/LICENSE-INVENTORY-SUMMARY.md
+            artifacts/pnpm-audit.json
+            artifacts/pnpm-audit-exit-code.txt
+            artifacts/PNPM-AUDIT.csv
+            artifacts/PNPM-AUDIT-SUMMARY.md
           if-no-files-found: error
           retention-days: 90
       - name: Add inventory summary to workflow report
@@ -57,4 +72,7 @@ jobs:
         run: |
           if [ -f artifacts/LICENSE-INVENTORY-SUMMARY.md ]; then
             cat artifacts/LICENSE-INVENTORY-SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f artifacts/PNPM-AUDIT-SUMMARY.md ]; then
+            cat artifacts/PNPM-AUDIT-SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
           fi
