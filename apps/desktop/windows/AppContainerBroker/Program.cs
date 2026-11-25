@@ -9,10 +9,8 @@ internal static class Program
     private const uint FileGenericRead = 0x00120089;
     private const uint FileGenericWrite = 0x00120116;
     private const uint FileGenericExecute = 0x001200A0;
-    private const uint FileTraverseAndReadAttributes = 0x000000A0;
     private const uint SubContainersAndObjectsInherit = 0x00000003;
     private const uint DaclSecurityInformation = 0x00000004;
-    private const uint LabelSecurityInformation = 0x00000010;
     private const uint HandleFlagInherit = 0x00000001;
     private const uint GenericRead = 0x80000000;
     private const uint FileShareRead = 0x00000001;
@@ -30,6 +28,8 @@ internal static class Program
     private const uint JobObjectLimitKillOnJobClose = 0x00002000;
     private const uint Infinite = 0xFFFFFFFF;
     private const int ErrorBrokenPipe = 109;
+    private const int ErrorAlreadyExistsHResult = unchecked((int)0x800700B7);
+    private const string AppContainerProfileName = "BattleBuketCodesProjectVerification";
 
     private sealed class BrokerRequest
     {
@@ -177,6 +177,23 @@ internal static class Program
         out IntPtr appContainerSid);
 
     [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+    private static extern int DeriveAppContainerSidFromAppContainerName(
+        string appContainerName,
+        out IntPtr appContainerSid);
+
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetAppContainerFolderPath(
+        string appContainerSid,
+        out IntPtr path);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ConvertSidToStringSid(IntPtr sid, out IntPtr stringSid);
+
+    [DllImport("ole32.dll")]
+    private static extern void CoTaskMemFree(IntPtr memory);
+
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
     private static extern int DeleteAppContainerProfile(string appContainerName);
 
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
@@ -205,6 +222,12 @@ internal static class Program
         [MarshalAs(UnmanagedType.Bool)] out bool saclPresent,
         out IntPtr sacl,
         [MarshalAs(UnmanagedType.Bool)] out bool saclDefaulted);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint GetEffectiveRightsFromAcl(
+        IntPtr acl,
+        ref Trustee trustee,
+        out uint accessRights);
 
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
     private static extern uint SetEntriesInAcl(
@@ -349,8 +372,10 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 1 && args[0] == "--prepare")
+                return PrepareSandboxRoot();
             if (args.Length != 2 || args[0] != "--request")
-                throw new ArgumentException("Usage: AppContainerBroker.exe --request <request.json>");
+                throw new ArgumentException("Usage: AppContainerBroker.exe --prepare | --request <request.json>");
 
             var requestPath = Path.GetFullPath(args[1]);
             var requestJson = File.ReadAllText(requestPath, Encoding.UTF8);
@@ -386,14 +411,17 @@ internal static class Program
 
         request.Workspace = Path.GetFullPath(request.Workspace);
         request.Scratch = Path.GetFullPath(request.Scratch);
-        if (IsSamePath(request.Workspace, request.Scratch) || !IsSameOrAncestor(request.Scratch, request.Workspace))
-            throw new InvalidDataException("The workspace copy must be a distinct directory inside the private scratch root.");
+        var profileFolder = GetProfileFolderPath();
+        var profileTempRoot = Path.Combine(profileFolder, "Temp");
+        if (!IsSameOrAncestor(profileTempRoot, request.Scratch) || IsSamePath(profileTempRoot, request.Scratch))
+            throw new InvalidDataException("The scratch directory must be a child of this AppContainer profile's private Temp directory.");
+        if (!string.Equals(request.Workspace, Path.Combine(request.Scratch, "workspace"), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The requested workspace must be the designated workspace folder inside the private AppContainer Temp directory.");
     }
 
     private static int RunInAppContainer(BrokerRequest request)
     {
         var executable = ResolveExecutable(request.Executable, request.Environment);
-        var profileName = "BattleBuketCodes_" + Guid.NewGuid().ToString("N");
         IntPtr appContainerSid = IntPtr.Zero;
         IntPtr job = IntPtr.Zero;
         IntPtr processHandle = IntPtr.Zero;
@@ -405,52 +433,34 @@ internal static class Program
         IntPtr securityCapabilitiesPointer = IntPtr.Zero;
         IntPtr handleListPointer = IntPtr.Zero;
         IntPtr environmentPointer = IntPtr.Zero;
-        var grants = new List<AclGrant>();
-        var labels = new List<IntegrityLabelGrant>();
-
         try
         {
-            var hr = CreateAppContainerProfile(
-                profileName,
-                "BattleBuket Codes project verification",
-                "Temporary no-network AppContainer for user-approved workspace quality checks.",
-                IntPtr.Zero,
-                0,
-                out appContainerSid);
-            if (hr != 0)
-                throw new SecurityException("CreateAppContainerProfile failed with HRESULT 0x" + hr.ToString("X8") + ".");
-
-            const uint scratchRights = FileGenericRead | FileGenericWrite | FileGenericExecute | 0x00010000;
-            foreach (var ancestor in GetDirectoryAncestors(request.Scratch))
-            {
-                if (!IsReadOnlySystemPath(ancestor))
-                    AddGrant(ancestor, appContainerSid, FileTraverseAndReadAttributes, 0, grants, true);
-            }
-            AddGrant(request.Scratch, appContainerSid, scratchRights, SubContainersAndObjectsInherit, grants, true);
-            AddLowIntegrityLabel(request.Scratch, labels);
-            foreach (var entry in EnumerateScratchEntries(request.Scratch))
-            {
-                AddGrant(entry.Path, appContainerSid, scratchRights, SubContainersAndObjectsInherit, grants, entry.IsDirectory);
-                AddLowIntegrityLabel(entry.Path, labels);
-            }
+            appContainerSid = EnsureAppContainerProfile();
+            var profileFolder = GetProfileFolderPath(appContainerSid);
+            var profileTempRoot = Path.Combine(profileFolder, "Temp");
+            if (!IsSameOrAncestor(profileTempRoot, request.Scratch) || IsSamePath(profileTempRoot, request.Scratch))
+                throw new SecurityException("The sandbox scratch directory is outside the AppContainer-managed profile Temp location.");
 
             var pathDirectories = GetPathDirectories(request.Environment).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var directory in pathDirectories)
             {
-                if (IsSameOrAncestor(directory, request.Scratch) || IsReadOnlySystemPath(directory))
+                if (IsSameOrAncestor(request.Scratch, directory) || IsReadOnlySystemPath(directory))
                     continue;
-                AddGrant(directory, appContainerSid, FileGenericRead | FileGenericExecute, SubContainersAndObjectsInherit, grants, true);
+                EnsureReadExecuteGrant(directory, appContainerSid);
             }
             var executableDirectory = Path.GetDirectoryName(executable);
             if (!string.IsNullOrWhiteSpace(executableDirectory) &&
                 !pathDirectories.Any(path => IsSamePath(path, executableDirectory)) &&
-                !IsSameOrAncestor(executableDirectory, request.Scratch) &&
+                !IsSameOrAncestor(request.Scratch, executableDirectory) &&
                 !IsReadOnlySystemPath(executableDirectory))
             {
-                AddGrant(executableDirectory, appContainerSid, FileGenericRead | FileGenericExecute, SubContainersAndObjectsInherit, grants, true);
+                EnsureReadExecuteGrant(executableDirectory, appContainerSid);
             }
-            if (!IsReadOnlySystemPath(executable))
-                AddGrant(executable, appContainerSid, FileGenericRead | FileGenericExecute, 0, grants, false);
+            if (!IsReadOnlySystemPath(executable) &&
+                !IsSameOrAncestor(request.Scratch, executable))
+            {
+                EnsureReadExecuteGrant(executable, appContainerSid);
+            }
 
             var securityAttributes = new SecurityAttributes
             {
@@ -617,156 +627,99 @@ internal static class Program
             if (handleListPointer != IntPtr.Zero) Marshal.FreeHGlobal(handleListPointer);
             if (environmentPointer != IntPtr.Zero) Marshal.FreeHGlobal(environmentPointer);
 
-            for (var index = labels.Count - 1; index >= 0; index--)
-            {
-                try { RestoreIntegrityLabel(labels[index]); }
-                catch (Exception exception) { Console.Error.WriteLine("Could not restore the temporary AppContainer integrity label: " + exception.Message); }
-            }
-            for (var index = grants.Count - 1; index >= 0; index--)
-            {
-                try { RemoveGrant(grants[index], appContainerSid); }
-                catch (Exception exception) { Console.Error.WriteLine("Could not remove temporary AppContainer ACL: " + exception.Message); }
-            }
             if (appContainerSid != IntPtr.Zero) FreeSid(appContainerSid);
-            try { _ = DeleteAppContainerProfile(profileName); }
-            catch { /* The per-run profile is unique; an inaccessible profile is not reused. */ }
         }
     }
 
-    private static IEnumerable<string> GetDirectoryAncestors(string path)
+    private static int PrepareSandboxRoot()
     {
-        var current = Directory.GetParent(Path.GetFullPath(path));
-        while (current is not null)
+        var profileFolder = GetProfileFolderPath();
+        var tempRoot = Path.Combine(profileFolder, "Temp");
+        Directory.CreateDirectory(tempRoot);
+        var sandboxRoot = Path.Combine(tempRoot, "BattleBuketCodes_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(sandboxRoot);
+        Console.Out.WriteLine(sandboxRoot);
+        return 0;
+    }
+
+    private static IntPtr EnsureAppContainerProfile()
+    {
+        var result = CreateAppContainerProfile(
+            AppContainerProfileName,
+            "BattleBuket Codes project verification",
+            "Persistent no-network AppContainer for isolated project quality checks.",
+            IntPtr.Zero,
+            0,
+            out var sid);
+        if (result == 0)
+            return sid;
+        if (result == ErrorAlreadyExistsHResult)
         {
-            yield return current.FullName;
-            current = current.Parent;
+            if (DeriveAppContainerSidFromAppContainerName(AppContainerProfileName, out sid) != 0)
+                throw new SecurityException("Could not derive the existing BattleBuket Codes AppContainer SID.");
+            return sid;
         }
+        throw new SecurityException("CreateAppContainerProfile failed with HRESULT 0x" + result.ToString("X8") + ".");
     }
 
-    private static IEnumerable<(string Path, bool IsDirectory)> EnumerateScratchEntries(string root)
+    private static string GetProfileFolderPath()
     {
-        var pending = new Stack<string>();
-        pending.Push(root);
-        while (pending.Count > 0)
-        {
-            var directory = pending.Pop();
-            foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
-            {
-                var attributes = File.GetAttributes(entry);
-                if ((attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new SecurityException("The private sandbox staging tree contains a reparse point: " + entry);
-                var isDirectory = (attributes & FileAttributes.Directory) != 0;
-                yield return (entry, isDirectory);
-                if (isDirectory) pending.Push(entry);
-            }
-        }
+        var sid = EnsureAppContainerProfile();
+        try { return GetProfileFolderPath(sid); }
+        finally { FreeSid(sid); }
     }
 
-    private static void AddLowIntegrityLabel(string path, List<IntegrityLabelGrant> labels)
+    private static string GetProfileFolderPath(IntPtr sid)
     {
-        var error = GetNamedSecurityInfo(
-            path,
-            1,
-            LabelSecurityInformation,
-            out _,
-            out _,
-            out _,
-            out _,
-            out var originalDescriptor);
-        if (error != 0)
-            throw new Win32Exception((int)error, "Could not inspect the existing integrity label for " + path + ".");
-
-        IntPtr originalSacl = IntPtr.Zero;
-        IntPtr newDescriptor = IntPtr.Zero;
+        if (!ConvertSidToStringSid(sid, out var sidString))
+            ThrowLastError("ConvertSidToStringSid");
+        string sidText;
         try
         {
-            if (!GetSecurityDescriptorSacl(originalDescriptor, out _, out originalSacl, out _))
-                ThrowLastError("GetSecurityDescriptorSacl");
-
-            if (!ConvertStringSecurityDescriptorToSecurityDescriptor(
-                "S:(ML;OICI;NW;;;LW)",
-                1,
-                out newDescriptor,
-                out _))
-                ThrowLastError("ConvertStringSecurityDescriptorToSecurityDescriptor");
-
-            if (!GetSecurityDescriptorSacl(newDescriptor, out var newSaclPresent, out var newSacl, out _) ||
-                !newSaclPresent || newSacl == IntPtr.Zero)
-                throw new SecurityException("Could not create the temporary low-integrity mandatory label.");
-
-            error = SetNamedSecurityInfo(
-                path,
-                1,
-                LabelSecurityInformation,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                newSacl);
-            if (error != 0)
-                throw new Win32Exception((int)error, "Could not apply a temporary low-integrity label to " + path + ".");
-
-            labels.Add(new IntegrityLabelGrant(path, originalDescriptor, originalSacl));
-            originalDescriptor = IntPtr.Zero;
+            sidText = Marshal.PtrToStringUni(sidString)
+                ?? throw new SecurityException("Could not convert the AppContainer SID to text.");
         }
         finally
         {
-            if (newDescriptor != IntPtr.Zero) LocalFree(newDescriptor);
-            if (originalDescriptor != IntPtr.Zero) LocalFree(originalDescriptor);
+            LocalFree(sidString);
         }
-    }
 
-    private static void RestoreIntegrityLabel(IntegrityLabelGrant grant)
-    {
+        var result = GetAppContainerFolderPath(sidText, out var folderPointer);
+        if (result != 0)
+            throw new SecurityException("GetAppContainerFolderPath failed with HRESULT 0x" + result.ToString("X8") + ".");
         try
         {
-            var error = SetNamedSecurityInfo(
-                grant.Path,
-                1,
-                LabelSecurityInformation,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                grant.OriginalSacl);
-            if (error != 0)
-                throw new Win32Exception((int)error, "SetNamedSecurityInfo(label cleanup) failed for " + grant.Path + ".");
+            var folder = Marshal.PtrToStringUni(folderPointer)
+                ?? throw new SecurityException("Windows returned an empty AppContainer profile folder.");
+            return Path.GetFullPath(folder);
         }
         finally
         {
-            if (grant.OriginalDescriptor != IntPtr.Zero) LocalFree(grant.OriginalDescriptor);
+            CoTaskMemFree(folderPointer);
         }
     }
 
-    private static void AddGrant(
-        string path,
-        IntPtr sid,
-        uint rights,
-        uint inheritance,
-        List<AclGrant> grants,
-        bool directory)
+    private static void EnsureReadExecuteGrant(string path, IntPtr sid)
     {
         var fullPath = Path.GetFullPath(path);
-        if (grants.Any(grant => string.Equals(grant.Path, fullPath, StringComparison.OrdinalIgnoreCase)))
+        if (!Directory.Exists(fullPath) && !File.Exists(fullPath))
+            throw new FileNotFoundException("A required toolchain path does not exist.", fullPath);
+        if (IsReadOnlySystemPath(fullPath))
             return;
-        if (directory)
-        {
-            if (!Directory.Exists(fullPath)) return;
-            if (IsReadOnlySystemPath(fullPath)) return;
-        }
-        else if (!File.Exists(fullPath))
-        {
-            throw new FileNotFoundException("The executable to run inside AppContainer was not found.", fullPath);
-        }
 
+        var objectType = Directory.Exists(fullPath) ? 1u : 1u;
         var error = GetNamedSecurityInfo(
             fullPath,
-            1,
+            objectType,
             DaclSecurityInformation,
             out _,
             out _,
             out var oldDacl,
             out _,
             out var securityDescriptor);
-        if (error != 0) throw new Win32Exception((int)error, "GetNamedSecurityInfo failed for " + fullPath);
+        if (error != 0)
+            throw new Win32Exception((int)error, "GetNamedSecurityInfo failed for " + fullPath);
+
         IntPtr newDacl = IntPtr.Zero;
         try
         {
@@ -778,73 +731,34 @@ internal static class Program
                 TrusteeType = TrusteeType.TrusteeIsUser,
                 Name = sid
             };
+            error = GetEffectiveRightsFromAcl(oldDacl, ref trustee, out var currentRights);
+            if (error != 0)
+                throw new Win32Exception((int)error, "GetEffectiveRightsFromAcl failed for " + fullPath);
+
+            var requiredRights = FileGenericRead | FileGenericExecute;
+            if ((currentRights & requiredRights) == requiredRights)
+                return;
+
             var access = new ExplicitAccess
             {
-                AccessPermissions = rights,
+                AccessPermissions = requiredRights,
                 AccessMode = AccessMode.GrantAccess,
-                Inheritance = inheritance,
+                Inheritance = Directory.Exists(fullPath) ? SubContainersAndObjectsInherit : 0,
                 Trustee = trustee
             };
             error = SetEntriesInAcl(1, ref access, oldDacl, out newDacl);
-            if (error != 0) throw new Win32Exception((int)error, "SetEntriesInAcl failed for " + fullPath);
+            if (error != 0)
+                throw new Win32Exception((int)error, "SetEntriesInAcl failed for " + fullPath);
             error = SetNamedSecurityInfo(
                 fullPath,
-                1,
+                objectType,
                 DaclSecurityInformation,
                 IntPtr.Zero,
                 IntPtr.Zero,
                 newDacl,
                 IntPtr.Zero);
-            if (error != 0) throw new Win32Exception((int)error, "SetNamedSecurityInfo failed for " + fullPath);
-            grants.Add(new AclGrant(fullPath, directory));
-        }
-        finally
-        {
-            if (newDacl != IntPtr.Zero) LocalFree(newDacl);
-            if (securityDescriptor != IntPtr.Zero) LocalFree(securityDescriptor);
-        }
-    }
-
-    private static void RemoveGrant(AclGrant grant, IntPtr sid)
-    {
-        var error = GetNamedSecurityInfo(
-            grant.Path,
-            1,
-            DaclSecurityInformation,
-            out _,
-            out _,
-            out var oldDacl,
-            out _,
-            out var securityDescriptor);
-        if (error != 0) throw new Win32Exception((int)error, "GetNamedSecurityInfo(cleanup) failed.");
-        IntPtr newDacl = IntPtr.Zero;
-        try
-        {
-            var access = new ExplicitAccess
-            {
-                AccessPermissions = 0,
-                AccessMode = AccessMode.RevokeAccess,
-                Inheritance = 0,
-                Trustee = new Trustee
-                {
-                    MultipleTrustee = IntPtr.Zero,
-                    MultipleTrusteeOperation = 0,
-                    TrusteeForm = TrusteeForm.TrusteeIsSid,
-                    TrusteeType = TrusteeType.TrusteeIsUser,
-                    Name = sid
-                }
-            };
-            error = SetEntriesInAcl(1, ref access, oldDacl, out newDacl);
-            if (error != 0) throw new Win32Exception((int)error, "SetEntriesInAcl(cleanup) failed.");
-            error = SetNamedSecurityInfo(
-                grant.Path,
-                1,
-                DaclSecurityInformation,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                newDacl,
-                IntPtr.Zero);
-            if (error != 0) throw new Win32Exception((int)error, "SetNamedSecurityInfo(cleanup) failed.");
+            if (error != 0)
+                throw new Win32Exception((int)error, "SetNamedSecurityInfo failed for " + fullPath);
         }
         finally
         {
