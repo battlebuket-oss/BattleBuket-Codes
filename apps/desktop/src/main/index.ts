@@ -650,7 +650,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
         status: result.status,
         at: new Date().toISOString(),
         changedFileCount: result.changedFiles.length,
-        verificationPassed: result.verification.every(check => check.passed)
+        verificationPassed: result.status === "succeeded" && result.verification.length > 0 && result.verification.every(check => check.passed)
       });
     } catch {
       if (mainWindow && !mainWindow.isDestroyed()) {
