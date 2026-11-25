@@ -55,29 +55,44 @@ jobs:
           if ($info.Length -lt 50000) { throw "AppContainer broker executable is unexpectedly small." }
           $probe = Start-Process -FilePath $broker -Wait -PassThru -NoNewWindow
           if ($probe.ExitCode -ne 125) { throw "Broker did not reject invalid invocation closed (exit=$($probe.ExitCode))." }
-      - name: Prepare persistent AppContainer profile before parallel test workers
+      - name: Prepare and verify disposable AppContainer profile isolation
         shell: pwsh
         run: |
           Write-Host "Profile context: USERPROFILE=$env:USERPROFILE LOCALAPPDATA=$env:LOCALAPPDATA"
           $broker = "apps/desktop/resources/windows/publish/BattleBuket.AppContainerBroker.exe"
-          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-prepare.stdout.log"
-          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-prepare.stderr.log"
-          $prepare = Start-Process -FilePath $broker -ArgumentList @("--prepare") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-          if ($prepare.ExitCode -ne 0) {
-            if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
-            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
-            throw "AppContainer profile preparation failed with exit code $($prepare.ExitCode)."
+          function New-AppContainerProfile([string]$label) {
+            $stdout = Join-Path $env:RUNNER_TEMP ($label + ".stdout.log")
+            $stderr = Join-Path $env:RUNNER_TEMP ($label + ".stderr.log")
+            $prepare = Start-Process -FilePath $broker -ArgumentList @("--prepare") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+            if ($prepare.ExitCode -ne 0) {
+              if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
+              if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+              throw "AppContainer profile preparation failed with exit code $($prepare.ExitCode)."
+            }
+            return (Get-Content $stdout -Raw | ConvertFrom-Json)
           }
-          $sandboxRoot = (Get-Content $stdout -Raw).Trim()
-          $packagesRoot = Join-Path $env:LOCALAPPDATA "Packages"
-          $expectedPrefix = [IO.Path]::GetFullPath($packagesRoot).TrimEnd('\') + '\'
-          $fullSandboxRoot = [IO.Path]::GetFullPath($sandboxRoot)
-          if (-not $fullSandboxRoot.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase) -or
-              $fullSandboxRoot -notmatch '\\AC\\Temp\\BattleBuketCodes_[0-9a-f]{32}$') {
-            throw "AppContainer broker returned a sandbox path outside the expected Packages/<profile>/AC/Temp location: $fullSandboxRoot"
+          $first = New-AppContainerProfile "battlebuket-appcontainer-profile-a"
+          $second = New-AppContainerProfile "battlebuket-appcontainer-profile-b"
+          if ($first.AppContainerProfileName -eq $second.AppContainerProfileName) {
+            throw "Separate verification runs unexpectedly received the same AppContainer profile identity."
           }
-          Write-Host "AppContainer profile initialized and returned an isolated AC\Temp path."
-          Remove-Item -LiteralPath $fullSandboxRoot -Recurse -Force
+          if ($first.SandboxRoot -eq $second.SandboxRoot) {
+            throw "Separate verification runs unexpectedly shared the same private scratch directory."
+          }
+          $packagesRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA "Packages"))
+          foreach ($profile in @($first, $second)) {
+            $fullSandboxRoot = [IO.Path]::GetFullPath($profile.SandboxRoot)
+            $expectedPrefix = $packagesRoot.TrimEnd('\') + '\'
+            if (-not $fullSandboxRoot.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+                $fullSandboxRoot -notmatch '\\AC\\Temp\\BattleBuketCodes_[0-9a-f]{32}$' -or
+                $profile.AppContainerProfileName -notmatch '^BattleBuketCodes_[0-9a-f]{32}$') {
+              throw "AppContainer broker returned a profile or path outside the expected per-run AC\Temp location: $fullSandboxRoot"
+            }
+            if (Test-Path $fullSandboxRoot) { Remove-Item -LiteralPath $fullSandboxRoot -Recurse -Force }
+            $cleanup = Start-Process -FilePath $broker -ArgumentList @("--cleanup", $profile.AppContainerProfileName) -Wait -PassThru -NoNewWindow
+            if ($cleanup.ExitCode -ne 0) { throw "Could not remove unused AppContainer profile $($profile.AppContainerProfileName)." }
+          }
+          Write-Host "Independent runs receive unique AppContainer identities and private profile storage."
       - name: Verify AppContainer child process and output pipe
         shell: pwsh
         run: |
@@ -85,11 +100,13 @@ jobs:
           $prepareOut = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-child-prepare.log"
           $prepare = Start-Process -FilePath $broker -ArgumentList @("--prepare") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $prepareOut
           if ($prepare.ExitCode -ne 0) { throw "Could not prepare AppContainer storage for the child-process probe." }
-          $sandboxRoot = (Get-Content $prepareOut -Raw).Trim()
+          $profile = Get-Content $prepareOut -Raw | ConvertFrom-Json
+          $sandboxRoot = $profile.SandboxRoot
           $workspace = Join-Path $sandboxRoot "workspace"
           New-Item -ItemType Directory -Path $workspace -Force | Out-Null
           $requestPath = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-child-request.json"
           $request = @{
+            appContainerProfileName = $profile.AppContainerProfileName
             workspace = $workspace
             scratch = $sandboxRoot
             executable = (Join-Path $env:SystemRoot "System32\cmd.exe")
@@ -109,6 +126,7 @@ jobs:
           $child = Start-Process -FilePath $broker -ArgumentList @("--request", $requestPath) -Wait:$false -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
           if (-not $child.WaitForExit(30000)) {
             $child.Kill($true)
+            $cleanup = Start-Process -FilePath $broker -ArgumentList @("--cleanup", $profile.AppContainerProfileName) -Wait -PassThru -NoNewWindow
             throw "AppContainer child-process probe exceeded 30 seconds."
           }
           if ($child.ExitCode -ne 0) {
@@ -120,7 +138,7 @@ jobs:
             if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
             throw "AppContainer child process did not return its output marker."
           }
-          Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
+          Write-Host "AppContainer child process ran with a dedicated per-run SID and returned output."
       - name: Diagnose Node executable and shell execution inside AppContainer
         shell: pwsh
         run: |
@@ -131,11 +149,13 @@ jobs:
             $prepareOut = Join-Path $env:RUNNER_TEMP ($label + "-prepare.log")
             $prepare = Start-Process -FilePath $broker -ArgumentList @("--prepare") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $prepareOut
             if ($prepare.ExitCode -ne 0) { throw "Could not prepare AppContainer storage for $label." }
-            $sandboxRoot = (Get-Content $prepareOut -Raw).Trim()
+            $profile = Get-Content $prepareOut -Raw | ConvertFrom-Json
+            $sandboxRoot = $profile.SandboxRoot
             $workspace = Join-Path $sandboxRoot "workspace"
             New-Item -ItemType Directory -Path $workspace -Force | Out-Null
             $requestPath = Join-Path $env:RUNNER_TEMP ($label + "-request.json")
             $request = @{
+              appContainerProfileName = $profile.AppContainerProfileName
               workspace = $workspace
               scratch = $sandboxRoot
               executable = $executable
@@ -156,8 +176,11 @@ jobs:
             $stdout = Join-Path $env:RUNNER_TEMP ($label + ".stdout.log")
             $stderr = Join-Path $env:RUNNER_TEMP ($label + ".stderr.log")
             $child = Start-Process -FilePath $broker -ArgumentList @("--request", $requestPath) -Wait:$false -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-            $completed = $child.WaitForExit(15000)
-            if (-not $completed) { $child.Kill($true) }
+            $completed = $child.WaitForExit(20000)
+            if (-not $completed) {
+              $child.Kill($true)
+              $cleanup = Start-Process -FilePath $broker -ArgumentList @("--cleanup", $profile.AppContainerProfileName) -Wait -PassThru -NoNewWindow
+            }
             $outText = if (Test-Path $stdout) { Get-Content $stdout -Raw } else { "" }
             $errText = if (Test-Path $stderr) { Get-Content $stderr -Raw } else { "" }
             Write-Host "===== $label ====="
@@ -166,7 +189,6 @@ jobs:
             Write-Host "Completed: $completed; exit: $(if ($completed) { $child.ExitCode } else { 'timeout' })"
             Write-Host "stdout: $outText"
             Write-Host "stderr: $errText"
-            Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
             return [PSCustomObject]@{ Label = $label; Completed = $completed; ExitCode = if ($completed) { $child.ExitCode } else { 124 }; Stdout = $outText; Stderr = $errText }
           }
           $direct = Invoke-AppContainerProbe "battlebuket-node-direct" $nodeExe @("--version")
