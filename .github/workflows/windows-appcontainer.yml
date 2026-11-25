@@ -121,56 +121,60 @@ jobs:
             throw "AppContainer child process did not return its output marker."
           }
           Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
-      - name: Verify Node runtime when launched by sandboxed cmd.exe
+      - name: Diagnose Node executable and shell execution inside AppContainer
         shell: pwsh
         run: |
           $broker = "apps/desktop/resources/windows/publish/BattleBuket.AppContainerBroker.exe"
           $nodeExe = (Get-Command node.exe).Source
-          $prepareOut = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-cmd-node-prepare.log"
-          $prepare = Start-Process -FilePath $broker -ArgumentList @("--prepare") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $prepareOut
-          if ($prepare.ExitCode -ne 0) { throw "Could not prepare AppContainer storage for cmd/Node probe." }
-          $sandboxRoot = (Get-Content $prepareOut -Raw).Trim()
-          $workspace = Join-Path $sandboxRoot "workspace"
-          New-Item -ItemType Directory -Path $workspace -Force | Out-Null
-          $requestPath = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-cmd-node-request.json"
-          $nodeCommand = "node --version"
-          $request = @{
-            workspace = $workspace
-            scratch = $sandboxRoot
-            executable = (Join-Path $env:SystemRoot "System32\cmd.exe")
-            args = @("/d", "/c", $nodeCommand)
-            environment = @{
-              PATH = ((Split-Path -Parent $nodeExe) + ";" + (Join-Path $env:SystemRoot "System32"))
-              SystemRoot = $env:SystemRoot
-              TEMP = $sandboxRoot
-              TMP = $sandboxRoot
-              USERPROFILE = $sandboxRoot
-              APPDATA = $sandboxRoot
-              LOCALAPPDATA = $sandboxRoot
-              PATHEXT = ".COM;.EXE;.BAT;.CMD"
+          $path = (Split-Path -Parent $nodeExe) + ";" + (Join-Path $env:SystemRoot "System32")
+          function Invoke-AppContainerProbe([string]$label, [string]$executable, [string[]]$arguments) {
+            $prepareOut = Join-Path $env:RUNNER_TEMP ($label + "-prepare.log")
+            $prepare = Start-Process -FilePath $broker -ArgumentList @("--prepare") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $prepareOut
+            if ($prepare.ExitCode -ne 0) { throw "Could not prepare AppContainer storage for $label." }
+            $sandboxRoot = (Get-Content $prepareOut -Raw).Trim()
+            $workspace = Join-Path $sandboxRoot "workspace"
+            New-Item -ItemType Directory -Path $workspace -Force | Out-Null
+            $requestPath = Join-Path $env:RUNNER_TEMP ($label + "-request.json")
+            $request = @{
+              workspace = $workspace
+              scratch = $sandboxRoot
+              executable = $executable
+              args = $arguments
+              environment = @{
+                PATH = $path
+                SystemRoot = $env:SystemRoot
+                TEMP = $sandboxRoot
+                TMP = $sandboxRoot
+                USERPROFILE = $sandboxRoot
+                APPDATA = $sandboxRoot
+                LOCALAPPDATA = $sandboxRoot
+                PATHEXT = ".COM;.EXE;.BAT;.CMD"
+              }
+            }
+            $request | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $requestPath -Encoding utf8
+            $stdout = Join-Path $env:RUNNER_TEMP ($label + ".stdout.log")
+            $stderr = Join-Path $env:RUNNER_TEMP ($label + ".stderr.log")
+            $child = Start-Process -FilePath $broker -ArgumentList @("--request", $requestPath) -Wait:$false -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+            $completed = $child.WaitForExit(15000)
+            if (-not $completed) { $child.Kill($true) }
+            $outText = if (Test-Path $stdout) { Get-Content $stdout -Raw } else { "" }
+            $errText = if (Test-Path $stderr) { Get-Content $stderr -Raw } else { "" }
+            Write-Host "===== $label ====="
+            Write-Host "Executable: $executable"
+            Write-Host "Arguments: $($arguments -join ' ')"
+            Write-Host "Completed: $completed; exit: $(if ($completed) { $child.ExitCode } else { 'timeout' })"
+            Write-Host "stdout: $outText"
+            Write-Host "stderr: $errText"
+            Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
+            return [PSCustomObject]@{ Label = $label; Completed = $completed; ExitCode = if ($completed) { $child.ExitCode } else { 124 }; Stdout = $outText; Stderr = $errText }
+          }
+          $direct = Invoke-AppContainerProbe "battlebuket-node-direct" $nodeExe @("--version")
+          $shell = Invoke-AppContainerProbe "battlebuket-node-via-cmd" (Join-Path $env:SystemRoot "System32\cmd.exe") @("/d", "/c", "node --version")
+          foreach ($probe in @($direct, $shell)) {
+            if (-not $probe.Completed -or $probe.ExitCode -ne 0 -or $probe.Stdout -notmatch "v\d+\.\d+\.\d+") {
+              throw "AppContainer Node probe failed: $($probe.Label) (exit $($probe.ExitCode))."
             }
           }
-          $request | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $requestPath -Encoding utf8
-          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-cmd-node.stdout.log"
-          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-cmd-node.stderr.log"
-          $child = Start-Process -FilePath $broker -ArgumentList @("--request", $requestPath) -Wait:$false -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-          if (-not $child.WaitForExit(15000)) {
-            Write-Host "===== cmd/Node stdout ====="
-            if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
-            Write-Host "===== cmd/Node stderr ====="
-            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
-            $child.Kill($true)
-            throw "Node did not complete --version when launched by AppContainer cmd.exe."
-          }
-          if ($child.ExitCode -ne 0) {
-            if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
-            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
-            throw "Node via AppContainer cmd.exe failed with exit code $($child.ExitCode)."
-          }
-          $version = Get-Content $stdout -Raw
-          if ($version -notmatch "v\d+\.\d+\.\d+") { throw "cmd.exe did not return a valid Node version: $version" }
-          Write-Host "Node via AppContainer cmd.exe: $version"
-          Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
       - name: Typecheck and lint
         run: |
           pnpm lint
