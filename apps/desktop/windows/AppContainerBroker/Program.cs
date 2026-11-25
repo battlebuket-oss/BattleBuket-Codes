@@ -9,6 +9,7 @@ internal static class Program
     private const uint FileGenericRead = 0x00120089;
     private const uint FileGenericWrite = 0x00120116;
     private const uint FileGenericExecute = 0x001200A0;
+    private const uint FileTraverseAndReadAttributes = 0x000000A0;
     private const uint SubContainersAndObjectsInherit = 0x00000003;
     private const uint DaclSecurityInformation = 0x00000004;
     private const uint LabelSecurityInformation = 0x00000010;
@@ -420,6 +421,11 @@ internal static class Program
                 throw new SecurityException("CreateAppContainerProfile failed with HRESULT 0x" + hr.ToString("X8") + ".");
 
             const uint scratchRights = FileGenericRead | FileGenericWrite | FileGenericExecute | 0x00010000;
+            foreach (var ancestor in GetDirectoryAncestors(request.Scratch))
+            {
+                if (!IsReadOnlySystemPath(ancestor))
+                    AddGrant(ancestor, appContainerSid, FileTraverseAndReadAttributes, 0, grants, true);
+            }
             AddGrant(request.Scratch, appContainerSid, scratchRights, SubContainersAndObjectsInherit, grants, true);
             AddLowIntegrityLabel(request.Scratch, labels);
             foreach (var entry in EnumerateScratchEntries(request.Scratch))
@@ -624,6 +630,16 @@ internal static class Program
             if (appContainerSid != IntPtr.Zero) FreeSid(appContainerSid);
             try { _ = DeleteAppContainerProfile(profileName); }
             catch { /* The per-run profile is unique; an inaccessible profile is not reused. */ }
+        }
+    }
+
+    private static IEnumerable<string> GetDirectoryAncestors(string path)
+    {
+        var current = Directory.GetParent(Path.GetFullPath(path));
+        while (current is not null)
+        {
+            yield return current.FullName;
+            current = current.Parent;
         }
     }
 
