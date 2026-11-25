@@ -514,7 +514,7 @@ internal static class Program
             };
             var startupEx = new StartupInfoEx { StartupInfo = startup, AttributeList = attributeList };
             var commandLine = new StringBuilder(BuildCommandLine(executable, request.Args));
-            environmentPointer = BuildEnvironmentBlock(request.Environment);
+            environmentPointer = BuildEnvironmentBlock(request.Environment, request.Workspace);
 
             job = CreateJobObject(IntPtr.Zero, null);
             if (job == IntPtr.Zero) ThrowLastError("CreateJobObject");
@@ -866,17 +866,33 @@ internal static class Program
         return resolved;
     }
 
-    private static IntPtr BuildEnvironmentBlock(Dictionary<string, string> environment)
+    private static IntPtr BuildEnvironmentBlock(Dictionary<string, string> environment, string currentDirectory)
     {
         var normalized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in environment)
         {
             if (!string.IsNullOrWhiteSpace(pair.Key)) normalized[pair.Key] = pair.Value;
         }
-        var lines = normalized
+
+        // Windows requires a hidden =X: environment entry for the current drive when a
+        // custom Unicode environment block is supplied to CreateProcess.
+        var currentPath = Path.GetFullPath(currentDirectory);
+        var driveRoot = Path.GetPathRoot(currentPath);
+        var entries = new List<string>();
+        if (driveRoot is { Length: 3 } &&
+            char.IsLetter(driveRoot[0]) &&
+            driveRoot[1] == ':' &&
+            driveRoot[2] == Path.DirectorySeparatorChar)
+        {
+            var driveVariable = "=" + char.ToUpperInvariant(driveRoot[0]) + ":";
+            entries.Add(driveVariable + "=" + currentPath);
+        }
+
+        entries.AddRange(normalized
             .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(pair => pair.Key + "=" + pair.Value);
-        var block = string.Join("\0", lines) + "\0\0";
+            .Select(pair => pair.Key + "=" + pair.Value));
+
+        var block = string.Join("\0", entries) + "\0\0";
         return Marshal.StringToHGlobalUni(block);
     }
 
