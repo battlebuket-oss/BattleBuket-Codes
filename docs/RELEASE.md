@@ -19,6 +19,10 @@ Configure these in the repository's Settings → Secrets and variables → Actio
 
 Linux artifacts are not code-signed by this workflow. Add repository secrets only after confirming the certificate format and ownership.
 
+## SBOM and license review
+
+Every candidate release should retain the `security-inventory.yml` workflow artifacts for the exact release commit. Review `battlebuket-codes.spdx.json`, `LICENSE-INVENTORY.csv` and `LICENSE-INVENTORY-SUMMARY.md` before signing/publishing. The presence of an SPDX file is not itself license approval; resolve unknown license entries and review all distribution obligations.
+
 ## Release procedure
 
 1. Confirm the default branch is green for audit, lint, typecheck, tests, build, CodeQL, and secret scanning.
