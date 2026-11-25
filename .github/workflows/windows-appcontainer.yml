@@ -180,6 +180,56 @@ jobs:
             throw "Node did not return its AppContainer script marker. Output: $marker"
           }
           Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
+      - name: Verify Node runtime when launched by sandboxed cmd.exe
+        shell: pwsh
+        run: |
+          $broker = "apps/desktop/resources/windows/publish/BattleBuket.AppContainerBroker.exe"
+          $nodeExe = (Get-Command node.exe).Source
+          $prepareOut = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-cmd-node-prepare.log"
+          $prepare = Start-Process -FilePath $broker -ArgumentList @("--prepare") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $prepareOut
+          if ($prepare.ExitCode -ne 0) { throw "Could not prepare AppContainer storage for cmd/Node probe." }
+          $sandboxRoot = (Get-Content $prepareOut -Raw).Trim()
+          $workspace = Join-Path $sandboxRoot "workspace"
+          New-Item -ItemType Directory -Path $workspace -Force | Out-Null
+          $requestPath = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-cmd-node-request.json"
+          $nodeCommand = '"' + $nodeExe + '" --version'
+          $request = @{
+            workspace = $workspace
+            scratch = $sandboxRoot
+            executable = (Join-Path $env:SystemRoot "System32\cmd.exe")
+            args = @("/d", "/c", $nodeCommand)
+            environment = @{
+              PATH = ((Split-Path -Parent $nodeExe) + ";" + (Join-Path $env:SystemRoot "System32"))
+              SystemRoot = $env:SystemRoot
+              TEMP = $sandboxRoot
+              TMP = $sandboxRoot
+              USERPROFILE = $sandboxRoot
+              APPDATA = $sandboxRoot
+              LOCALAPPDATA = $sandboxRoot
+              PATHEXT = ".COM;.EXE;.BAT;.CMD"
+            }
+          }
+          $request | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $requestPath -Encoding utf8
+          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-cmd-node.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-cmd-node.stderr.log"
+          $child = Start-Process -FilePath $broker -ArgumentList @("--request", $requestPath) -Wait:$false -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if (-not $child.WaitForExit(15000)) {
+            Write-Host "===== cmd/Node stdout ====="
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
+            Write-Host "===== cmd/Node stderr ====="
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+            $child.Kill($true)
+            throw "Node did not complete --version when launched by AppContainer cmd.exe."
+          }
+          if ($child.ExitCode -ne 0) {
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+            throw "Node via AppContainer cmd.exe failed with exit code $($child.ExitCode)."
+          }
+          $version = Get-Content $stdout -Raw
+          if ($version -notmatch "v\d+\.\d+\.\d+") { throw "cmd.exe did not return a valid Node version: $version" }
+          Write-Host "Node via AppContainer cmd.exe: $version"
+          Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
       - name: Typecheck and lint
         run: |
           pnpm lint
