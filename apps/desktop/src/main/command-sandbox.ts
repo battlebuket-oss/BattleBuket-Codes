@@ -89,10 +89,13 @@ export async function prepareSandboxedCommand(
   const scratchTmp = join(scratch, "tmp");
   const scratchCache = join(scratch, "cache");
   const scratchCorepack = join(scratch, "corepack");
-  const scratchWorkspace = join(scratch, "workspace");
   const scratchRoaming = join(scratchHome, "AppData", "Roaming");
   const scratchLocal = join(scratchHome, "AppData", "Local");
-  const dispose = async () => fs.rm(scratch, { recursive: true, force: true });
+  let appContainerScratch: string | null = null;
+  const dispose = async () => {
+    if (appContainerScratch) await fs.rm(appContainerScratch, { recursive: true, force: true });
+    await fs.rm(scratch, { recursive: true, force: true });
+  };
   try {
     await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack, scratchWorkspace, scratchRoaming, scratchLocal].map(path => fs.mkdir(path, { recursive: true })));
     const corepackHome = process.env.COREPACK_HOME || join(homedir(), ".cache", "node", "corepack");
@@ -103,30 +106,6 @@ export async function prepareSandboxedCommand(
     const pathDirectories = await existingPathDirectories();
 
     if (process.platform === "win32") {
-      // Never lower the integrity label on the user's actual project. Windows AppContainer
-      // tokens run at low integrity, so commands execute against a private, disposable copy.
-      await fs.rm(scratchWorkspace, { recursive: true, force: true });
-      let externalSymlink: string | null = null;
-      await fs.cp(workspace, scratchWorkspace, {
-        recursive: true,
-        dereference: true,
-        filter: async source => {
-          let stat;
-          try { stat = await fs.lstat(source); }
-          catch { return false; }
-          if (!stat.isSymbolicLink()) return true;
-          const target = await fs.realpath(source).catch(() => null);
-          if (!target || !isInside(workspace, target)) {
-            externalSymlink = source;
-            return false;
-          }
-          return true;
-        }
-      });
-      if (externalSymlink) {
-        throw new Error("Windows AppContainer verification is blocked because the project copy contains a symbolic link outside the selected workspace: " + externalSymlink);
-      }
-
       const brokerCandidates = [
         process.env.BATTLEBUKET_APPCONTAINER_BROKER,
         join(process.cwd(), "apps", "desktop", "resources", "windows", "publish", "BattleBuket.AppContainerBroker.exe"),
@@ -144,23 +123,96 @@ export async function prepareSandboxedCommand(
         throw new Error("Windows project scripts are blocked because the signed-in desktop installation does not contain the Windows AppContainer broker. Rebuild the Windows app with the .NET 8 SDK; unrestricted execution is never used.");
       }
 
+      const hostEnvironment = {
+        PATH: process.env.PATH ?? "",
+        SystemRoot: process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows",
+        TEMP: process.env.TEMP ?? tmpdir(),
+        TMP: process.env.TMP ?? tmpdir()
+      };
+      const prepared = spawnSync(broker, ["--prepare"], {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 15_000,
+        maxBuffer: 1024 * 1024,
+        env: hostEnvironment
+      });
+      if (prepared.error || prepared.status !== 0) {
+        throw new Error(
+          "Windows AppContainer storage could not be prepared. " +
+          (prepared.error?.message ?? prepared.stderr?.trim() ?? ("Broker exit code " + String(prepared.status)))
+        );
+      }
+      const containerRootText = prepared.stdout.trim();
+      if (!containerRootText || containerRootText.includes("\\n")) {
+        throw new Error("The Windows AppContainer broker returned an invalid temporary workspace path.");
+      }
+      const containerRoot = await fs.realpath(containerRootText);
+      appContainerScratch = containerRoot;
+      const localAppData = baseEnvironment.LOCALAPPDATA ?? process.env.LOCALAPPDATA;
+      if (!localAppData) throw new Error("Windows LOCALAPPDATA is unavailable; AppContainer storage cannot be verified.");
+      const expectedTempRoot = join(localAppData, "Packages", "BattleBuketCodesProjectVerification", "AC", "Temp");
+      const expectedTempReal = await fs.realpath(expectedTempRoot);
+      if (!isInside(expectedTempReal, containerRoot) || resolve(expectedTempReal) === resolve(containerRoot)) {
+        throw new Error("Windows AppContainer storage was not created under the expected per-profile Temp directory.");
+      }
+
+      // The profile's own AC\\Temp directory is provisioned for this AppContainer by Windows.
+      // Commands and all generated files stay below this per-run directory; the original project is never relabelled.
+      const sandboxHome = join(containerRoot, "home");
+      const sandboxTmp = join(containerRoot, "tmp");
+      const sandboxCache = join(containerRoot, "cache");
+      const sandboxCorepack = join(containerRoot, "corepack");
+      const sandboxWorkspace = join(containerRoot, "workspace");
+      const sandboxRoaming = join(sandboxHome, "AppData", "Roaming");
+      const sandboxLocal = join(sandboxHome, "AppData", "Local");
+      await Promise.all([
+        sandboxHome, sandboxTmp, sandboxCache, sandboxCorepack, sandboxWorkspace,
+        sandboxRoaming, sandboxLocal
+      ].map(path => fs.mkdir(path, { recursive: true })));
+
+      let externalSymlink: string | null = null;
+      await fs.cp(workspace, sandboxWorkspace, {
+        recursive: true,
+        dereference: true,
+        filter: async source => {
+          let stat;
+          try { stat = await fs.lstat(source); }
+          catch { return false; }
+          if (!stat.isSymbolicLink()) return true;
+          const target = await fs.realpath(source).catch(() => null);
+          if (!target || !isInside(workspace, target)) {
+            externalSymlink = source;
+            return false;
+          }
+          return true;
+        }
+      });
+      if (externalSymlink) {
+        throw new Error("Windows AppContainer verification is blocked because the project contains a symbolic link outside the selected workspace: " + externalSymlink);
+      }
+
+      if (hasCorepackHome) {
+        await fs.cp(scratchCorepack, sandboxCorepack, { recursive: true, dereference: true, force: true });
+      }
+
       const windowsEnvironment: NodeJS.ProcessEnv = { ...baseEnvironment };
       windowsEnvironment.PATH = baseEnvironment.PATH ?? baseEnvironment.Path ?? process.env.PATH ?? "";
       delete windowsEnvironment.Path;
-      windowsEnvironment.HOME = scratchHome;
-      windowsEnvironment.USERPROFILE = scratchHome;
-      windowsEnvironment.APPDATA = scratchRoaming;
-      windowsEnvironment.LOCALAPPDATA = scratchLocal;
-      windowsEnvironment.TEMP = scratchTmp;
-      windowsEnvironment.TMP = scratchTmp;
-      windowsEnvironment.TMPDIR = scratchTmp;
-      windowsEnvironment.COREPACK_HOME = scratchCorepack;
+      windowsEnvironment.HOME = sandboxHome;
+      windowsEnvironment.USERPROFILE = sandboxHome;
+      windowsEnvironment.APPDATA = sandboxRoaming;
+      windowsEnvironment.LOCALAPPDATA = sandboxLocal;
+      windowsEnvironment.TEMP = sandboxTmp;
+      windowsEnvironment.TMP = sandboxTmp;
+      windowsEnvironment.TMPDIR = sandboxTmp;
+      windowsEnvironment.XDG_CACHE_HOME = sandboxCache;
+      windowsEnvironment.COREPACK_HOME = sandboxCorepack;
       windowsEnvironment.PATHEXT = baseEnvironment.PATHEXT ?? process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD";
 
       const requestPath = join(scratch, "appcontainer-request.json");
       await fs.writeFile(requestPath, JSON.stringify({
-        workspace: scratchWorkspace,
-        scratch,
+        workspace: sandboxWorkspace,
+        scratch: containerRoot,
         executable,
         args: commandArgs,
         environment: Object.fromEntries(
@@ -171,13 +223,8 @@ export async function prepareSandboxedCommand(
       return {
         executable: broker,
         args: ["--request", requestPath],
-        cwd: scratchWorkspace,
-        env: {
-          PATH: process.env.PATH ?? "",
-          SystemRoot: process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows",
-          TEMP: scratchTmp,
-          TMP: scratchTmp
-        },
+        cwd: sandboxWorkspace,
+        env: hostEnvironment,
         dispose
       };
     }
