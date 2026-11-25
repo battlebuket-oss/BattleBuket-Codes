@@ -97,7 +97,7 @@ export async function prepareSandboxedCommand(
     await fs.rm(scratch, { recursive: true, force: true });
   };
   try {
-    await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack, scratchWorkspace, scratchRoaming, scratchLocal].map(path => fs.mkdir(path, { recursive: true })));
+    await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack, scratchRoaming, scratchLocal].map(path => fs.mkdir(path, { recursive: true })));
     const corepackHome = process.env.COREPACK_HOME || join(homedir(), ".cache", "node", "corepack");
     const hasCorepackHome = await isDirectory(corepackHome);
     if (hasCorepackHome) {
@@ -143,7 +143,7 @@ export async function prepareSandboxedCommand(
         );
       }
       const containerRootText = prepared.stdout.trim();
-      if (!containerRootText || containerRootText.includes("\\n")) {
+      if (!containerRootText || containerRootText.includes("\n")) {
         throw new Error("The Windows AppContainer broker returned an invalid temporary workspace path.");
       }
       const containerRoot = await fs.realpath(containerRootText);
