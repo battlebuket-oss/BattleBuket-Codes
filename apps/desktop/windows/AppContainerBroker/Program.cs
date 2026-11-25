@@ -7,7 +7,6 @@ using System.Text.Json;
 internal static class Program
 {
     private const uint FileGenericRead = 0x00120089;
-    private const uint FileGenericWrite = 0x00120116;
     private const uint FileGenericExecute = 0x001200A0;
     private const uint SubContainersAndObjectsInherit = 0x00000003;
     private const uint DaclSecurityInformation = 0x00000004;
@@ -194,8 +193,6 @@ internal static class Program
     private static extern void CoTaskMemFree(IntPtr memory);
 
     [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
-    private static extern int DeleteAppContainerProfile(string appContainerName);
-
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
     private static extern uint GetNamedSecurityInfo(
         string objectName,
@@ -206,22 +203,6 @@ internal static class Program
         out IntPtr dacl,
         out IntPtr sacl,
         out IntPtr securityDescriptor);
-
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ConvertStringSecurityDescriptorToSecurityDescriptor(
-        string stringSecurityDescriptor,
-        uint stringSDRevision,
-        out IntPtr securityDescriptor,
-        out uint securityDescriptorSize);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetSecurityDescriptorSacl(
-        IntPtr securityDescriptor,
-        [MarshalAs(UnmanagedType.Bool)] out bool saclPresent,
-        out IntPtr sacl,
-        [MarshalAs(UnmanagedType.Bool)] out bool saclDefaulted);
 
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
     private static extern uint GetEffectiveRightsFromAcl(
@@ -364,9 +345,6 @@ internal static class Program
         uint bufferLength,
         StringBuilder buffer,
         out IntPtr filePart);
-
-    private sealed record AclGrant(string Path, bool IsDirectory);
-    private sealed record IntegrityLabelGrant(string Path, IntPtr OriginalDescriptor, IntPtr OriginalSacl);
 
     private static int Main(string[] args)
     {
@@ -707,7 +685,7 @@ internal static class Program
         if (IsReadOnlySystemPath(fullPath))
             return;
 
-        var objectType = Directory.Exists(fullPath) ? 1u : 1u;
+        const uint objectType = 1;
         var error = GetNamedSecurityInfo(
             fullPath,
             objectType,
