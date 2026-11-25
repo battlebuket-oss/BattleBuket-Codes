@@ -427,7 +427,7 @@ internal static class Program
         {
             if (IsValidAppContainerProfileName(request.AppContainerProfileName))
             {
-                var cleanupResult = DeleteAppContainerProfile(request.AppContainerProfileName);
+                var cleanupResult = DeleteAppContainerProfileIfPresent(request.AppContainerProfileName);
                 if (cleanupResult != 0)
                 {
                     Console.Error.WriteLine(
@@ -447,11 +447,24 @@ internal static class Program
         return Guid.TryParseExact(profileName[AppContainerProfileNamePrefix.Length..], "N", out _);
     }
 
-    private static int CleanupPreparedProfile(string profileName)
+    private static int DeleteAppContainerProfileIfPresent(string profileName)
     {
         if (!IsValidAppContainerProfileName(profileName))
             throw new InvalidDataException("The temporary AppContainer profile name is invalid.");
         var result = DeleteAppContainerProfile(profileName);
+        if (result == 0) return 0;
+
+        // Treat an already-removed profile as successful cleanup. A nonzero delete
+        // result is an error only when Windows can still derive its AppContainer SID.
+        if (DeriveAppContainerSidFromAppContainerName(profileName, out var existingSid) != 0)
+            return 0;
+        FreeSid(existingSid);
+        return result;
+    }
+
+    private static int CleanupPreparedProfile(string profileName)
+    {
+        var result = DeleteAppContainerProfileIfPresent(profileName);
         if (result != 0)
             throw new SecurityException("DeleteAppContainerProfile failed with HRESULT 0x" + result.ToString("X8") + ".");
         return 0;
@@ -787,7 +800,7 @@ internal static class Program
         }
         catch
         {
-            _ = DeleteAppContainerProfile(profileName);
+            _ = DeleteAppContainerProfileIfPresent(profileName);
             throw;
         }
         finally
