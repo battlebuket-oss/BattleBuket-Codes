@@ -85,8 +85,11 @@ if (!document || !Array.isArray(document.packages) || document.packages.length =
 }
 
 const manifests = buildPnpmManifestIndex();
-const entries = document.packages
-  .filter(pkg => pkg && typeof pkg.name === "string" && pkg.SPDXID !== "SPDXRef-DOCUMENT")
+const npmComponents = document.packages.filter(pkg =>
+  pkg && typeof pkg.name === "string" && pkg.SPDXID !== "SPDXRef-DOCUMENT" &&
+  (pkg.externalRefs ?? []).some(ref => ref.referenceType === "purl" && String(ref.referenceLocator ?? "").startsWith("pkg:npm/"))
+);
+const entries = npmComponents
   .map(pkg => {
     const version = pkg.versionInfo ?? "";
     const manifestEntry = version ? manifests.get(pkg.name + "@" + version) : undefined;
@@ -126,7 +129,7 @@ const entries = document.packages
   })
   .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
 
-if (entries.length === 0) throw new Error("SPDX SBOM contains no usable package components.");
+if (entries.length === 0) throw new Error("SPDX SBOM contains no npm package components (pkg:npm PURLs).");
 
 const columns = [
   ["name", "name"],
@@ -162,7 +165,8 @@ const summary = [
   "# Dependency license inventory",
   "",
   `- SPDX SBOM: ${input}`,
-  `- Package components: ${entries.length}`,
+  `- npm package components in SPDX SBOM: ${entries.length}`,
+  `- Non-npm SPDX components retained in SBOM but excluded from this npm license table: ${document.packages.length - entries.length - 1}`,
   `- Components with a machine-readable SPDX/package.json license expression: ${known}`,
   `- Components using package.json "SEE LICENSE IN" references: ${licenseReferences.length}`,
   `- Components with a license file but no resolved expression: ${fileOnly.length}`,
