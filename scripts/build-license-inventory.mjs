@@ -175,8 +175,8 @@ const summary = [
   "## Evidence source counts",
   ...[...byEvidence.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([source, count]) => `- ${source}: ${count}`),
   "",
-  unknown.length || fileOnly.length
-    ? "## Components requiring manual review\n\n" + [...fileOnly, ...unknown].map(entry => `- ${entry.name}${entry.version ? "@" + entry.version : ""} — ${entry.licenseEvidence}`).join("\n")
+  unknown.length || fileOnly.length || licenseReferences.length
+    ? "## Components requiring manual review\n\n" + [...licenseReferences, ...fileOnly, ...unknown].map(entry => `- ${entry.name}${entry.version ? "@" + entry.version : ""} — ${entry.licenseEvidence}`).join("\n")
     : "All package components have a machine-readable license expression. This is an inventory result, not a legal compatibility determination.",
   "",
   "Review this inventory for license obligations, notices, copyleft/reciprocal terms, dual licensing, and transitive dependencies before release.",
