@@ -129,7 +129,7 @@ function createWindow(): void {
     width: 1500, height: 940, minWidth: 1100, minHeight: 700,
     backgroundColor: "#080b10", title: "BattleBuket Codes",
     webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
+      preload: join(__dirname, "../preload/index.cjs"),
       contextIsolation: true, nodeIntegration: false, sandbox: true
     }
   });
