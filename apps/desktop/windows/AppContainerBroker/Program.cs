@@ -30,6 +30,12 @@ internal static class Program
     private const int ErrorAlreadyExistsHResult = unchecked((int)0x800700B7);
     private const string AppContainerProfileName = "BattleBuketCodesProjectVerification";
     private const string AppContainerProfileMutexName = @"Local\BattleBuketCodes-AppContainerProfile-Lock";
+    private static bool DiagnosticsEnabled;
+
+    private static void Trace(string message)
+    {
+        if (DiagnosticsEnabled) Console.Error.WriteLine("[AppContainerBroker] " + message);
+    }
 
     private sealed class BrokerRequest
     {
@@ -409,13 +415,8 @@ internal static class Program
 
     private static int RunInAppContainer(BrokerRequest request)
     {
-        var diagnostics = request.Environment.TryGetValue("BATTLEBUKET_APPCONTAINER_DIAGNOSTICS", out var diagnosticsValue) &&
+        DiagnosticsEnabled = request.Environment.TryGetValue("BATTLEBUKET_APPCONTAINER_DIAGNOSTICS", out var diagnosticsValue) &&
             string.Equals(diagnosticsValue, "1", StringComparison.Ordinal);
-        void Trace(string message)
-        {
-            if (diagnostics) Console.Error.WriteLine("[AppContainerBroker] " + message);
-        }
-
         var executable = ResolveExecutable(request.Executable, request.Environment);
         Trace("Resolved requested executable.");
         IntPtr appContainerSid = IntPtr.Zero;
@@ -784,7 +785,11 @@ internal static class Program
         while (!string.IsNullOrWhiteSpace(current))
         {
             if (!IsReadOnlySystemPath(current))
+            {
+                Trace("Traverse ACL: " + current);
                 EnsureSpecificRights(current, sid, FileTraverseAndReadAttributes, false);
+                Trace("Traverse ACL completed: " + current);
+            }
             var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(current));
             if (string.IsNullOrWhiteSpace(parent) || string.Equals(parent, current, StringComparison.OrdinalIgnoreCase))
                 break;
@@ -794,7 +799,9 @@ internal static class Program
 
     private static void EnsureReadExecuteGrant(string path, IntPtr sid)
     {
+        Trace("Read/execute ACL: " + path);
         EnsureSpecificRights(path, sid, FileGenericRead | FileGenericExecute, true);
+        Trace("Read/execute ACL completed: " + path);
     }
 
     private static void EnsureSpecificRights(string path, IntPtr sid, uint requiredRights, bool allowInheritance)
@@ -807,6 +814,7 @@ internal static class Program
             return;
 
         const uint objectType = 1;
+        Trace("GetNamedSecurityInfo: " + fullPath);
         var error = GetNamedSecurityInfo(
             fullPath,
             objectType,
@@ -818,6 +826,7 @@ internal static class Program
             out var securityDescriptor);
         if (error != 0)
             throw new Win32Exception((int)error, "GetNamedSecurityInfo failed for " + fullPath);
+        Trace("GetNamedSecurityInfo completed: " + fullPath);
 
         IntPtr newDacl = IntPtr.Zero;
         try
@@ -832,9 +841,11 @@ internal static class Program
             };
             if (oldDacl != IntPtr.Zero)
             {
+                Trace("GetEffectiveRightsFromAcl: " + fullPath);
                 error = GetEffectiveRightsFromAcl(oldDacl, ref trustee, out var currentRights);
                 if (error != 0)
                     throw new Win32Exception((int)error, "GetEffectiveRightsFromAcl failed for " + fullPath);
+                Trace("GetEffectiveRightsFromAcl completed: " + fullPath + " (0x" + currentRights.ToString("X8") + ").");
                 if ((currentRights & requiredRights) == requiredRights)
                     return;
             }
@@ -846,9 +857,11 @@ internal static class Program
                 Inheritance = allowInheritance && isDirectory ? SubContainersAndObjectsInherit : 0,
                 Trustee = trustee
             };
+            Trace("SetEntriesInAcl: " + fullPath);
             error = SetEntriesInAcl(1, ref access, oldDacl, out newDacl);
             if (error != 0)
                 throw new Win32Exception((int)error, "SetEntriesInAcl failed for " + fullPath);
+            Trace("SetNamedSecurityInfo: " + fullPath);
             error = SetNamedSecurityInfo(
                 fullPath,
                 objectType,
@@ -859,6 +872,7 @@ internal static class Program
                 IntPtr.Zero);
             if (error != 0)
                 throw new Win32Exception((int)error, "SetNamedSecurityInfo failed for " + fullPath);
+            Trace("SetNamedSecurityInfo completed: " + fullPath);
         }
         finally
         {
