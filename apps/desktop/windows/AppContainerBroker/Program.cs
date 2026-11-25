@@ -192,7 +192,6 @@ internal static class Program
     [DllImport("ole32.dll")]
     private static extern void CoTaskMemFree(IntPtr memory);
 
-    [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
     private static extern uint GetNamedSecurityInfo(
         string objectName,
