@@ -422,6 +422,11 @@ internal static class Program
             const uint scratchRights = FileGenericRead | FileGenericWrite | FileGenericExecute | 0x00010000;
             AddGrant(request.Scratch, appContainerSid, scratchRights, SubContainersAndObjectsInherit, grants, true);
             AddLowIntegrityLabel(request.Scratch, labels);
+            foreach (var entry in EnumerateScratchEntries(request.Scratch))
+            {
+                AddGrant(entry.Path, appContainerSid, scratchRights, SubContainersAndObjectsInherit, grants, entry.IsDirectory);
+                AddLowIntegrityLabel(entry.Path, labels);
+            }
 
             var pathDirectories = GetPathDirectories(request.Environment).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var directory in pathDirectories)
@@ -619,6 +624,25 @@ internal static class Program
             if (appContainerSid != IntPtr.Zero) FreeSid(appContainerSid);
             try { _ = DeleteAppContainerProfile(profileName); }
             catch { /* The per-run profile is unique; an inaccessible profile is not reused. */ }
+        }
+    }
+
+    private static IEnumerable<(string Path, bool IsDirectory)> EnumerateScratchEntries(string root)
+    {
+        var pending = new Stack<string>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            var directory = pending.Pop();
+            foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
+            {
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new SecurityException("The private sandbox staging tree contains a reparse point: " + entry);
+                var isDirectory = (attributes & FileAttributes.Directory) != 0;
+                yield return (entry, isDirectory);
+                if (isDirectory) pending.Push(entry);
+            }
         }
     }
 
