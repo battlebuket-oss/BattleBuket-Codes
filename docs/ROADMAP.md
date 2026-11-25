@@ -56,7 +56,8 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add CI dependency vulnerability auditing for high-severity findings.
 - [x] Add CodeQL static analysis and full-history secret scanning.
 - [x] Add consent-gated, fail-closed project quality runners for Node.js, Go, Rust, Python and .NET, including npm, pnpm, Yarn Classic/Berry and Bun audits alongside Go, Rust, Python and .NET security checks, bounded timeouts/output and approval of the exact commands. These commands still run with the user account permissions and are not a sandbox.
-- [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
+- [x] Generate a pinned Syft SPDX SBOM and package/license inventory artifact with explicit missing-license review reporting.
+- [ ] Complete human review of all direct/transitive license obligations, provenance, SAST, adversarial prompt-injection tests, and independent diff review.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
 - [x] Add opt-in live Codex/Claude read-only and single-file workspace-write boundary smoke tests, including an outside-workspace sentinel check, plus a manual self-hosted runner workflow. The tests require real sign-in and have not yet been executed on authenticated runners.
 - [x] Add packaged-app smoke mode with expected-version and bundled-worker checks, VS Code workbench/extension-host startup, workspace filesystem create/read/overwrite/rename/delete, integrated-terminal PTY input/output/exit, plus clean unpacked-app launch checks on all three OS targets. The latest feature-head native matrix passed on Windows, macOS and Linux. Signed-installer install/uninstall and two-release upgrade/rollback remain separate release gates.
