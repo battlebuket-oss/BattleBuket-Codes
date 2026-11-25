@@ -30,6 +30,7 @@ internal static class Program
     private const int ErrorBrokenPipe = 109;
     private const int ErrorAlreadyExistsHResult = unchecked((int)0x800700B7);
     private const string AppContainerProfileName = "BattleBuketCodesProjectVerification";
+    private const string AppContainerProfileMutexName = @"Local\\BattleBuketCodes-AppContainerProfile-Lock";
 
     private sealed class BrokerRequest
     {
@@ -640,22 +641,43 @@ internal static class Program
 
     private static IntPtr EnsureAppContainerProfile()
     {
-        var result = CreateAppContainerProfile(
-            AppContainerProfileName,
-            "BattleBuket Codes project verification",
-            "Persistent no-network AppContainer for isolated project quality checks.",
-            IntPtr.Zero,
-            0,
-            out var sid);
-        if (result == 0)
-            return sid;
-        if (result == ErrorAlreadyExistsHResult)
+        using var mutex = new Mutex(false, AppContainerProfileMutexName);
+        var acquired = false;
+        try
         {
-            if (DeriveAppContainerSidFromAppContainerName(AppContainerProfileName, out sid) != 0)
-                throw new SecurityException("Could not derive the existing BattleBuket Codes AppContainer SID.");
-            return sid;
+            try
+            {
+                acquired = mutex.WaitOne(TimeSpan.FromSeconds(120));
+            }
+            catch (AbandonedMutexException)
+            {
+                acquired = true;
+            }
+
+            if (!acquired)
+                throw new TimeoutException("Timed out waiting for the AppContainer profile initialization lock.");
+
+            var result = CreateAppContainerProfile(
+                AppContainerProfileName,
+                "BattleBuket Codes project verification",
+                "Persistent no-network AppContainer for isolated project quality checks.",
+                IntPtr.Zero,
+                0,
+                out var sid);
+            if (result == 0)
+                return sid;
+            if (result == ErrorAlreadyExistsHResult)
+            {
+                if (DeriveAppContainerSidFromAppContainerName(AppContainerProfileName, out sid) != 0)
+                    throw new SecurityException("Could not derive the existing BattleBuket Codes AppContainer SID.");
+                return sid;
+            }
+            throw new SecurityException("CreateAppContainerProfile failed with HRESULT 0x" + result.ToString("X8") + ".");
         }
-        throw new SecurityException("CreateAppContainerProfile failed with HRESULT 0x" + result.ToString("X8") + ".");
+        finally
+        {
+            if (acquired) mutex.ReleaseMutex();
+        }
     }
 
     private static string GetProfileFolderPath()
