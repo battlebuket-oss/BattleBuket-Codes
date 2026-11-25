@@ -439,7 +439,8 @@ internal static class Program
             {
                 AddGrant(executableDirectory, appContainerSid, FileGenericRead | FileGenericExecute, SubContainersAndObjectsInherit, grants, true);
             }
-            AddGrant(executable, appContainerSid, FileGenericRead | FileGenericExecute, 0, grants, false);
+            if (!IsReadOnlySystemPath(executable))
+                AddGrant(executable, appContainerSid, FileGenericRead | FileGenericExecute, 0, grants, false);
 
             var securityAttributes = new SecurityAttributes
             {
@@ -816,7 +817,6 @@ internal static class Program
     private static IEnumerable<string> GetPathDirectories(Dictionary<string, string> environment)
     {
         var path = environment.TryGetValue("PATH", out var value) ? value : "";
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         foreach (var segment in path.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             string fullPath;
@@ -826,7 +826,7 @@ internal static class Program
             }
             catch { continue; }
             if (!Directory.Exists(fullPath)) continue;
-            if (IsSamePath(fullPath, userProfile) || IsReadOnlySystemPath(fullPath)) continue;
+            if (IsReadOnlySystemPath(fullPath)) continue;
             yield return fullPath;
         }
     }
