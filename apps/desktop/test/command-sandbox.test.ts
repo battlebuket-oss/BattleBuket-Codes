@@ -81,13 +81,12 @@ test("OS command sandbox allows workspace writes but blocks host-home writes and
   }
 });
 
-test("Windows AppContainer writes only in a disposable workspace copy and blocks host access/network", {
+test("Windows AppContainer writes only in its managed profile storage and blocks host access/network", {
   skip: process.platform !== "win32",
   timeout: 30_000
 }, async () => {
   const workspace = await fs.mkdtemp(join(tmpdir(), "bb-appcontainer-workspace-"));
   const outside = join(tmpdir(), "battlebuket-appcontainer-sentinel-" + randomUUID() + ".txt");
-  const resultName = "appcontainer-result.json";
   const sentinel = "host-sentinel-must-not-change-" + randomUUID();
   const server = createServer(socket => socket.end("host-network-reached"));
   await new Promise<void>((resolve, reject) => {
@@ -102,15 +101,16 @@ test("Windows AppContainer writes only in a disposable workspace copy and blocks
     const script = [
       "const fs = require('node:fs');",
       "const net = require('node:net');",
-      "const [outside, resultPath, portText] = process.argv.slice(1);",
+      "const [outside, portText] = process.argv.slice(1);",
       "fs.writeFileSync('workspace-write-proof.txt', 'workspace-write-allowed');",
       "let outsideReadBlocked = false;",
       "try { fs.readFileSync(outside, 'utf8'); } catch { outsideReadBlocked = true; }",
       "let outsideWriteBlocked = false;",
       "try { fs.writeFileSync(outside, 'host-write-forbidden'); } catch { outsideWriteBlocked = true; }",
       "const finish = networkBlocked => {",
+      "  const result = { outsideReadBlocked, outsideWriteBlocked, networkBlocked };",
+      "  console.log('BATTLEBUKET_APP_CONTAINER_RESULT=' + JSON.stringify(result));",
       "  if (!networkBlocked || !outsideReadBlocked || !outsideWriteBlocked) process.exit(7);",
-      "  fs.writeFileSync(resultPath, JSON.stringify({ outsideReadBlocked, outsideWriteBlocked, networkBlocked }));",
       "  process.exit(0);",
       "};",
       "const socket = net.createConnection({ host: '127.0.0.1', port: Number(portText) });",
@@ -121,12 +121,13 @@ test("Windows AppContainer writes only in a disposable workspace copy and blocks
     const command = await prepareSandboxedCommand(
       workspace,
       process.execPath,
-      ["-e", script, outside, resultName, String(address.port)],
+      ["-e", script, outside, String(address.port)],
       {
         PATH: process.env.PATH,
         SystemRoot: process.env.SystemRoot,
         WINDIR: process.env.WINDIR,
         SystemDrive: process.env.SystemDrive,
+        LOCALAPPDATA: process.env.LOCALAPPDATA,
         PATHEXT: process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD"
       }
     );
@@ -146,12 +147,10 @@ test("Windows AppContainer writes only in a disposable workspace copy and blocks
         child.once("close", code => resolve(code));
       });
       assert.equal(exitCode, 0, "AppContainer probe failed: " + stdout + "\n" + stderr);
-      assert.equal(await fs.readFile(join(command.cwd, "workspace-write-proof.txt"), "utf8"), "workspace-write-allowed");
-      assert.deepEqual(JSON.parse(await fs.readFile(join(command.cwd, resultName), "utf8")), {
-        outsideReadBlocked: true,
-        outsideWriteBlocked: true,
-        networkBlocked: true
-      });
+      assert.ok(stdout.includes("BATTLEBUKET_APP_CONTAINER_RESULT="), "sandbox child did not return its boundary probe result: " + stdout);
+      assert.ok(stdout.includes('"outsideReadBlocked":true'), stdout);
+      assert.ok(stdout.includes('"outsideWriteBlocked":true'), stdout);
+      assert.ok(stdout.includes('"networkBlocked":true'), stdout);
       assert.equal(await fs.readFile(outside, "utf8"), sentinel);
       assert.deepEqual(await fs.readdir(workspace), [], "the selected workspace must remain unchanged");
     } finally {
