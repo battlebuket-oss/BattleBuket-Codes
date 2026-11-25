@@ -172,7 +172,7 @@ const summary = [
           " (affected: " + (row.range || "not supplied") + patched + ")" + recommendation + paths +
           (row.url ? " — " + row.url : "");
       })
-    : ["No advisories were reported by pnpm audit."],
+    : ["No advisories were reported by pnpm audit."]),
   ""
 ].join("\n");
 fs.writeFileSync(summaryPath, summary, "utf8");
