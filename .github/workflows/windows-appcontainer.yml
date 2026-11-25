@@ -1,0 +1,96 @@
+name: Windows AppContainer command sandbox
+
+on:
+  push:
+    branches:
+      - feature/windows-appcontainer-broker
+    paths:
+      - "apps/desktop/windows/AppContainerBroker/**"
+      - "apps/desktop/src/main/command-sandbox.ts"
+      - "apps/desktop/src/main/project-verification.ts"
+      - "apps/desktop/test/command-sandbox.test.ts"
+      - "apps/desktop/test/project-verification.test.ts"
+      - "apps/desktop/scripts/build-windows-appcontainer-broker.cjs"
+      - "apps/desktop/package.json"
+      - ".github/workflows/windows-appcontainer.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-appcontainer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-windows:
+    name: Build and adversarially test Windows AppContainer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Configure pinned package manager
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.0.0 --activate
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Audit dependencies for high-severity advisories
+        run: pnpm audit --audit-level high
+      - name: Build AppContainer broker as a self-contained executable
+        run: pnpm --filter @battlebuket/desktop build:windows-broker
+      - name: Verify broker artifact
+        shell: pwsh
+        run: |
+          $broker = "apps/desktop/resources/windows/publish/BattleBuket.AppContainerBroker.exe"
+          if (-not (Test-Path $broker)) { throw "AppContainer broker executable was not produced." }
+          $info = Get-Item $broker
+          if ($info.Length -lt 50000) { throw "AppContainer broker executable is unexpectedly small." }
+          & $broker
+          if ($LASTEXITCODE -ne 125) { throw "Broker did not reject invalid invocation closed (exit=$LASTEXITCODE)." }
+      - name: Typecheck and lint
+        run: |
+          pnpm lint
+          pnpm typecheck
+      - name: Run unit and OS-enforced boundary tests
+        run: pnpm test
+      - name: Rebuild native dependencies for Electron
+        run: pnpm --filter @battlebuket/desktop exec electron-builder install-app-deps
+      - name: Verify node-pty in the Electron runtime
+        shell: pwsh
+        env:
+          ELECTRON_RUN_AS_NODE: "1"
+        run: pnpm --filter @battlebuket/desktop exec electron scripts/pty-smoke.cjs
+      - name: Build packaged desktop application
+        run: pnpm --filter @battlebuket/desktop build
+      - name: Package unsigned application for installed-runtime smoke
+        run: pnpm --filter @battlebuket/desktop exec electron-builder --dir --config electron-builder.smoke.config.cjs --publish never
+      - name: Launch packaged workbench and terminal smoke
+        shell: pwsh
+        run: |
+          $application = Get-ChildItem "apps/desktop/release-smoke" -Recurse -Filter "battlebuket-codes.exe" | Select-Object -First 1
+          if (-not $application) { throw "Packaged Windows application executable was not produced." }
+          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-packaged-smoke.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-packaged-smoke.stderr.log"
+          $smoke = Start-Process -FilePath $application.FullName -ArgumentList @("--smoke-test", "--enable-logging=stderr") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if ($smoke.ExitCode -ne 0) {
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 250 }
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 500 }
+            throw "Packaged Windows workbench/PTY smoke failed with exit code $($smoke.ExitCode)."
+          }
+          if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: battlebuket-windows-appcontainer-smoke
+          path: |
+            apps/desktop/resources/windows/publish/BattleBuket.AppContainerBroker.exe
+            apps/desktop/release-smoke/**
+          if-no-files-found: error
+          retention-days: 14
