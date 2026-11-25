@@ -39,7 +39,7 @@ jobs:
       - name: Generate SPDX release SBOM with pinned Syft
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
         with:
-          path: ./node_modules/.pnpm
+          path: .
           format: spdx-json
           output-file: release-sbom/battlebuket-codes.spdx.json
           syft-version: v1.42.3
