@@ -192,6 +192,7 @@ export async function prepareSandboxedCommand(
       "/private/var/db/timezone",
       "/private/var/run",
       "/private/var/folders",
+      "/var/tmp",
       "/private/var/tmp",
       "/private/tmp",
       "/dev"
