@@ -133,7 +133,7 @@ jobs:
           $workspace = Join-Path $sandboxRoot "workspace"
           New-Item -ItemType Directory -Path $workspace -Force | Out-Null
           $requestPath = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-cmd-node-request.json"
-          $nodeCommand = '"' + $nodeExe + '" --version'
+          $nodeCommand = "node --version"
           $request = @{
             workspace = $workspace
             scratch = $sandboxRoot
