@@ -123,11 +123,15 @@ export async function prepareSandboxedCommand(
         throw new Error("Windows project scripts are blocked because the signed-in desktop installation does not contain the Windows AppContainer broker. Rebuild the Windows app with the .NET 8 SDK; unrestricted execution is never used.");
       }
 
-      const hostEnvironment = {
-        PATH: process.env.PATH ?? "",
+      const hostEnvironment: NodeJS.ProcessEnv = {
+        ...baseEnvironment,
+        PATH: process.env.PATH ?? baseEnvironment.PATH ?? "",
         SystemRoot: process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows",
-        TEMP: process.env.TEMP ?? tmpdir(),
-        TMP: process.env.TMP ?? tmpdir()
+        USERPROFILE: process.env.USERPROFILE ?? baseEnvironment.USERPROFILE ?? homedir(),
+        APPDATA: process.env.APPDATA ?? baseEnvironment.APPDATA,
+        LOCALAPPDATA: process.env.LOCALAPPDATA ?? baseEnvironment.LOCALAPPDATA,
+        TEMP: process.env.TEMP ?? baseEnvironment.TEMP ?? tmpdir(),
+        TMP: process.env.TMP ?? baseEnvironment.TMP ?? tmpdir()
       };
       const prepared = spawnSync(broker, ["--prepare"], {
         encoding: "utf8",
