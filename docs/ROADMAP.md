@@ -19,8 +19,8 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Add bounded Quick Open filename/path search, project-wide bounded text search (Ctrl/Cmd+Shift+F), Monaco language diagnostics in a Problems panel, and a keyboard command palette for BattleBuket desktop actions (Ctrl/Cmd+Shift+P); add Ctrl/Cmd+S active-file save and Ctrl/Cmd+J terminal toggle. This is not the VS Code command registry or symbol/reference search.
 - [x] Add a persistent recent-project list with canonical-path validation, missing-project cleanup, bounded retention and serialized writes; users can switch projects from the sidebar.
 - [x] Embed the VS Code workbench service through the MIT-licensed Monaco VS Code API packages with file-system, explorer, quick-access, search, marker, language extension and native terminal bridges. The integration does not vendor the full Code - OSS desktop source or Marketplace catalog.
-- [ ] Verify the embedded workbench on clean Windows/macOS/Linux installed builds, including file operations, search, built-in language extensions, terminal sessions, workspace switching and extension-host behavior.
-- [ ] Verify the native `node-pty` / xterm.js terminal implementation in draft PR #11: Electron ABI rebuild, interactive input/output, resize and process cleanup tests on Windows/macOS/Linux. The source implementation exists; the required cross-platform test evidence is not yet green.
+- [x] Verify the embedded workbench on clean packaged Windows/macOS/Linux app builds, including startup, built-in TypeScript extension activation, workspace filesystem lifecycle and integrated terminal/PTY input/output/exit. The current feature-head native matrix is green.
+- [x] Verify the native `node-pty` / xterm.js terminal implementation in draft PR #11: Electron ABI rebuild, direct PTY input/output smoke and packaged workbench terminal/PTY lifecycle checks on Windows/macOS/Linux. Continue release-candidate regression testing after integration.
 - [x] Add a tag-triggered signed installer build and draft-release workflow with required Windows/macOS signing secrets.
 - [ ] Configure real signing secrets and verify signed installers on Windows, macOS, and Linux; no production release has been published.
 
@@ -35,7 +35,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [x] Accept one task, select a provider explicitly, enforce risk-based permissions, stream events, and support cancellation.
 - [x] Gate a successful result on the current Git whitespace check.
 - [ ] Implement prompt enhancement, acceptance-criteria generation, planning, dependency graphs, delegation, and scheduling.
-- [x] Add a second read-only review pass after implementation using the same selected provider runtime; reviewer rejection prevents task completion. This is not an independent second model and can consume additional provider usage.
+- [x] Add an independent read-only review through the alternate authenticated provider when available; reviewer rejection prevents task completion. Write-capable tasks fail closed when the alternate provider is unavailable; low-risk runs record that review was not performed.
 - [ ] Implement real specialist-agent delegation rather than role descriptions or simulated teams.
 - [ ] Implement observation, review loops, replanning, retries, timeouts, checkpoints, and resumable tasks.
 - [ ] Add multi-task isolation, worktree ownership, merge/conflict resolution, and human review of final diffs.
@@ -48,7 +48,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [ ] Verify exact CLI/SDK versions, account authentication, supported models, license terms, platform packaging, and failure behavior.
 - [ ] Add a credential setup/status flow; never log or persist provider secrets.
 - [ ] Add quota/cost visibility, capability benchmarks, model selection, and deterministic integration tests on each supported OS.
-- [ ] Add a proper permission broker for terminal, network, dependency installation, deletion, and other sensitive operations.
+- [ ] Implement and adversarially verify the Windows AppContainer broker. Linux project commands already run in Bubblewrap namespaces and macOS project commands in Seatbelt; both disable network and confine writes. Windows project commands currently fail closed. The interactive terminal remains an explicit, user-controlled shell outside the project-verification sandbox.
 
 ## Phase 5 — Quality and safety
 - [x] Add workspace path/symlink, stale-save, binary-file, size-limit, and provider-permission tests.
@@ -59,7 +59,7 @@ This roadmap distinguishes implemented foundations from incomplete systems. A ch
 - [ ] Add actual diff review, static analysis, SAST, secret scanning, license checks, and dependency provenance.
 - [ ] Add adversarial prompt-injection tests for repository content, project settings, MCP servers, and tool misuse.
 - [x] Add opt-in live Codex/Claude read-only and single-file workspace-write boundary smoke tests, including an outside-workspace sentinel check, plus a manual self-hosted runner workflow. The tests require real sign-in and have not yet been executed on authenticated runners.
-- [x] Add packaged-app smoke mode with expected-version and Monaco-worker checks, VS Code workbench/extension-host startup, workspace filesystem create/read/overwrite/rename/delete, integrated-terminal PTY input/output/exit, plus clean install, launch and uninstall steps for all three OS targets. The smoke implementation is present; these steps have not run successfully on the latest branch head yet.
+- [x] Add packaged-app smoke mode with expected-version and bundled-worker checks, VS Code workbench/extension-host startup, workspace filesystem create/read/overwrite/rename/delete, integrated-terminal PTY input/output/exit, plus clean unpacked-app launch checks on all three OS targets. The latest feature-head native matrix passed on Windows, macOS and Linux. Signed-installer install/uninstall and two-release upgrade/rollback remain separate release gates.
 - [x] Add manual cross-platform installer upgrade/rollback tests that verify a user-data marker survives baseline → candidate → rollback. The workflow requires two existing signed releases and has not yet run.
 - [ ] Execute authenticated provider and signed-installer workflows; add permission-escalation and longer-session tests, run the two-release upgrade/rollback workflow, and add crash-recovery and broader UI end-to-end tests.
 
