@@ -60,11 +60,17 @@ async function existingPathDirectories(): Promise<string[]> {
   const candidates = new Set<string>();
   for (const entry of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
     try {
-      if (await isDirectory(entry)) candidates.add(resolve(entry));
+      if (await isDirectory(entry)) {
+        candidates.add(resolve(entry));
+        candidates.add(await fs.realpath(entry));
+      }
     } catch { /* Ignore stale PATH entries. */ }
   }
   const executableDirectory = dirname(process.execPath);
-  if (await isDirectory(executableDirectory)) candidates.add(resolve(executableDirectory));
+  if (await isDirectory(executableDirectory)) {
+    candidates.add(resolve(executableDirectory));
+    candidates.add(await fs.realpath(executableDirectory));
+  }
   return [...candidates];
 }
 
@@ -75,7 +81,7 @@ export async function prepareSandboxedCommand(
   baseEnvironment: NodeJS.ProcessEnv
 ): Promise<SandboxedCommand> {
   const workspace = await fs.realpath(workspacePath);
-  const scratch = await fs.mkdtemp(join(tmpdir(), "battlebuket-execution-sandbox-"));
+  const scratch = await fs.realpath(await fs.mkdtemp(join(tmpdir(), "battlebuket-execution-sandbox-")));
   const scratchHome = join(scratch, "home");
   const scratchTmp = join(scratch, "tmp");
   const scratchCache = join(scratch, "cache");
@@ -171,36 +177,59 @@ export async function prepareSandboxedCommand(
         throw new Error("macOS project scripts are blocked because the Seatbelt sandbox executable is unavailable.");
       }
       const allowedReadPaths = new Set([
-        "/System",
-        "/usr",
-        "/bin",
-        "/sbin",
-        "/Library/Apple/System/Library",
-        "/Library/Developer",
-        "/Applications",
-        "/opt/homebrew",
-        "/usr/local",
-        "/dev"
-      ]);
-      for (const directory of pathDirectories) allowedReadPaths.add(directory);
-  
-      const quote = (value: string) => JSON.stringify(value);
-      const profile = [
-        "(version 1)",
-        "(deny default)",
-        "(allow process*)",
-        "(allow sysctl-read)",
-        "(allow mach-lookup)",
-        "(allow file-read-metadata)",
-        ...[...allowedReadPaths].map(path => "(allow file-read* (subpath " + quote(path) + "))"),
-        "(allow file-read* (subpath (param \"WORKSPACE\")))",
-        "(allow file-read* (subpath (param \"SCRATCH\")))",
-        "(allow file-write* (subpath (param \"WORKSPACE\")))",
-        "(allow file-write* (subpath (param \"SCRATCH\")))",
-        "(deny network*)",
-        "(allow signal (target self))"
-      ].join("\n");
-      const profilePath = join(scratch, "project-verification.sb");
+      "/System",
+      "/usr",
+      "/bin",
+      "/sbin",
+      "/Library",
+      "/Applications",
+      "/opt/homebrew",
+      "/usr/local",
+      "/private/etc",
+      "/private/var/db/timezone",
+      "/private/var/run",
+      "/private/var/folders",
+      "/private/var/tmp",
+      "/private/tmp",
+      "/dev"
+    ]);
+    for (const directory of pathDirectories) allowedReadPaths.add(directory);
+
+    const quote = (value: string) => JSON.stringify(value);
+    const profile = [
+      "(version 1)",
+      "(import \"bsd.sb\")",
+      "(deny default)",
+      "(allow process-exec*)",
+      "(allow process-fork)",
+      "(allow signal (target same-sandbox))",
+      "(allow process-info* (target same-sandbox))",
+      "(allow sysctl-read)",
+      "(allow mach-host*)",
+      "(allow mach-lookup)",
+      "(allow iokit-open)",
+      "(allow ipc-posix-sem)",
+      "(allow ipc-posix-shm-read*)",
+      "(allow file-map-executable)",
+      "(allow file-read-metadata)",
+      "(allow file-ioctl)",
+      "(allow pseudo-tty)",
+      "(allow file-read* (literal \"/dev/ptmx\"))",
+      "(allow file-write* (literal \"/dev/ptmx\"))",
+      "(allow file-read* (regex \"^/dev/ttys[0-9]+\"))",
+      "(allow file-write* (regex \"^/dev/ttys[0-9]+\"))",
+      "(allow file-write* (literal \"/dev/null\"))",
+      "(allow file-write* (literal \"/dev/zero\"))",
+      "(allow file-read* (literal \"/dev/random\"))",
+      "(allow file-read* (literal \"/dev/urandom\"))",
+      ...[...allowedReadPaths].map(path => "(allow file-read* (subpath " + quote(path) + "))"),
+      "(allow file-read* (subpath (param \"WORKSPACE\")))",
+      "(allow file-read* (subpath (param \"SCRATCH\")))",
+      "(allow file-write* (subpath (param \"WORKSPACE\")))",
+      "(allow file-write* (subpath (param \"SCRATCH\")))",
+      "(deny network*)"
+    ].join("\n");
+    const profilePath = join(scratch, "project-verification.sb");
       await fs.writeFile(profilePath, profile, { encoding: "utf8", mode: 0o600 });
       const corepackPath = scratchCorepack;
       const args = [
