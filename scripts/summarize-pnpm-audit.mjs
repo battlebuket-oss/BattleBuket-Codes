@@ -12,6 +12,20 @@ function json(value) {
   try { return JSON.stringify(value ?? ""); }
   catch { return String(value ?? ""); }
 }
+function addRow(rows, row) {
+  rows.push({
+    package: row.package ?? "",
+    severity: String(row.severity ?? "unknown").toLowerCase(),
+    direct: row.direct ?? "unknown",
+    currentVersions: row.currentVersions ?? "",
+    range: row.range ?? "",
+    patchedVersions: row.patchedVersions ?? "",
+    advisory: row.advisory ?? "Untitled advisory",
+    recommendation: row.recommendation ?? "",
+    url: row.url ?? "",
+    fixAvailable: row.fixAvailable ?? ""
+  });
+}
 
 if (!fs.existsSync(input)) throw new Error("pnpm audit JSON file does not exist: " + input);
 const report = JSON.parse(fs.readFileSync(input, "utf8"));
@@ -24,49 +38,70 @@ if (vulnerabilities && typeof vulnerabilities === "object") {
     const via = Array.isArray(item.via) ? item.via : [];
     const details = via.filter(value => value && typeof value === "object");
     if (!details.length) {
-      rows.push({
+      addRow(rows, {
         package: packageName,
-        severity: item.severity ?? "unknown",
+        severity: item.severity,
         direct: item.isDirect === true ? "direct" : "transitive",
-        range: item.range ?? "",
+        range: item.range,
+        currentVersions: item.range,
         advisory: "No individual advisory detail was supplied",
-        url: "",
-        fixAvailable: json(item.fixAvailable)
+        fixAvailable: json(item.fixAvailable),
+        recommendation: json(item.fixAvailable)
       });
     } else {
       for (const detail of details) {
-        rows.push({
+        addRow(rows, {
           package: packageName,
-          severity: detail.severity ?? item.severity ?? "unknown",
+          severity: detail.severity ?? item.severity,
           direct: item.isDirect === true ? "direct" : "transitive",
-          range: detail.range ?? item.range ?? "",
-          advisory: detail.title ?? detail.name ?? "Untitled advisory",
-          url: detail.url ?? "",
-          fixAvailable: json(item.fixAvailable)
+          range: detail.range ?? item.range,
+          currentVersions: item.range,
+          advisory: detail.title ?? detail.name,
+          url: detail.url,
+          fixAvailable: json(item.fixAvailable),
+          recommendation: json(item.fixAvailable)
         });
       }
     }
   }
 } else if (advisories && typeof advisories === "object") {
   for (const advisory of Object.values(advisories)) {
-    for (const finding of advisory.findings ?? [{}]) {
-      rows.push({
-        package: advisory.module_name ?? advisory.name ?? "",
-        severity: advisory.severity ?? "unknown",
-        direct: finding.paths?.length ? "direct/indirect path listed" : "unknown",
-        range: advisory.vulnerable_versions ?? "",
-        advisory: advisory.title ?? "Untitled advisory",
-        url: advisory.url ?? "",
-        fixAvailable: json(advisory.fixAvailable)
-      });
-    }
+    const findings = Array.isArray(advisory.findings) ? advisory.findings : [{}];
+    const versions = [...new Set(findings.map(finding => finding.version).filter(Boolean))].sort();
+    const paths = [...new Set(findings.flatMap(finding => finding.paths ?? []))];
+    const recommendation = advisory.recommendation ?? "";
+    const patched = advisory.patched_versions ?? "";
+    const upgradeMatch = recommendation.match(/upgrade to version ([^\s,;]+(?:\s+or later)?)/i);
+    const fixAvailable = upgradeMatch ? upgradeMatch[1] : patched;
+    addRow(rows, {
+      package: advisory.module_name ?? advisory.name,
+      severity: advisory.severity,
+      direct: paths.some(p => p.split(" > ").length <= 2) ? "direct path present" : "transitive paths",
+      currentVersions: versions.join("; "),
+      range: advisory.vulnerable_versions,
+      patchedVersions: patched,
+      advisory: advisory.title,
+      recommendation,
+      url: advisory.url,
+      fixAvailable
+    });
   }
 }
 
 const severityRank = { critical: 0, high: 1, moderate: 2, low: 3, info: 4, unknown: 5 };
-rows.sort((a, b) => (severityRank[a.severity] ?? 5) - (severityRank[b.severity] ?? 5) || a.package.localeCompare(b.package));
-const headers = ["package", "severity", "directness", "affected_range", "advisory", "url", "fix_available"];
-const columns = ["package", "severity", "direct", "range", "advisory", "url", "fixAvailable"];
+rows.sort((a, b) =>
+  (severityRank[a.severity] ?? 5) - (severityRank[b.severity] ?? 5) ||
+  a.package.localeCompare(b.package) ||
+  a.advisory.localeCompare(b.advisory)
+);
+const headers = [
+  "package", "severity", "directness", "current_versions", "affected_range",
+  "patched_versions", "advisory", "recommendation", "fix_available", "url"
+];
+const columns = [
+  "package", "severity", "direct", "currentVersions", "range",
+  "patchedVersions", "advisory", "recommendation", "fixAvailable", "url"
+];
 const csvRows = [
   headers.map(csv).join(","),
   ...rows.map(row => columns.map(key => csv(row[key])).join(","))
@@ -78,25 +113,30 @@ fs.writeFileSync(csvPath, csvRows.join("\n") + "\n", "utf8");
 const totals = report.metadata?.vulnerabilities ?? report.metadata?.audit?.vulnerabilities ?? {};
 const counts = { critical: 0, high: 0, moderate: 0, low: 0, info: 0, unknown: 0 };
 for (const row of rows) counts[row.severity] = (counts[row.severity] ?? 0) + 1;
-const packagesWithFix = new Set(rows.filter(row => row.fixAvailable && row.fixAvailable !== "false" && row.fixAvailable !== '""').map(row => row.package));
+const packagesWithRecommendation = new Set(rows.filter(row => row.recommendation).map(row => row.package));
 const summary = [
   "# pnpm dependency audit report",
   "",
   `- Source: ${input}`,
-  `- Vulnerable package entries: ${rows.length}`,
+  `- Advisory entries: ${rows.length}`,
   `- Critical: ${totals.critical ?? counts.critical}`,
   `- High: ${totals.high ?? counts.high}`,
   `- Moderate: ${totals.moderate ?? counts.moderate}`,
   `- Low: ${totals.low ?? counts.low}`,
   `- Info: ${totals.info ?? counts.info}`,
-  `- Packages with a reported fix: ${packagesWithFix.size}`,
+  `- Packages with an upstream remediation recommendation: ${packagesWithRecommendation.size}`,
   "",
-  "The CI gate separately fails on high-severity or critical advisories. This artifact records lower-severity findings and remediation metadata; each advisory still requires triage and upgrade/regression testing.",
+  "The CI gate separately fails on high-severity or critical advisories. This report records all lower-severity findings and upstream remediation guidance; apply upgrades and rerun regression tests before treating them as resolved.",
   "",
   "## Findings",
   "",
   ...(rows.length
-    ? rows.map(row => `- **${row.severity.toUpperCase()}** ${row.package}: ${row.advisory} (${row.range || "affected range not supplied"})${row.url ? " — " + row.url : ""}`)
+    ? rows.map(row => {
+        const current = row.currentVersions ? " (installed: " + row.currentVersions + ")" : "";
+        const patched = row.patchedVersions ? "; patched range: " + row.patchedVersions : "";
+        const recommendation = row.recommendation ? "; recommendation: " + row.recommendation : "";
+        return `- **${row.severity.toUpperCase()}** ${row.package}${current}: ${row.advisory} (affected: ${row.range || "not supplied"}${patched})${recommendation}${row.url ? " — " + row.url : ""}`;
+      })
     : ["No advisories were reported by pnpm audit."]),
   ""
 ].join("\n");
