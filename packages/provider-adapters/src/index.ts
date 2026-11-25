@@ -137,14 +137,14 @@ export class CodexCliAdapter implements AgentAdapter {
       if (pendingLine.trim()) processLine(pendingLine);
 
       if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Codex task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
-      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled", changedFiles: [], verification: [] };
+      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled; partial workspace changes are included for review", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       if (result.exitCode !== 0) return { taskId: request.task.id, status: "failed", summary: (stderrTail || "Codex exited with code " + result.exitCode).slice(-4000), changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       const files = await changedFiles(request.workingDirectory);
       emit(request, send, "completed", "Codex finished; review the resulting workspace diff");
       return { taskId: request.task.id, status: "succeeded", summary: (assistantSummary || "Codex completed successfully").slice(-4000), changedFiles: files, verification: [] };
     } catch (error) {
       if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Codex task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
-      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled", changedFiles: [], verification: [] };
+      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Codex run cancelled; partial workspace changes are included for review", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       throw error;
     } finally {
       clearTimeout(timeoutHandle);
@@ -224,13 +224,13 @@ export class ClaudeAgentSdkAdapter implements AgentAdapter {
         }
       }
       if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Claude task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
-      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled", changedFiles: [], verification: [] };
+      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled; partial workspace changes are included for review", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       const files = await changedFiles(request.workingDirectory);
       emit(request, send, "completed", "Claude finished; review the resulting workspace diff");
       return { taskId: request.task.id, status: "succeeded", summary: summary || "Claude completed successfully", changedFiles: files, verification: [] };
     } catch (error) {
       if (timedOut) return { taskId: request.task.id, status: "failed", summary: "Claude task exceeded the 45-minute runtime limit", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
-      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled", changedFiles: [], verification: [] };
+      if (controller.signal.aborted) return { taskId: request.task.id, status: "cancelled", summary: "Claude run cancelled; partial workspace changes are included for review", changedFiles: await changedFiles(request.workingDirectory), verification: [] };
       throw error;
     } finally {
       clearTimeout(timeoutHandle);
