@@ -102,6 +102,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-dotnet@v4
+        if: runner.os == 'Windows'
+        with:
+          dotnet-version: '8.0.x'
       - name: Require Windows signing certificate
         if: runner.os == 'Windows'
         shell: pwsh
