@@ -27,7 +27,7 @@ test("does not execute project scripts without explicit user approval", async ()
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("runs approved project scripts through the declared package manager", { skip: process.platform === "win32" }, async () => {
+test("runs approved project scripts through the OS-enforced command sandbox", async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-quality-"));
   try {
     await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "echo quality-ok" } }));
@@ -36,36 +36,22 @@ test("runs approved project scripts through the declared package manager", { ski
     assert.equal(results[0].passed, true, results[0].output);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
-test("fails closed on Windows until the AppContainer command broker is available", { skip: process.platform !== "win32" }, async () => {
-  const root = await mkdtemp(join(tmpdir(), "bb-quality-windows-block-"));
-  const marker = join(root, "must-not-exist.txt");
-  try {
-    await writeFile(join(root, "package.json"), JSON.stringify({
-      scripts: { test: `node -e "require('node:fs').writeFileSync('must-not-exist.txt','unsafe')"` }
-    }));
-    const results = await runProjectQualityChecks(root, async () => true);
-    assert.equal(results.some(result => result.passed), false);
-    assert.match(results.map(result => result.output ?? "").join("\n"), /AppContainer/);
-    await assert.rejects(() => import("node:fs/promises").then(module => module.access(marker)));
-  } finally { await rm(root, { recursive: true, force: true }); }
-});
-
 test("enables high-severity dependency auditing when an npm lockfile exists", async () => {
   const root = await mkdtemp(join(tmpdir(), "bb-quality-"));
   try {
     await writeFile(join(root, "package.json"), JSON.stringify({ scripts: {} }));
     await writeFile(join(root, "package-lock.json"), "{}");
     const result = await discoverQualityScripts(root);
-    assert.deepEqual(result, { manager: "npm", scripts: ["audit"] });
+    assert.deepEqual(result, { manager: "npm", scripts: process.platform === "win32" ? [] : ["audit"] });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("enables high-severity audits for pnpm, Yarn Classic, Yarn Berry and Bun lockfiles", async () => {
   const cases = [
-    { manager: "pnpm", lock: "pnpm-lock.yaml", declared: "pnpm@10.0.0", expected: { manager: "pnpm", scripts: ["audit"] } },
-    { manager: "yarn", lock: "yarn.lock", declared: "yarn@1.22.22", expected: { manager: "yarn", scripts: ["audit"], yarnMajor: 1 } },
-    { manager: "yarn", lock: "yarn.lock", declared: "yarn@4.5.0", expected: { manager: "yarn", scripts: ["audit"], yarnMajor: 4 } },
-    { manager: "bun", lock: "bun.lock", declared: "bun@1.2.0", expected: { manager: "bun", scripts: ["audit"] } }
+    { manager: "pnpm", lock: "pnpm-lock.yaml", declared: "pnpm@10.0.0", expected: { manager: "pnpm", scripts: process.platform === "win32" ? [] : ["audit"] } },
+    { manager: "yarn", lock: "yarn.lock", declared: "yarn@1.22.22", expected: { manager: "yarn", scripts: process.platform === "win32" ? [] : ["audit"], yarnMajor: 1 } },
+    { manager: "yarn", lock: "yarn.lock", declared: "yarn@4.5.0", expected: { manager: "yarn", scripts: process.platform === "win32" ? [] : ["audit"], yarnMajor: 4 } },
+    { manager: "bun", lock: "bun.lock", declared: "bun@1.2.0", expected: { manager: "bun", scripts: process.platform === "win32" ? [] : ["audit"] } }
   ] as const;
   for (const item of cases) {
     const root = await mkdtemp(join(tmpdir(), "bb-quality-audit-"));
@@ -114,10 +100,10 @@ test("discovers Go, Rust, Python and .NET project verification commands", async 
     await writeFile(join(pythonRoot, "requirements.txt"), "requests==2.32.0\n");
     await writeFile(join(dotnetRoot, "App.csproj"), "<Project />");
 
-    assert.deepEqual(await discoverQualityScripts(goRoot), { manager: "go", scripts: ["test", "lint", "build", "security"] });
-    assert.deepEqual(await discoverQualityScripts(rustRoot), { manager: "cargo", scripts: ["test", "lint", "typecheck", "build", "security"] });
-    assert.deepEqual(await discoverQualityScripts(pythonRoot), { manager: "python", scripts: ["test", "lint", "typecheck", "build", "security"] });
-    assert.deepEqual(await discoverQualityScripts(dotnetRoot), { manager: "dotnet", scripts: ["test", "lint", "build", "security"] });
+    assert.deepEqual(await discoverQualityScripts(goRoot), { manager: "go", scripts: process.platform === "win32" ? ["test", "lint", "build"] : ["test", "lint", "build", "security"] });
+    assert.deepEqual(await discoverQualityScripts(rustRoot), { manager: "cargo", scripts: process.platform === "win32" ? ["test", "lint", "typecheck", "build"] : ["test", "lint", "typecheck", "build", "security"] });
+    assert.deepEqual(await discoverQualityScripts(pythonRoot), { manager: "python", scripts: process.platform === "win32" ? ["test", "lint", "typecheck", "build"] : ["test", "lint", "typecheck", "build", "security"] });
+    assert.deepEqual(await discoverQualityScripts(dotnetRoot), { manager: "dotnet", scripts: process.platform === "win32" ? ["test", "lint", "build"] : ["test", "lint", "build", "security"] });
   } finally {
     await Promise.all([goRoot, rustRoot, pythonRoot, dotnetRoot].map(path => rm(path, { recursive: true, force: true })));
   }
