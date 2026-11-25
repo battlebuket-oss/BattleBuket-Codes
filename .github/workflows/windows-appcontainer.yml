@@ -53,8 +53,8 @@ jobs:
           if (-not (Test-Path $broker)) { throw "AppContainer broker executable was not produced." }
           $info = Get-Item $broker
           if ($info.Length -lt 50000) { throw "AppContainer broker executable is unexpectedly small." }
-          & $broker
-          if ($LASTEXITCODE -ne 125) { throw "Broker did not reject invalid invocation closed (exit=$LASTEXITCODE)." }
+          $probe = Start-Process -FilePath $broker -Wait -PassThru -NoNewWindow
+          if ($probe.ExitCode -ne 125) { throw "Broker did not reject invalid invocation closed (exit=$($probe.ExitCode))." }
       - name: Typecheck and lint
         run: |
           pnpm lint
