@@ -24,7 +24,7 @@ The repository currently includes:
 - Local JSONL task history with interrupted-run recovery and size compaction. History stores status metadata and generic provider labels—not prompts, source files or model output.
 - Native **PTY-based** interactive workspace terminal using node-pty and xterm.js, including input/output streaming, session lifecycle, terminal resize and bounded IO.
 - Consent-gated project-aware test/lint/typecheck/build and dependency-security checks for Node.js, Go, Rust, Python and .NET, with bounded output, per-command timeouts and fail-closed handling for unsupported projects. Linux uses Bubblewrap and macOS uses Seatbelt to isolate project checks from host writes/network; Windows project commands fail closed until an AppContainer broker is available.
-- CI workflows for audit, lint, typecheck, unit tests, build, CodeQL, secret scanning and Windows/macOS/Linux desktop bundles.
+- CI workflows for audit, lint, typecheck, unit tests, build, CodeQL, secret scanning, SPDX SBOM/license inventory, and Windows/macOS/Linux desktop bundles.
 - A tag-triggered signed-release workflow with platform signing checks, packaged Monaco-worker launch smoke mode, clean-install/uninstall steps and draft-release assembly; plus a manual two-tag upgrade/rollback smoke workflow.
 - Opt-in live Codex/Claude read-only and workspace-write boundary tests, plus a manual self-hosted runner workflow.
 
@@ -36,7 +36,7 @@ The PTY implementation is currently on the draft `feature/pty-terminal` pull req
 
 Project verification supports the currently documented Node.js, Go, Rust, Python and .NET command mappings; missing security scanner tools or unsupported project manifests fail verification rather than being marked as passed. It asks before executing project-defined scripts, but those scripts run with the user's operating-system permissions. They are not isolated in a dedicated execution sandbox. The current verification gate does not yet provide full SAST, independent diff review, license/provenance analysis or a complete adversarial prompt-injection test suite.
 
-The live provider tests are opt-in and still require the repository's `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` Actions secrets plus a successful manual workflow run. The signed installer workflow has not produced a production release; Windows and Apple signing credentials must be configured and a tagged signed build must pass. The upgrade/rollback workflow exists but needs two signed releases and has not run. Broader crash recovery, auto-update integrity, and cross-version migration tests also remain.
+The live provider tests are opt-in and still require the repository's `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` Actions secrets plus a successful manual workflow run. The signed installer workflow has not produced a production release; Windows and Apple signing credentials must be configured and a tagged signed build must pass. The upgrade/rollback workflow exists but needs two signed releases and has not run. Broader crash recovery, auto-update integrity, and cross-version migration tests also remain. The SPDX SBOM and package/license inventory workflow generates review artifacts, but the inventory still needs a human compatibility/obligation review.
 
 **Do not describe the current repository as production-ready.** See [the verified implementation status](docs/UPSTREAM-INTEGRATION.md) and [the production roadmap](docs/ROADMAP.md).
 
