@@ -409,7 +409,15 @@ internal static class Program
 
     private static int RunInAppContainer(BrokerRequest request)
     {
+        var diagnostics = request.Environment.TryGetValue("BATTLEBUKET_APPCONTAINER_DIAGNOSTICS", out var diagnosticsValue) &&
+            string.Equals(diagnosticsValue, "1", StringComparison.Ordinal);
+        void Trace(string message)
+        {
+            if (diagnostics) Console.Error.WriteLine("[AppContainerBroker] " + message);
+        }
+
         var executable = ResolveExecutable(request.Executable, request.Environment);
+        Trace("Resolved requested executable.");
         IntPtr appContainerSid = IntPtr.Zero;
         IntPtr job = IntPtr.Zero;
         IntPtr processHandle = IntPtr.Zero;
@@ -422,13 +430,17 @@ internal static class Program
         IntPtr handleListPointer = IntPtr.Zero;
         try
         {
+            Trace("Ensuring AppContainer profile.");
             appContainerSid = EnsureAppContainerProfile();
+            Trace("AppContainer profile ready.");
             var profileFolder = GetProfileFolderPath(appContainerSid);
+            Trace("Resolved AppContainer profile storage.");
             var profileTempRoot = Path.Combine(profileFolder, "Temp");
             if (!IsSameOrAncestor(profileTempRoot, request.Scratch) || IsSamePath(profileTempRoot, request.Scratch))
                 throw new SecurityException("The sandbox scratch directory is outside the AppContainer-managed profile Temp location.");
 
             var pathDirectories = GetPathDirectories(request.Environment).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            Trace("Preparing read/execute access for " + pathDirectories.Count + " PATH directories.");
             foreach (var directory in pathDirectories)
             {
                 if (IsSameOrAncestor(request.Scratch, directory) || IsReadOnlySystemPath(directory))
@@ -452,6 +464,7 @@ internal static class Program
                 EnsureReadExecuteGrant(executable, appContainerSid);
             }
 
+            Trace("Toolchain access prepared.");
             var securityAttributes = new SecurityAttributes
             {
                 Length = Marshal.SizeOf<SecurityAttributes>(),
@@ -548,6 +561,7 @@ internal static class Program
                 Marshal.FreeHGlobal(jobLimitsPointer);
             }
 
+            Trace("Creating AppContainer child process.");
             if (!CreateProcess(
                 executable,
                 commandLine,
@@ -563,6 +577,7 @@ internal static class Program
 
             processHandle = processInformation.Process;
             threadHandle = processInformation.Thread;
+            Trace("Created child process " + processInformation.ProcessId + ".");
 
             if (!AssignProcessToJobObject(job, processHandle))
             {
@@ -577,9 +592,11 @@ internal static class Program
 
             CloseHandle(pipeWrite);
             pipeWrite = IntPtr.Zero;
+            Trace("Resumed AppContainer child process.");
 
             var output = Console.OpenStandardOutput();
             var buffer = new byte[32 * 1024];
+            var nextProgressAt = Environment.TickCount64 + 1000;
             while (true)
             {
                 if (!PeekNamedPipe(
@@ -613,6 +630,11 @@ internal static class Program
                 }
 
                 var childState = WaitForSingleObject(processHandle, 0);
+                if (Environment.TickCount64 >= nextProgressAt)
+                {
+                    Trace("Child remains active; no stdout bytes are currently available.");
+                    nextProgressAt = Environment.TickCount64 + 1000;
+                }
                 if (childState == 0) break;
                 if (childState != 258)
                     ThrowLastError("WaitForSingleObject(child poll)");
@@ -624,6 +646,7 @@ internal static class Program
                 ThrowLastError("WaitForSingleObject");
             if (!GetExitCodeProcess(processHandle, out var exitCode))
                 ThrowLastError("GetExitCodeProcess");
+            Trace("Child process exited with code " + exitCode + ".");
             return unchecked((int)exitCode);
         }
         finally
