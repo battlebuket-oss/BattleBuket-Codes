@@ -11,6 +11,7 @@ internal static class Program
     private const uint FileGenericExecute = 0x001200A0;
     private const uint SubContainersAndObjectsInherit = 0x00000003;
     private const uint DaclSecurityInformation = 0x00000004;
+    private const uint LabelSecurityInformation = 0x00000010;
     private const uint HandleFlagInherit = 0x00000001;
     private const uint ProcThreadAttributeHandleList = 0x00020002;
     private const uint ProcThreadAttributeSecurityCapabilities = 0x00020009;
@@ -183,6 +184,22 @@ internal static class Program
         out IntPtr sacl,
         out IntPtr securityDescriptor);
 
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ConvertStringSecurityDescriptorToSecurityDescriptor(
+        string stringSecurityDescriptor,
+        uint stringSDRevision,
+        out IntPtr securityDescriptor,
+        out uint securityDescriptorSize);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetSecurityDescriptorSacl(
+        IntPtr securityDescriptor,
+        [MarshalAs(UnmanagedType.Bool)] out bool saclPresent,
+        out IntPtr sacl,
+        [MarshalAs(UnmanagedType.Bool)] out bool saclDefaulted);
+
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
     private static extern uint SetEntriesInAcl(
         uint count,
@@ -311,6 +328,7 @@ internal static class Program
         out IntPtr filePart);
 
     private sealed record AclGrant(string Path, bool IsDirectory);
+    private sealed record IntegrityLabelGrant(string Path, IntPtr OriginalDescriptor, IntPtr OriginalSacl);
 
     private static int Main(string[] args)
     {
@@ -353,6 +371,8 @@ internal static class Program
 
         request.Workspace = Path.GetFullPath(request.Workspace);
         request.Scratch = Path.GetFullPath(request.Scratch);
+        if (IsSamePath(request.Workspace, request.Scratch) || !IsSameOrAncestor(request.Scratch, request.Workspace))
+            throw new InvalidDataException("The workspace copy must be a distinct directory inside the private scratch root.");
     }
 
     private static int RunInAppContainer(BrokerRequest request)
@@ -370,6 +390,7 @@ internal static class Program
         IntPtr handleListPointer = IntPtr.Zero;
         IntPtr environmentPointer = IntPtr.Zero;
         var grants = new List<AclGrant>();
+        var labels = new List<IntegrityLabelGrant>();
 
         try
         {
@@ -383,16 +404,24 @@ internal static class Program
             if (hr != 0)
                 throw new SecurityException("CreateAppContainerProfile failed with HRESULT 0x" + hr.ToString("X8") + ".");
 
-            const uint workspaceRights = FileGenericRead | FileGenericWrite | FileGenericExecute | 0x00010000;
-            AddGrant(request.Workspace, appContainerSid, workspaceRights, SubContainersAndObjectsInherit, grants, true);
-            AddGrant(request.Scratch, appContainerSid, workspaceRights, SubContainersAndObjectsInherit, grants, true);
-            foreach (var directory in GetPathDirectories(request.Environment))
+            const uint scratchRights = FileGenericRead | FileGenericWrite | FileGenericExecute | 0x00010000;
+            AddGrant(request.Scratch, appContainerSid, scratchRights, SubContainersAndObjectsInherit, grants, true);
+            AddLowIntegrityLabel(request.Scratch, labels);
+
+            var pathDirectories = GetPathDirectories(request.Environment).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var directory in pathDirectories)
             {
-                if (IsSameOrAncestor(directory, request.Workspace) ||
-                    IsSameOrAncestor(directory, request.Scratch) ||
+                if (IsSameOrAncestor(directory, request.Scratch) ||
                     IsSameOrAncestor(directory, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)))
                     continue;
                 AddGrant(directory, appContainerSid, FileGenericRead | FileGenericExecute, SubContainersAndObjectsInherit, grants, true);
+            }
+            var executableDirectory = Path.GetDirectoryName(executable);
+            if (!string.IsNullOrWhiteSpace(executableDirectory) &&
+                !pathDirectories.Any(path => IsSamePath(path, executableDirectory)) &&
+                !IsSameOrAncestor(executableDirectory, request.Scratch))
+            {
+                AddGrant(executableDirectory, appContainerSid, FileGenericRead | FileGenericExecute, SubContainersAndObjectsInherit, grants, true);
             }
             AddGrant(executable, appContainerSid, FileGenericRead | FileGenericExecute, 0, grants, false);
 
@@ -549,6 +578,11 @@ internal static class Program
             if (handleListPointer != IntPtr.Zero) Marshal.FreeHGlobal(handleListPointer);
             if (environmentPointer != IntPtr.Zero) Marshal.FreeHGlobal(environmentPointer);
 
+            for (var index = labels.Count - 1; index >= 0; index--)
+            {
+                try { RestoreIntegrityLabel(labels[index]); }
+                catch (Exception exception) { Console.Error.WriteLine("Could not restore the temporary AppContainer integrity label: " + exception.Message); }
+            }
             for (var index = grants.Count - 1; index >= 0; index--)
             {
                 try { RemoveGrant(grants[index], appContainerSid); }
@@ -557,6 +591,80 @@ internal static class Program
             if (appContainerSid != IntPtr.Zero) FreeSid(appContainerSid);
             try { _ = DeleteAppContainerProfile(profileName); }
             catch { /* The per-run profile is unique; an inaccessible profile is not reused. */ }
+        }
+    }
+
+    private static void AddLowIntegrityLabel(string path, List<IntegrityLabelGrant> labels)
+    {
+        var error = GetNamedSecurityInfo(
+            path,
+            1,
+            LabelSecurityInformation,
+            out _,
+            out _,
+            out _,
+            out _,
+            out var originalDescriptor);
+        if (error != 0)
+            throw new Win32Exception((int)error, "Could not inspect the existing integrity label for " + path + ".");
+
+        IntPtr originalSacl = IntPtr.Zero;
+        IntPtr newDescriptor = IntPtr.Zero;
+        try
+        {
+            if (!GetSecurityDescriptorSacl(originalDescriptor, out _, out originalSacl, out _))
+                ThrowLastError("GetSecurityDescriptorSacl");
+
+            if (!ConvertStringSecurityDescriptorToSecurityDescriptor(
+                "S:(ML;OICI;NW;;;LW)",
+                1,
+                out newDescriptor,
+                out _))
+                ThrowLastError("ConvertStringSecurityDescriptorToSecurityDescriptor");
+
+            if (!GetSecurityDescriptorSacl(newDescriptor, out var newSaclPresent, out var newSacl, out _) ||
+                !newSaclPresent || newSacl == IntPtr.Zero)
+                throw new SecurityException("Could not create the temporary low-integrity mandatory label.");
+
+            error = SetNamedSecurityInfo(
+                path,
+                1,
+                LabelSecurityInformation,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                newSacl);
+            if (error != 0)
+                throw new Win32Exception((int)error, "Could not apply a temporary low-integrity label to " + path + ".");
+
+            labels.Add(new IntegrityLabelGrant(path, originalDescriptor, originalSacl));
+            originalDescriptor = IntPtr.Zero;
+        }
+        finally
+        {
+            if (newDescriptor != IntPtr.Zero) LocalFree(newDescriptor);
+            if (originalDescriptor != IntPtr.Zero) LocalFree(originalDescriptor);
+        }
+    }
+
+    private static void RestoreIntegrityLabel(IntegrityLabelGrant grant)
+    {
+        try
+        {
+            var error = SetNamedSecurityInfo(
+                grant.Path,
+                1,
+                LabelSecurityInformation,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                grant.OriginalSacl);
+            if (error != 0)
+                throw new Win32Exception((int)error, "SetNamedSecurityInfo(label cleanup) failed for " + grant.Path + ".");
+        }
+        finally
+        {
+            if (grant.OriginalDescriptor != IntPtr.Zero) LocalFree(grant.OriginalDescriptor);
         }
     }
 
@@ -569,6 +677,8 @@ internal static class Program
         bool directory)
     {
         var fullPath = Path.GetFullPath(path);
+        if (grants.Any(grant => string.Equals(grant.Path, fullPath, StringComparison.OrdinalIgnoreCase)))
+            return;
         if (directory)
         {
             if (!Directory.Exists(fullPath)) return;
