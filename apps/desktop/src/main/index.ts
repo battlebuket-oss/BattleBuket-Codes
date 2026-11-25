@@ -527,7 +527,7 @@ handleTrustedIpc("agents:run", async (_event, payload: { prompt: string; provide
     },
     review: async (reviewedTask: AgentTask, _implementation: AgentResult, decision: DirectorDecision, signal?: AbortSignal): Promise<VerificationResult> => {
       const reviewer = decision.reviewer;
-      if (!reviewer) return { name: "Read-only provider review", passed: true, output: "Skipped: no reviewer provider was selected." };
+      if (!reviewer) return { name: "Read-only provider review", passed: false, output: "Failed closed: no reviewer provider was selected, so independent review cannot be considered passed." };
       const adapter = adapters.find(item => item.provider === reviewer);
       if (!adapter) return { name: "Read-only provider review", passed: false, output: "The selected review provider is unavailable." };
       try {
