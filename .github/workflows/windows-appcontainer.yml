@@ -55,6 +55,63 @@ jobs:
           if ($info.Length -lt 50000) { throw "AppContainer broker executable is unexpectedly small." }
           $probe = Start-Process -FilePath $broker -Wait -PassThru -NoNewWindow
           if ($probe.ExitCode -ne 125) { throw "Broker did not reject invalid invocation closed (exit=$($probe.ExitCode))." }
+      - name: Prepare persistent AppContainer profile before parallel test workers
+        shell: pwsh
+        run: |
+          Write-Host "Profile context: USERPROFILE=$env:USERPROFILE LOCALAPPDATA=$env:LOCALAPPDATA"
+          $broker = "apps/desktop/resources/windows/publish/BattleBuket.AppContainerBroker.exe"
+          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-prepare.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-prepare.stderr.log"
+          $prepare = Start-Process -FilePath $broker -ArgumentList @("--prepare") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if ($prepare.ExitCode -ne 0) {
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+            throw "AppContainer profile preparation failed with exit code $($prepare.ExitCode)."
+          }
+          $sandboxRoot = (Get-Content $stdout -Raw).Trim()
+          $packagesRoot = Join-Path $env:LOCALAPPDATA "Packages"
+          $expectedPrefix = [IO.Path]::GetFullPath($packagesRoot).TrimEnd('\') + "\"
+          $fullSandboxRoot = [IO.Path]::GetFullPath($sandboxRoot)
+          if (-not $fullSandboxRoot.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+              $fullSandboxRoot -notmatch '\\AC\\Temp\\BattleBuketCodes_[0-9a-f]{32}        run: pnpm test
+      - name: Rebuild native dependencies for Electron
+        run: pnpm --filter @battlebuket/desktop exec electron-builder install-app-deps
+      - name: Verify node-pty in the Electron runtime
+        shell: pwsh
+        env:
+          ELECTRON_RUN_AS_NODE: "1"
+        run: pnpm --filter @battlebuket/desktop exec electron scripts/pty-smoke.cjs
+      - name: Build packaged desktop application
+        run: pnpm --filter @battlebuket/desktop build
+      - name: Package unsigned application for installed-runtime smoke
+        run: pnpm --filter @battlebuket/desktop exec electron-builder --dir --config electron-builder.smoke.config.cjs --publish never
+      - name: Launch packaged workbench and terminal smoke
+        shell: pwsh
+        run: |
+          $application = Get-ChildItem "apps/desktop/release-smoke" -Recurse -Filter "battlebuket-codes.exe" | Select-Object -First 1
+          if (-not $application) { throw "Packaged Windows application executable was not produced." }
+          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-packaged-smoke.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-packaged-smoke.stderr.log"
+          $smoke = Start-Process -FilePath $application.FullName -ArgumentList @("--smoke-test", "--enable-logging=stderr") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if ($smoke.ExitCode -ne 0) {
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 250 }
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 500 }
+            throw "Packaged Windows workbench/PTY smoke failed with exit code $($smoke.ExitCode)."
+          }
+          if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: battlebuket-windows-appcontainer-smoke
+          path: |
+            apps/desktop/resources/windows/publish/BattleBuket.AppContainerBroker.exe
+            apps/desktop/release-smoke/**
+          if-no-files-found: error
+          retention-days: 14
+) {
+            throw "AppContainer broker returned a sandbox path outside the expected Packages/<profile>/AC/Temp location: $fullSandboxRoot"
+          }
+          Write-Host "AppContainer profile initialized and returned an isolated AC\Temp path."
+          Remove-Item -LiteralPath $fullSandboxRoot -Recurse -Force
       - name: Typecheck and lint
         run: |
           pnpm lint
