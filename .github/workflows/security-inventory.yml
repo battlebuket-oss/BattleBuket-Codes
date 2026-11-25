@@ -38,7 +38,7 @@ jobs:
           path: .
           format: spdx-json
           output-file: artifacts/battlebuket-codes.spdx.json
-          syft-version: v1.20.0
+          syft-version: v1.42.3
           upload-artifact: false
       - name: Build package/license inventory and manual-review summary
         run: node scripts/build-license-inventory.mjs artifacts/battlebuket-codes.spdx.json artifacts/LICENSE-INVENTORY.csv artifacts/LICENSE-INVENTORY-SUMMARY.md
