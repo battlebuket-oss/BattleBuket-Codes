@@ -338,6 +338,13 @@ export async function prepareSandboxedCommand(
       windowsEnvironment.COREPACK_HOME = sandboxCorepack;
       windowsEnvironment.PATHEXT = baseEnvironment.PATHEXT ?? process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD";
 
+      const resolvedRequestedExecutable = await fs.realpath(executable).catch(() => executable);
+      const discoveredNodeExecutable = await findWindowsNodeExecutable(originalWindowsPath);
+      const sandboxExecutable = stagedNode && discoveredNodeExecutable &&
+        resolvedRequestedExecutable.toLowerCase() === discoveredNodeExecutable.toLowerCase()
+          ? stagedNode.executable
+          : executable;
+
       const requestPath = join(scratch, "appcontainer-request.json");
       await fs.writeFile(requestPath, JSON.stringify({
         workspace: sandboxWorkspace,
@@ -348,12 +355,6 @@ export async function prepareSandboxedCommand(
           Object.entries(windowsEnvironment).filter((entry): entry is [string, string] => typeof entry[1] === "string")
         )
       }), { encoding: "utf8", mode: 0o600 });
-
-      const resolvedRequestedExecutable = await fs.realpath(executable).catch(() => executable);
-      const sandboxExecutable = stagedNode &&
-        resolvedRequestedExecutable.toLowerCase() === (await fs.realpath(findWindowsNodeExecutable(originalWindowsPath) ?? stagedNode.executable)).toLowerCase()
-          ? stagedNode.executable
-          : executable;
 
       return {
         executable: broker,
