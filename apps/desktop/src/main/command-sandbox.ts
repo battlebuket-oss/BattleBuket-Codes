@@ -390,9 +390,6 @@ export async function prepareSandboxedCommand(
     }
   
     await dispose();
-    if (process.platform === "win32") {
-      throw new Error("Windows project scripts are blocked because an OS-enforced AppContainer execution broker is not yet configured. They will not be run with unrestricted user permissions.");
-    }
     throw new Error("No supported OS-enforced command sandbox is available on this platform.");
   } catch (error) {
     await dispose().catch(() => {});
