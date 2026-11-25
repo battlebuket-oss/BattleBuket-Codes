@@ -85,6 +85,9 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - run: pnpm install --frozen-lockfile
+      - name: Verify macOS native PTY helper executable permission
+        if: runner.os == 'macOS'
+        run: pnpm --filter @battlebuket/desktop exec node scripts/verify-node-pty-helper.cjs
       - run: pnpm audit --audit-level high
       - name: Run unit tests with the Node ABI
         run: pnpm test
