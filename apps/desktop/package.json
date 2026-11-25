@@ -5,14 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build && node scripts/verify-renderer-assets.cjs && node scripts/verify-node-pty-helper.cjs",
+    "build": "node scripts/build-windows-appcontainer-broker.cjs && electron-vite build && node scripts/verify-renderer-assets.cjs && node scripts/verify-node-pty-helper.cjs",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
     "dist:win": "pnpm build && electron-builder --win nsis --publish never",
     "dist:mac": "pnpm build && electron-builder --mac dmg --publish never",
-    "dist:linux": "pnpm build && electron-builder --linux AppImage --publish never"
+    "dist:linux": "pnpm build && electron-builder --linux AppImage --publish never",
+    "build:windows-broker": "node scripts/build-windows-appcontainer-broker.cjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -88,7 +89,13 @@
           ]
         }
       ],
-      "forceCodeSigning": true
+      "forceCodeSigning": true,
+      "extraResources": [
+        {
+          "from": "resources/windows/publish/BattleBuket.AppContainerBroker.exe",
+          "to": "BattleBuket.AppContainerBroker.exe"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
