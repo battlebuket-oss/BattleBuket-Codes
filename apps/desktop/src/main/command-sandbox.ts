@@ -68,7 +68,8 @@ async function copyRuntimeTree(
     throw new Error("A Node runtime component resolves outside its installation directory: " + sourcePath);
   }
 
-  if (stat.isSymbolicLink() || stat.isDirectory()) {
+  const effectiveStat = stat.isSymbolicLink() ? await fs.stat(realSource) : stat;
+  if (effectiveStat.isDirectory()) {
     if (ancestors.has(realSource)) {
       throw new Error("A cyclic directory link was found in the Node runtime: " + sourcePath);
     }
@@ -87,7 +88,7 @@ async function copyRuntimeTree(
     return;
   }
 
-  if (stat.isFile()) {
+  if (effectiveStat.isFile()) {
     await fs.mkdir(dirname(destinationPath), { recursive: true });
     await fs.copyFile(realSource, destinationPath);
   }
