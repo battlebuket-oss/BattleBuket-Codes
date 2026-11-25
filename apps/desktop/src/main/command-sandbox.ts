@@ -90,16 +90,74 @@ export async function prepareSandboxedCommand(
   const scratchCache = join(scratch, "cache");
   const scratchCorepack = join(scratch, "corepack");
   const scratchWorkspace = join(scratch, "workspace");
+  const scratchRoaming = join(scratchHome, "AppData", "Roaming");
+  const scratchLocal = join(scratchHome, "AppData", "Local");
   const dispose = async () => fs.rm(scratch, { recursive: true, force: true });
   try {
-    await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack, scratchWorkspace].map(path => fs.mkdir(path, { recursive: true })));
+    await Promise.all([scratchHome, scratchTmp, scratchCache, scratchCorepack, scratchWorkspace, scratchRoaming, scratchLocal].map(path => fs.mkdir(path, { recursive: true })));
     const corepackHome = process.env.COREPACK_HOME || join(homedir(), ".cache", "node", "corepack");
     const hasCorepackHome = await isDirectory(corepackHome);
     if (hasCorepackHome) {
       await fs.cp(corepackHome, scratchCorepack, { recursive: true, dereference: false, force: true });
     }
     const pathDirectories = await existingPathDirectories();
-  
+
+    if (process.platform === "win32") {
+      const brokerCandidates = [
+        process.env.BATTLEBUKET_APPCONTAINER_BROKER,
+        join(process.cwd(), "apps", "desktop", "resources", "windows", "publish", "BattleBuket.AppContainerBroker.exe"),
+        join(process.cwd(), "resources", "windows", "publish", "BattleBuket.AppContainerBroker.exe")
+      ].filter((value): value is string => typeof value === "string" && value.length > 0);
+      let broker: string | null = null;
+      for (const candidate of brokerCandidates) {
+        try {
+          await fs.access(candidate);
+          broker = await fs.realpath(candidate);
+          break;
+        } catch { /* Try the next configured or development build location. */ }
+      }
+      if (!broker) {
+        throw new Error("Windows project scripts are blocked because the signed-in desktop installation does not contain the Windows AppContainer broker. Rebuild the Windows app with the .NET 8 SDK; unrestricted execution is never used.");
+      }
+
+      const windowsEnvironment: NodeJS.ProcessEnv = { ...baseEnvironment };
+      windowsEnvironment.PATH = baseEnvironment.PATH ?? baseEnvironment.Path ?? process.env.PATH ?? "";
+      delete windowsEnvironment.Path;
+      windowsEnvironment.HOME = scratchHome;
+      windowsEnvironment.USERPROFILE = scratchHome;
+      windowsEnvironment.APPDATA = scratchRoaming;
+      windowsEnvironment.LOCALAPPDATA = scratchLocal;
+      windowsEnvironment.TEMP = scratchTmp;
+      windowsEnvironment.TMP = scratchTmp;
+      windowsEnvironment.TMPDIR = scratchTmp;
+      windowsEnvironment.COREPACK_HOME = scratchCorepack;
+      windowsEnvironment.PATHEXT = baseEnvironment.PATHEXT ?? process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD";
+
+      const requestPath = join(scratch, "appcontainer-request.json");
+      await fs.writeFile(requestPath, JSON.stringify({
+        workspace,
+        scratch,
+        executable,
+        args: commandArgs,
+        environment: Object.fromEntries(
+          Object.entries(windowsEnvironment).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+        )
+      }), { encoding: "utf8", mode: 0o600 });
+
+      return {
+        executable: broker,
+        args: ["--request", requestPath],
+        cwd: workspace,
+        env: {
+          PATH: process.env.PATH ?? "",
+          SystemRoot: process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows",
+          TEMP: scratchTmp,
+          TMP: scratchTmp
+        },
+        dispose
+      };
+    }
+
     if (process.platform === "linux") {
       const bwrap = await findExecutable("bwrap");
       if (!bwrap) {
