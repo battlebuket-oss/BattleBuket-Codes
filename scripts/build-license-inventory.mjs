@@ -13,17 +13,21 @@ function csv(value) {
 
 function licenseFromManifest(manifest) {
   const license = manifest?.license;
-  if (typeof license === "string" && license.trim()) return license.trim();
-  if (license && typeof license === "object" && typeof license.type === "string") return license.type.trim();
-  const licenses = manifest?.licenses;
-  if (Array.isArray(licenses)) {
-    const expressions = licenses
-      .map(item => typeof item === "string" ? item : item && typeof item.type === "string" ? item.type : "")
-      .map(item => item.trim())
-      .filter(Boolean);
-    if (expressions.length) return expressions.join(" OR ");
+  let value = "";
+  if (typeof license === "string" && license.trim()) value = license.trim();
+  else if (license && typeof license === "object" && typeof license.type === "string") value = license.type.trim();
+  else {
+    const licenses = manifest?.licenses;
+    if (Array.isArray(licenses)) {
+      const expressions = licenses
+        .map(item => typeof item === "string" ? item : item && typeof item.type === "string" ? item.type : "")
+        .map(item => item.trim())
+        .filter(Boolean);
+      if (expressions.length) value = expressions.join(" OR ");
+    }
   }
-  return "";
+  const reference = value.match(/^SEE LICENSE IN\\s+(.+)$/i)?.[1]?.trim() ?? "";
+  return { value, reference };
 }
 
 function buildPnpmManifestIndex() {
@@ -64,11 +68,14 @@ function buildPnpmManifestIndex() {
   return index;
 }
 
-function hasLicenseFile(manifestPath) {
+function hasLicenseFile(manifestPath, reference = "") {
   if (!manifestPath) return false;
   const root = path.dirname(manifestPath);
-  return ["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md", "COPYING", "NOTICE"]
-    .some(name => fs.existsSync(path.join(root, name)));
+  const candidates = [
+    ...["LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md", "COPYING", "NOTICE"],
+    ...(reference ? [reference] : [])
+  ];
+  return candidates.some(name => fs.existsSync(path.resolve(root, name)));
 }
 
 if (!fs.existsSync(input)) throw new Error("SPDX SBOM does not exist: " + input);
@@ -89,10 +96,16 @@ const entries = document.packages
     const spdxLicense = declared !== "NOASSERTION" && declared !== "NONE" ? declared
       : concluded !== "NOASSERTION" && concluded !== "NONE" ? concluded
       : "";
-    const effectiveLicense = spdxLicense || manifestLicense || "UNKNOWN";
+    const licenseFilePresent = hasLicenseFile(manifestEntry?.manifestPath, manifestLicense.reference);
+    const expressionResolved = Boolean(spdxLicense || (manifestLicense.value && !manifestLicense.reference));
+    const effectiveLicense = spdxLicense || (manifestLicense.reference
+      ? "LICENSE-REFERENCE: " + manifestLicense.reference
+      : manifestLicense.value || "UNKNOWN");
     const licenseEvidence = spdxLicense ? "SPDX license declaration"
-      : manifestLicense ? "installed package.json license field"
-      : hasLicenseFile(manifestEntry?.manifestPath) ? "license file present; expression unresolved"
+      : manifestLicense.reference && licenseFilePresent ? "package.json license-file reference; human interpretation required"
+      : manifestLicense.reference ? "package.json license-file reference is unresolved"
+      : manifestLicense.value ? "installed package.json license field"
+      : licenseFilePresent ? "license file present; expression unresolved"
       : "no license metadata found";
     const purl = (pkg.externalRefs ?? []).find(ref => ref.referenceType === "purl")?.referenceLocator ?? "";
     return {
@@ -101,9 +114,11 @@ const entries = document.packages
       effectiveLicense,
       spdxDeclared: declared,
       spdxConcluded: concluded,
-      packageJsonLicense: manifestLicense,
+      packageJsonLicense: manifestLicense.value,
+      licenseReference: manifestLicense.reference,
+      licenseExpressionResolved: expressionResolved,
       licenseEvidence,
-      licenseFilePresent: hasLicenseFile(manifestEntry?.manifestPath) ? "yes" : "no",
+      licenseFilePresent: licenseFilePresent ? "yes" : "no",
       purl,
       supplier: pkg.supplier ?? "",
       downloadLocation: pkg.downloadLocation ?? ""
@@ -120,6 +135,8 @@ const columns = [
   ["spdx_license_declared", "spdxDeclared"],
   ["spdx_license_concluded", "spdxConcluded"],
   ["package_json_license", "packageJsonLicense"],
+  ["license_reference", "licenseReference"],
+  ["license_expression_resolved", "licenseExpressionResolved"],
   ["license_evidence", "licenseEvidence"],
   ["license_file_present", "licenseFilePresent"],
   ["purl", "purl"],
@@ -137,15 +154,17 @@ fs.writeFileSync(output, rows.join("\n") + "\n", "utf8");
 
 const byEvidence = new Map();
 for (const entry of entries) byEvidence.set(entry.licenseEvidence, (byEvidence.get(entry.licenseEvidence) ?? 0) + 1);
-const unknown = entries.filter(entry => entry.effectiveLicense === "UNKNOWN");
+const unknown = entries.filter(entry => entry.licenseEvidence === "no license metadata found");
 const fileOnly = entries.filter(entry => entry.licenseEvidence === "license file present; expression unresolved");
-const known = entries.length - unknown.length;
+const licenseReferences = entries.filter(entry => entry.licenseEvidence.startsWith("package.json license-file reference"));
+const known = entries.filter(entry => entry.licenseExpressionResolved).length;
 const summary = [
   "# Dependency license inventory",
   "",
   `- SPDX SBOM: ${input}`,
   `- Package components: ${entries.length}`,
-  `- Components with SPDX or installed package.json license expressions: ${known}`,
+  `- Components with a machine-readable SPDX/package.json license expression: ${known}`,
+  `- Components using package.json "SEE LICENSE IN" references: ${licenseReferences.length}`,
   `- Components with a license file but no resolved expression: ${fileOnly.length}`,
   `- Components with no license metadata: ${unknown.length}`,
   "",
@@ -162,6 +181,6 @@ const summary = [
 
 fs.writeFileSync(summaryPath, summary, "utf8");
 console.log(summary);
-if (unknown.length || fileOnly.length) {
-  console.warn("Manual license review required for " + (unknown.length + fileOnly.length) + " package components.");
+if (unknown.length || fileOnly.length || licenseReferences.length) {
+  console.warn("Manual license review required for " + (unknown.length + fileOnly.length + licenseReferences.length) + " package components.");
 }
