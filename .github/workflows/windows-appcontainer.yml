@@ -78,6 +78,49 @@ jobs:
           }
           Write-Host "AppContainer profile initialized and returned an isolated AC\Temp path."
           Remove-Item -LiteralPath $fullSandboxRoot -Recurse -Force
+      - name: Verify AppContainer child process and output pipe
+        shell: pwsh
+        run: |
+          $broker = "apps/desktop/resources/windows/publish/BattleBuket.AppContainerBroker.exe"
+          $prepareOut = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-child-prepare.log"
+          $prepare = Start-Process -FilePath $broker -ArgumentList @("--prepare") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $prepareOut
+          if ($prepare.ExitCode -ne 0) { throw "Could not prepare AppContainer storage for the child-process probe." }
+          $sandboxRoot = (Get-Content $prepareOut -Raw).Trim()
+          $workspace = Join-Path $sandboxRoot "workspace"
+          New-Item -ItemType Directory -Path $workspace -Force | Out-Null
+          $requestPath = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-child-request.json"
+          $request = @{
+            workspace = $workspace
+            scratch = $sandboxRoot
+            executable = (Join-Path $env:SystemRoot "System32\cmd.exe")
+            args = @("/d", "/c", "echo BATTLEBUKET_APP_CONTAINER_CHILD_OK")
+            environment = @{
+              PATH = (Join-Path $env:SystemRoot "System32")
+              SystemRoot = $env:SystemRoot
+              TEMP = $sandboxRoot
+              TMP = $sandboxRoot
+              USERPROFILE = $sandboxRoot
+              PATHEXT = ".COM;.EXE;.BAT;.CMD"
+            }
+          }
+          $request | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $requestPath -Encoding utf8
+          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-child.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-child.stderr.log"
+          $child = Start-Process -FilePath $broker -ArgumentList @("--request", $requestPath) -Wait:$false -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if (-not $child.WaitForExit(30000)) {
+            $child.Kill($true)
+            throw "AppContainer child-process probe exceeded 30 seconds."
+          }
+          if ($child.ExitCode -ne 0) {
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+            throw "AppContainer child-process probe failed with exit code $($child.ExitCode)."
+          }
+          if (-not (Get-Content $stdout -Raw).Contains("BATTLEBUKET_APP_CONTAINER_CHILD_OK")) {
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+            throw "AppContainer child process did not return its output marker."
+          }
+          Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
       - name: Typecheck and lint
         run: |
           pnpm lint
