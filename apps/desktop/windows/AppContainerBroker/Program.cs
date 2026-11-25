@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Text;
@@ -5,7 +6,6 @@ using System.Text.Json;
 
 internal static class Program
 {
-    private const uint FileAllAccess = 0x001F01FF;
     private const uint FileGenericRead = 0x00120089;
     private const uint FileGenericExecute = 0x001200A0;
     private const uint SubContainersAndObjectsInherit = 0x00000003;
@@ -22,11 +22,6 @@ internal static class Program
     private const uint JobObjectLimitKillOnJobClose = 0x00002000;
     private const uint Infinite = 0xFFFFFFFF;
     private const int ErrorBrokenPipe = 109;
-    private const int ErrorAlreadyExists = 183;
-    private const uint GenericRead = 0x80000000;
-    private const uint GenericWrite = 0x40000000;
-    private const uint OpenExisting = 3;
-    private const uint FileAttributeNormal = 0x00000080;
 
     private sealed class BrokerRequest
     {
@@ -387,8 +382,9 @@ internal static class Program
             if (hr != 0)
                 throw new SecurityException("CreateAppContainerProfile failed with HRESULT 0x" + hr.ToString("X8") + ".");
 
-            AddGrant(request.Workspace, appContainerSid, FileAllAccess, SubContainersAndObjectsInherit, grants, true);
-            AddGrant(request.Scratch, appContainerSid, FileAllAccess, SubContainersAndObjectsInherit, grants, true);
+            const uint workspaceRights = FileGenericRead | 0x00120116 | FileGenericExecute | 0x00010000;
+            AddGrant(request.Workspace, appContainerSid, workspaceRights, SubContainersAndObjectsInherit, grants, true);
+            AddGrant(request.Scratch, appContainerSid, workspaceRights, SubContainersAndObjectsInherit, grants, true);
             foreach (var directory in GetPathDirectories(request.Environment))
             {
                 if (IsSameOrAncestor(directory, request.Workspace) ||
@@ -728,8 +724,12 @@ internal static class Program
 
     private static IntPtr BuildEnvironmentBlock(Dictionary<string, string> environment)
     {
-        var lines = environment
-            .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
+        var normalized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in environment)
+        {
+            if (!string.IsNullOrWhiteSpace(pair.Key)) normalized[pair.Key] = pair.Value;
+        }
+        var lines = normalized
             .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
             .Select(pair => pair.Key + "=" + pair.Value);
         var block = string.Join('\0', lines) + "\0\0";
