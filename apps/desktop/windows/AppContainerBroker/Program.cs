@@ -709,6 +709,9 @@ internal static class Program
                 TrusteeType = TrusteeType.TrusteeIsUser,
                 Name = sid
             };
+            if (oldDacl == IntPtr.Zero)
+                return;
+
             error = GetEffectiveRightsFromAcl(oldDacl, ref trustee, out var currentRights);
             if (error != 0)
                 throw new Win32Exception((int)error, "GetEffectiveRightsFromAcl failed for " + fullPath);
@@ -748,6 +751,7 @@ internal static class Program
     private static IEnumerable<string> GetPathDirectories(Dictionary<string, string> environment)
     {
         var path = environment.TryGetValue("PATH", out var value) ? value : "";
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         foreach (var segment in path.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             string fullPath;
@@ -757,7 +761,7 @@ internal static class Program
             }
             catch { continue; }
             if (!Directory.Exists(fullPath)) continue;
-            if (IsReadOnlySystemPath(fullPath)) continue;
+            if (IsReadOnlySystemPath(fullPath) || IsSameOrAncestor(fullPath, userProfile)) continue;
             yield return fullPath;
         }
     }
