@@ -26,7 +26,7 @@ function licenseFromManifest(manifest) {
       if (expressions.length) value = expressions.join(" OR ");
     }
   }
-  const reference = value.match(/^SEE LICENSE IN\\s+(.+)$/i)?.[1]?.trim() ?? "";
+  const reference = value.match(/^SEE LICENSE IN\s+(.+)$/i)?.[1]?.trim() ?? "";
   return { value, reference };
 }
 
