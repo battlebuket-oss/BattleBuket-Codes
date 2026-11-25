@@ -121,6 +121,54 @@ jobs:
             throw "AppContainer child process did not return its output marker."
           }
           Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
+      - name: Verify Node runtime inside AppContainer
+        shell: pwsh
+        run: |
+          $broker = "apps/desktop/resources/windows/publish/BattleBuket.AppContainerBroker.exe"
+          $nodeExe = (Get-Command node.exe).Source
+          $nodeDirectory = Split-Path -Parent $nodeExe
+          $prepareOut = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-node-prepare.log"
+          $prepare = Start-Process -FilePath $broker -ArgumentList @("--prepare") -Wait -PassThru -NoNewWindow -RedirectStandardOutput $prepareOut
+          if ($prepare.ExitCode -ne 0) { throw "Could not prepare AppContainer storage for the Node runtime probe." }
+          $sandboxRoot = (Get-Content $prepareOut -Raw).Trim()
+          $workspace = Join-Path $sandboxRoot "workspace"
+          New-Item -ItemType Directory -Path $workspace -Force | Out-Null
+          $requestPath = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-node-request.json"
+          $system32 = Join-Path $env:SystemRoot "System32"
+          $request = @{
+            workspace = $workspace
+            scratch = $sandboxRoot
+            executable = $nodeExe
+            args = @("-e", "console.log('BATTLEBUKET_APP_CONTAINER_NODE_OK')")
+            environment = @{
+              PATH = ($nodeDirectory + ";" + $system32)
+              SystemRoot = $env:SystemRoot
+              TEMP = $sandboxRoot
+              TMP = $sandboxRoot
+              USERPROFILE = $sandboxRoot
+              APPDATA = $sandboxRoot
+              LOCALAPPDATA = $sandboxRoot
+              PATHEXT = ".COM;.EXE;.BAT;.CMD"
+            }
+          }
+          $request | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $requestPath -Encoding utf8
+          $stdout = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-node.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "battlebuket-appcontainer-node.stderr.log"
+          $child = Start-Process -FilePath $broker -ArgumentList @("--request", $requestPath) -Wait:$false -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if (-not $child.WaitForExit(30000)) {
+            $child.Kill($true)
+            throw "AppContainer Node runtime probe exceeded 30 seconds."
+          }
+          if ($child.ExitCode -ne 0) {
+            if (Test-Path $stdout) { Get-Content $stdout -Tail 100 }
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+            throw "AppContainer Node runtime probe failed with exit code $($child.ExitCode)."
+          }
+          if (-not (Get-Content $stdout -Raw).Contains("BATTLEBUKET_APP_CONTAINER_NODE_OK")) {
+            if (Test-Path $stderr) { Get-Content $stderr -Tail 100 }
+            throw "Node did not return its AppContainer probe marker."
+          }
+          Remove-Item -LiteralPath $sandboxRoot -Recurse -Force
       - name: Typecheck and lint
         run: |
           pnpm lint
