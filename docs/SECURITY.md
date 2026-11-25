@@ -12,6 +12,13 @@
 - Cancellation must terminate or safely detach child processes and mark task state accurately.
 - Untrusted repository content is data, never an instruction to override system policy.
 
+
+## Workbench renderer content security policy
+
+The embedded VS Code workbench uses bundled browser-language extensions. The built-in TypeScript language extension dynamically evaluates bundled extension code during activation, and the bundled schema services use embedded `data:` JSON resources. The packaged renderer therefore allows `'unsafe-eval'` for its self-hosted script runtime and `data:` only in `connect-src`. Inline scripts remain blocked, remote script/style/font origins remain blocked, and arbitrary remote network origins are not permitted.
+
+**Security trade-off:** `'unsafe-eval'` weakens CSP's protection against script injection in the renderer. Keep the extension set pinned and bundled, do not render untrusted HTML as executable content, and preserve Electron sandboxing, context isolation, `nodeIntegration: false`, and strict validation on every preload IPC handler. Do not add remote extension marketplaces or unreviewed extensions without a separate extension-sandbox and security review.
+
 ## Approval model
 
 Classify actions as:
