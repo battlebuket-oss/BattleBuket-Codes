@@ -160,6 +160,35 @@ describe("EngineeringDirector", () => {
     assert.match(result.verification[0]?.output ?? "", /not configured/);
   });
 
+  it("fails closed when the alternate reviewer becomes unavailable before implementation", async () => {
+    let implementationStarted = false;
+    const implementation: AgentAdapter = {
+      provider: "codex",
+      isAvailable: async () => true,
+      run: async request => {
+        implementationStarted = true;
+        return { taskId: request.task.id, status: "succeeded", summary: "Should not run", changedFiles: [], verification: [] };
+      },
+      cancel: async () => {}
+    };
+    const unavailableReviewer: AgentAdapter = {
+      provider: "claude",
+      isAvailable: async () => false,
+      run: async request => ({ taskId: request.task.id, status: "succeeded", summary: "Should not run", changedFiles: [], verification: [] }),
+      cancel: async () => {}
+    };
+    const director = new EngineeringDirector([implementation, unavailableReviewer], {
+      decide: async () => ({ primary: "codex", reviewer: "claude", rationale: "Reviewer became unavailable", requiresHumanApproval: false }),
+      review: async () => ({ name: "Read-only provider review", passed: true }),
+      verify: async () => [{ name: "typecheck", passed: true }],
+      emit: () => {}
+    });
+    const result = await director.execute({ ...task, risk: "medium" });
+    assert.equal(implementationStarted, false);
+    assert.equal(result.status, "failed");
+    assert.match(result.verification[0]?.output ?? "", /review provider is unavailable/);
+  });
+
   it("fails closed when a configured reviewer rejects the implementation", async () => {
     const implementation = adapter({
       taskId: task.id, status: "succeeded", summary: "Implemented", changedFiles: [], verification: []
